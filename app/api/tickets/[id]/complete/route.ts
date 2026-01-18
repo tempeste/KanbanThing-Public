@@ -1,0 +1,58 @@
+import { NextRequest } from "next/server";
+import { validateApiKey, getConvexClient } from "@/lib/api-auth";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await validateApiKey(request);
+  if (auth instanceof Response) return auth;
+
+  const { id } = await params;
+  const convex = getConvexClient();
+
+  const ticket = await convex.query(api.tickets.get, {
+    id: id as Id<"tickets">,
+  });
+
+  if (!ticket) {
+    return Response.json({ error: "Ticket not found" }, { status: 404 });
+  }
+
+  if (ticket.workspaceId !== auth.workspaceId) {
+    return Response.json({ error: "Ticket not found" }, { status: 404 });
+  }
+
+  if (ticket.status !== "in_progress") {
+    return Response.json(
+      { error: "Ticket must be in progress to complete", currentStatus: ticket.status },
+      { status: 409 }
+    );
+  }
+
+  try {
+    await convex.mutation(api.tickets.complete, {
+      id: id as Id<"tickets">,
+    });
+
+    const updatedTicket = await convex.query(api.tickets.get, {
+      id: id as Id<"tickets">,
+    });
+
+    return Response.json({
+      success: true,
+      ticket: {
+        id: updatedTicket!._id,
+        title: updatedTicket!.title,
+        status: updatedTicket!.status,
+      },
+    });
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Failed to complete ticket" },
+      { status: 500 }
+    );
+  }
+}
