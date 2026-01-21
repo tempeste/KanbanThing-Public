@@ -30,6 +30,7 @@ export async function GET(
     title: ticket.title,
     description: ticket.description,
     docs: ticket.docs,
+    docId: ticket.docId,
     status: ticket.status,
     ownerId: ticket.ownerId,
     ownerType: ticket.ownerType,

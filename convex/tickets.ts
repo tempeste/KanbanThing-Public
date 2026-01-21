@@ -43,14 +43,22 @@ export const create = mutation({
     title: v.string(),
     description: v.string(),
     docs: v.optional(v.string()),
+    docId: v.optional(v.id("featureDocs")),
   },
   handler: async (ctx, args) => {
+    if (args.docId) {
+      const doc = await ctx.db.get(args.docId);
+      if (!doc || doc.workspaceId !== args.workspaceId) {
+        throw new Error("Invalid feature doc");
+      }
+    }
     const now = Date.now();
     return await ctx.db.insert("tickets", {
       workspaceId: args.workspaceId,
       title: args.title,
       description: args.description,
       docs: args.docs,
+      docId: args.docId,
       status: "unclaimed",
       createdAt: now,
       updatedAt: now,
@@ -64,17 +72,58 @@ export const update = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     docs: v.optional(v.string()),
+    docId: v.optional(v.union(v.id("featureDocs"), v.null())),
   },
   handler: async (ctx, args) => {
-    const { id, ...updates } = args;
+    const { id, docId, ...updates } = args;
     const ticket = await ctx.db.get(id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    const patch: Record<string, unknown> = { ...updates };
+    if (docId !== undefined) {
+      if (docId === null) {
+        patch.docId = undefined;
+      } else {
+        const doc = await ctx.db.get(docId);
+        if (!doc || doc.workspaceId !== ticket.workspaceId) {
+          throw new Error("Invalid feature doc");
+        }
+        patch.docId = docId;
+      }
+    }
     await ctx.db.patch(id, {
-      ...updates,
+      ...patch,
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const listByDoc = query({
+  args: {
+    workspaceId: v.id("workspaces"),
+    docId: v.id("featureDocs"),
+    status: v.optional(
+      v.union(
+        v.literal("unclaimed"),
+        v.literal("in_progress"),
+        v.literal("done")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const tickets = await ctx.db
+      .query("tickets")
+      .withIndex("by_workspace_doc", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("docId", args.docId)
+      )
+      .collect();
+
+    if (!args.status) {
+      return tickets;
+    }
+
+    return tickets.filter((ticket) => ticket.status === args.status);
   },
 });
 

@@ -7,9 +7,10 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Settings, LayoutGrid, Table } from "lucide-react";
+import { ArrowLeft, Settings, LayoutGrid, Table, FileText } from "lucide-react";
 import { KanbanBoard } from "@/components/kanban-board";
 import { TicketTable } from "@/components/ticket-table";
+import { FeatureDocs } from "@/components/feature-docs";
 
 export default function WorkspacePage() {
   const params = useParams();
@@ -17,8 +18,9 @@ export default function WorkspacePage() {
 
   const workspace = useQuery(api.workspaces.get, { id: workspaceId });
   const tickets = useQuery(api.tickets.list, { workspaceId });
+  const featureDocs = useQuery(api.featureDocs.list, { workspaceId });
 
-  if (workspace === undefined || tickets === undefined) {
+  if (workspace === undefined || tickets === undefined || featureDocs === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
@@ -78,12 +80,31 @@ export default function WorkspacePage() {
               <Table className="w-4 h-4" />
               Table
             </TabsTrigger>
+            <TabsTrigger value="docs" className="gap-2">
+              <FileText className="w-4 h-4" />
+              Docs
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="board">
-            <KanbanBoard workspaceId={workspaceId} tickets={tickets} />
+            <KanbanBoard
+              workspaceId={workspaceId}
+              tickets={tickets}
+              featureDocs={featureDocs}
+            />
           </TabsContent>
           <TabsContent value="table">
-            <TicketTable workspaceId={workspaceId} tickets={tickets} />
+            <TicketTable
+              workspaceId={workspaceId}
+              tickets={tickets}
+              featureDocs={featureDocs}
+            />
+          </TabsContent>
+          <TabsContent value="docs">
+            <FeatureDocs
+              workspaceId={workspaceId}
+              docs={featureDocs}
+              tickets={tickets}
+            />
           </TabsContent>
         </Tabs>
       </main>

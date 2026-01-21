@@ -22,7 +22,7 @@ import {
   SortingState,
   ColumnFiltersState,
 } from "@tanstack/react-table";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Plus,
   MoreVertical,
@@ -38,6 +38,7 @@ import {
 import { TicketModal } from "@/components/ticket-modal";
 
 type Ticket = Doc<"tickets">;
+type FeatureDoc = Doc<"featureDocs">;
 type Status = "unclaimed" | "in_progress" | "done";
 
 const STATUS_CONFIG: Record<Status, { label: string; icon: React.ReactNode; colorClass: string }> = {
@@ -63,9 +64,10 @@ const columnHelper = createColumnHelper<Ticket>();
 interface TicketTableProps {
   workspaceId: Id<"workspaces">;
   tickets: Ticket[];
+  featureDocs: FeatureDoc[];
 }
 
-export function TicketTable({ workspaceId, tickets }: TicketTableProps) {
+export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -74,6 +76,10 @@ export function TicketTable({ workspaceId, tickets }: TicketTableProps) {
 
   const updateStatus = useMutation(api.tickets.updateStatus);
   const deleteTicket = useMutation(api.tickets.remove);
+  const docsById = useMemo(
+    () => new Map(featureDocs.map((doc) => [doc._id, doc])),
+    [featureDocs]
+  );
 
   const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
     await updateStatus({ id: ticketId, status: newStatus });
@@ -109,10 +115,28 @@ export function TicketTable({ workspaceId, tickets }: TicketTableProps) {
     columnHelper.accessor("description", {
       header: "Description",
       cell: (info) => (
-        <span className="text-muted-foreground text-sm line-clamp-1 max-w-[300px]">
-          {info.getValue()}
-        </span>
+        <div className="space-y-1">
+          <span className="text-muted-foreground text-sm line-clamp-1 max-w-[300px]">
+            {info.getValue()}
+          </span>
+          {info.row.original.docs && (
+            <Badge variant="outline" className="text-[10px]">
+              Ticket notes
+            </Badge>
+          )}
+        </div>
       ),
+    }),
+    columnHelper.accessor("docId", {
+      header: "Doc",
+      cell: (info) => {
+        const docId = info.getValue();
+        const doc = docId ? docsById.get(docId) : null;
+        if (!doc) {
+          return <span className="text-muted-foreground text-sm">-</span>;
+        }
+        return <span className="text-sm max-w-[220px] truncate inline-block">{doc.title}</span>;
+      },
     }),
     columnHelper.accessor("status", {
       header: ({ column }) => (
@@ -313,6 +337,7 @@ export function TicketTable({ workspaceId, tickets }: TicketTableProps) {
 
       <TicketModal
         workspaceId={workspaceId}
+        featureDocs={featureDocs}
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
       />
@@ -320,6 +345,7 @@ export function TicketTable({ workspaceId, tickets }: TicketTableProps) {
       {editingTicket && (
         <TicketModal
           workspaceId={workspaceId}
+          featureDocs={featureDocs}
           ticket={editingTicket}
           open={true}
           onOpenChange={(open) => !open && setEditingTicket(null)}

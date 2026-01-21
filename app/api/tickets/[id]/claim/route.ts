@@ -50,6 +50,7 @@ export async function POST(
         title: updatedTicket!.title,
         description: updatedTicket!.description,
         docs: updatedTicket!.docs,
+        docId: updatedTicket!.docId,
         status: updatedTicket!.status,
         ownerId: updatedTicket!.ownerId,
         ownerType: updatedTicket!.ownerType,
