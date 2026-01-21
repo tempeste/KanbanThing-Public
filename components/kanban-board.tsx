@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Clock, CheckCircle2, Circle, User, Bot, MoreVertical, Trash2, ArrowLeft } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { TicketModal } from "@/components/ticket-modal";
 import {
   DropdownMenu,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 type Ticket = Doc<"tickets">;
+type FeatureDoc = Doc<"featureDocs">;
 type Status = "unclaimed" | "in_progress" | "done";
 
 const STATUS_CONFIG: Record<Status, { label: string; icon: React.ReactNode; colorClass: string }> = {
@@ -41,9 +42,10 @@ const STATUS_CONFIG: Record<Status, { label: string; icon: React.ReactNode; colo
 interface KanbanBoardProps {
   workspaceId: Id<"workspaces">;
   tickets: Ticket[];
+  featureDocs: FeatureDoc[];
 }
 
-export function KanbanBoard({ workspaceId, tickets }: KanbanBoardProps) {
+export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
 
@@ -57,6 +59,10 @@ export function KanbanBoard({ workspaceId, tickets }: KanbanBoardProps) {
       return acc;
     },
     {} as Record<Status, Ticket[]>
+  );
+  const docsById = useMemo(
+    () => new Map(featureDocs.map((doc) => [doc._id, doc])),
+    [featureDocs]
   );
 
   const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
@@ -171,6 +177,11 @@ export function KanbanBoard({ workspaceId, tickets }: KanbanBoardProps) {
                         <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
                           {ticket.description}
                         </p>
+                        {ticket.docId && docsById.get(ticket.docId) && (
+                          <Badge variant="secondary" className="mt-1 text-xs max-w-[200px] truncate">
+                            Doc: {docsById.get(ticket.docId)!.title}
+                          </Badge>
+                        )}
                         {ticket.ownerId && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             {ticket.ownerType === "agent" ? (
@@ -183,7 +194,7 @@ export function KanbanBoard({ workspaceId, tickets }: KanbanBoardProps) {
                         )}
                         {ticket.docs && (
                           <Badge variant="outline" className="mt-2 text-xs">
-                            Has docs
+                            Ticket notes
                           </Badge>
                         )}
                       </CardContent>
@@ -198,6 +209,7 @@ export function KanbanBoard({ workspaceId, tickets }: KanbanBoardProps) {
 
       <TicketModal
         workspaceId={workspaceId}
+        featureDocs={featureDocs}
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
       />
@@ -205,6 +217,7 @@ export function KanbanBoard({ workspaceId, tickets }: KanbanBoardProps) {
       {editingTicket && (
         <TicketModal
           workspaceId={workspaceId}
+          featureDocs={featureDocs}
           ticket={editingTicket}
           open={true}
           onOpenChange={(open) => !open && setEditingTicket(null)}

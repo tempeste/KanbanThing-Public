@@ -18,18 +18,27 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 
 type Ticket = Doc<"tickets">;
+type FeatureDoc = Doc<"featureDocs">;
 
 interface TicketModalProps {
   workspaceId: Id<"workspaces">;
+  featureDocs: FeatureDoc[];
   ticket?: Ticket;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function TicketModal({ workspaceId, ticket, open, onOpenChange }: TicketModalProps) {
+export function TicketModal({
+  workspaceId,
+  featureDocs,
+  ticket,
+  open,
+  onOpenChange,
+}: TicketModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [docs, setDocs] = useState("");
+  const [docId, setDocId] = useState<Id<"featureDocs"> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const createTicket = useMutation(api.tickets.create);
@@ -42,10 +51,12 @@ export function TicketModal({ workspaceId, ticket, open, onOpenChange }: TicketM
       setTitle(ticket.title);
       setDescription(ticket.description);
       setDocs(ticket.docs || "");
+      setDocId(ticket.docId ?? null);
     } else {
       setTitle("");
       setDescription("");
       setDocs("");
+      setDocId(null);
     }
   }, [ticket, open]);
 
@@ -61,6 +72,7 @@ export function TicketModal({ workspaceId, ticket, open, onOpenChange }: TicketM
           title: title.trim(),
           description: description.trim(),
           docs: docs.trim() || undefined,
+          docId: docId ?? null,
         });
       } else {
         await createTicket({
@@ -68,6 +80,7 @@ export function TicketModal({ workspaceId, ticket, open, onOpenChange }: TicketM
           title: title.trim(),
           description: description.trim(),
           docs: docs.trim() || undefined,
+          docId: docId ?? undefined,
         });
       }
       onOpenChange(false);
@@ -103,14 +116,43 @@ export function TicketModal({ workspaceId, ticket, open, onOpenChange }: TicketM
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">
+                  Description
+                  <span className="text-muted-foreground ml-2 font-normal">
+                    - keep this ralph-sized (single, small change)
+                  </span>
+                </Label>
                 <Textarea
                   id="description"
-                  placeholder="Describe what needs to be done..."
+                  placeholder="Add price modal with monthly/annual toggle..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={4}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="docId">Feature Doc</Label>
+                <select
+                  id="docId"
+                  value={docId ?? ""}
+                  onChange={(e) =>
+                    setDocId(e.target.value ? (e.target.value as Id<"featureDocs">) : null)
+                  }
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="">No doc (ungrouped)</option>
+                  {featureDocs.map((doc) => (
+                    <option key={doc._id} value={doc._id}>
+                      {doc.title}
+                    </option>
+                  ))}
+                </select>
+                {featureDocs.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Create a feature doc to group related tickets.
+                  </p>
+                )}
               </div>
 
               {isEditing && ticket && (
@@ -140,7 +182,7 @@ export function TicketModal({ workspaceId, ticket, open, onOpenChange }: TicketM
             <TabsContent value="docs" className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="docs">
-                  Documentation (Markdown)
+                  Ticket Notes (Markdown)
                   <span className="text-muted-foreground ml-2 font-normal">
                     - Add context, relevant files, acceptance criteria
                   </span>

@@ -8,11 +8,20 @@ export default defineSchema({
     createdAt: v.number(),
   }),
 
+  featureDocs: defineTable({
+    workspaceId: v.id("workspaces"),
+    title: v.string(),
+    content: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_workspace", ["workspaceId"]),
+
   tickets: defineTable({
     workspaceId: v.id("workspaces"),
     title: v.string(),
     description: v.string(),
     docs: v.optional(v.string()),
+    docId: v.optional(v.id("featureDocs")),
     status: v.union(
       v.literal("unclaimed"),
       v.literal("in_progress"),
@@ -23,7 +32,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_workspace", ["workspaceId"])
-    .index("by_workspace_status", ["workspaceId", "status"]),
+    .index("by_workspace_status", ["workspaceId", "status"])
+    .index("by_workspace_doc", ["workspaceId", "docId"]),
 
   apiKeys: defineTable({
     workspaceId: v.id("workspaces"),

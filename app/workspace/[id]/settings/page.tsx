@@ -257,8 +257,24 @@ export default function WorkspaceSettingsPage() {
               <div className="text-sm text-muted-foreground space-y-1 font-mono bg-muted p-3 rounded-lg">
                 <p># Get workspace docs</p>
                 <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/workspace/docs</p>
+                <p className="mt-2"># List feature docs</p>
+                <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/docs</p>
+                <p className="mt-2"># Get feature doc</p>
+                <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/docs/DOC_ID</p>
+                <p className="mt-2"># Create feature doc</p>
+                <p className="text-foreground">
+                  curl -X POST -H &quot;X-API-Key: sk_...&quot; -H &quot;Content-Type: application/json&quot; -d '{{&quot;title&quot;:&quot;Subscription feature&quot;,&quot;content&quot;:&quot;...&quot;}}' /api/docs
+                </p>
+                <p className="mt-2"># Update feature doc</p>
+                <p className="text-foreground">
+                  curl -X PATCH -H &quot;X-API-Key: sk_...&quot; -H &quot;Content-Type: application/json&quot; -d '{{&quot;content&quot;:&quot;...&quot;}}' /api/docs/DOC_ID
+                </p>
+                <p className="mt-2"># Delete feature doc</p>
+                <p className="text-foreground">curl -X DELETE -H &quot;X-API-Key: sk_...&quot; /api/docs/DOC_ID</p>
                 <p className="mt-2"># List tickets</p>
                 <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/tickets</p>
+                <p className="mt-2"># List tickets for a doc</p>
+                <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/tickets?docId=DOC_ID</p>
                 <p className="mt-2"># Claim a ticket</p>
                 <p className="text-foreground">curl -X POST -H &quot;X-API-Key: sk_...&quot; /api/tickets/ID/claim</p>
               </div>

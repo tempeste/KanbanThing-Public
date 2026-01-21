@@ -57,6 +57,15 @@ export const remove = mutation({
       await ctx.db.delete(ticket._id);
     }
 
+    // Delete all feature docs in workspace
+    const docs = await ctx.db
+      .query("featureDocs")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .collect();
+    for (const doc of docs) {
+      await ctx.db.delete(doc._id);
+    }
+
     // Delete all API keys in workspace
     const apiKeys = await ctx.db
       .query("apiKeys")
