@@ -29,6 +29,8 @@ export async function GET(
     id: doc._id,
     title: doc.title,
     content: doc.content,
+    parentDocId: doc.parentDocId ?? null,
+    archived: doc.archived ?? false,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
@@ -56,19 +58,41 @@ export async function PATCH(
   const title = typeof body?.title === "string" ? body.title.trim() : undefined;
   const content =
     typeof body?.content === "string" ? body.content.trim() : undefined;
+  const parentDocId =
+    typeof body?.parentDocId === "string"
+      ? body.parentDocId
+      : body?.parentDocId === null
+        ? null
+        : undefined;
+  const archived = typeof body?.archived === "boolean" ? body.archived : undefined;
 
-  if (title === undefined && content === undefined) {
+  if (
+    title === undefined &&
+    content === undefined &&
+    parentDocId === undefined &&
+    archived === undefined
+  ) {
     return Response.json(
-      { error: "At least one of title or content is required" },
+      { error: "At least one field is required" },
       { status: 400 }
     );
   }
 
-  await convex.mutation(api.featureDocs.update, {
-    id: doc._id,
-    title,
-    content,
-  });
+  if (archived !== undefined) {
+    await convex.mutation(api.featureDocs.setArchived, {
+      id: doc._id,
+      archived,
+    });
+  }
+
+  if (title !== undefined || content !== undefined || parentDocId !== undefined) {
+    await convex.mutation(api.featureDocs.update, {
+      id: doc._id,
+      title,
+      content,
+      parentDocId,
+    });
+  }
 
   return Response.json({ success: true });
 }

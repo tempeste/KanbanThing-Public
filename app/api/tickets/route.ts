@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       ownerType: t.ownerType,
       docId: t.docId,
       order: t.order,
-      hasDocs: !!t.docs,
+      archived: t.archived ?? false,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     })),

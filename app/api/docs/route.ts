@@ -17,6 +17,8 @@ export async function GET(request: NextRequest) {
       id: doc._id,
       title: doc.title,
       preview: doc.content.slice(0, 160),
+      parentDocId: doc.parentDocId ?? null,
+      archived: doc.archived ?? false,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     })),
@@ -30,6 +32,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const title = typeof body?.title === "string" ? body.title.trim() : "";
   const content = typeof body?.content === "string" ? body.content.trim() : "";
+  const parentDocId =
+    typeof body?.parentDocId === "string" ? body.parentDocId : body?.parentDocId === null ? null : undefined;
 
   if (!title) {
     return Response.json({ error: "Title is required" }, { status: 400 });
@@ -40,6 +44,7 @@ export async function POST(request: NextRequest) {
     workspaceId: auth.workspaceId,
     title,
     content,
+    parentDocId,
   });
 
   return Response.json({ success: true, id });

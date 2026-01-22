@@ -7,7 +7,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Clock, CheckCircle2, Circle, User, Bot, MoreVertical, Trash2, ArrowLeft } from "lucide-react";
+import {
+  Plus,
+  Clock,
+  CheckCircle2,
+  Circle,
+  User,
+  Bot,
+  MoreVertical,
+  Trash2,
+  ArrowLeft,
+  Archive,
+  ArchiveRestore,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { TicketModal } from "@/components/ticket-modal";
@@ -53,10 +65,12 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
   const [dragOverTicketId, setDragOverTicketId] = useState<Id<"tickets"> | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<"above" | "below" | null>(null);
   const [draggingTicketId, setDraggingTicketId] = useState<Id<"tickets"> | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
   const moveTicket = useMutation(api.tickets.move);
+  const updateTicket = useMutation(api.tickets.update);
   const deleteTicket = useMutation(api.tickets.remove);
 
   const columns: Status[] = ["unclaimed", "in_progress", "done"];
@@ -78,11 +92,18 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
     });
   }, [tickets, optimisticMoves]);
 
+  const isArchived = (ticket: Ticket) => ticket.archived ?? false;
+
+  const visibleTickets = useMemo(() => {
+    if (showArchived) return displayTickets;
+    return displayTickets.filter((ticket) => !isArchived(ticket));
+  }, [displayTickets, showArchived]);
+
   const ticketsByStatus = useMemo(
     () =>
       columns.reduce(
         (acc, status) => {
-          acc[status] = displayTickets
+          acc[status] = visibleTickets
             .filter((t) => t.status === status)
             .slice()
             .sort((a, b) => getOrder(a) - getOrder(b));
@@ -90,7 +111,7 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
         },
         {} as Record<Status, Ticket[]>
       ),
-    [columns, displayTickets]
+    [columns, visibleTickets]
   );
 
   useEffect(() => {
@@ -222,10 +243,18 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
     <>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold">Kanban Board</h2>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Ticket
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={showArchived ? "default" : "outline"}
+            onClick={() => setShowArchived((prev) => !prev)}
+          >
+            {showArchived ? "Hide Archived" : "Show Archived"}
+          </Button>
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Ticket
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -257,38 +286,45 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                 onDrop={(event) => handleDrop(event, status)}
               >
                 <div className="space-y-3 pr-2 min-h-[200px] p-2">
-                  {columnTickets.map((ticket) => (
-                    <Card
-                      key={ticket._id}
-                      draggable
-                      className={`cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors group ${
-                        dragOverTicketId === ticket._id
-                          ? dragOverPosition === "above"
-                            ? "ring-2 ring-primary/60"
-                            : "ring-2 ring-primary/30"
-                          : ""
-                      }`}
-                      onClick={() => setEditingTicket(ticket)}
-                      onDragStart={(event) => {
-                        event.dataTransfer.setData("text/plain", ticket._id);
-                        event.dataTransfer.effectAllowed = "move";
-                        setDraggingTicketId(ticket._id);
-                      }}
-                      onDragEnd={() => {
-                        setDragOverStatus(null);
-                        setDragOverTicketId(null);
-                        setDragOverPosition(null);
-                        setDraggingTicketId(null);
-                      }}
-                      onDragOver={(event) => {
-                        event.preventDefault();
-                        setDragOverTicketId(ticket._id);
-                        const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                        const isAbove = event.clientY < rect.top + rect.height / 2;
-                        setDragOverPosition(isAbove ? "above" : "below");
-                      }}
-                      onDrop={(event) => handleCardDrop(event, status, ticket._id)}
-                    >
+                  {columnTickets.map((ticket) => {
+                    const archived = isArchived(ticket);
+                    return (
+                      <Card
+                        key={ticket._id}
+                        draggable={!archived}
+                        className={`cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors group ${
+                          dragOverTicketId === ticket._id
+                            ? dragOverPosition === "above"
+                              ? "ring-2 ring-primary/60"
+                              : "ring-2 ring-primary/30"
+                            : ""
+                        } ${archived ? "opacity-60" : ""}`}
+                        onClick={() => setEditingTicket(ticket)}
+                        onDragStart={(event) => {
+                          if (archived) return;
+                          event.dataTransfer.setData("text/plain", ticket._id);
+                          event.dataTransfer.effectAllowed = "move";
+                          setDraggingTicketId(ticket._id);
+                        }}
+                        onDragEnd={() => {
+                          setDragOverStatus(null);
+                          setDragOverTicketId(null);
+                          setDragOverPosition(null);
+                          setDraggingTicketId(null);
+                        }}
+                        onDragOver={(event) => {
+                          if (archived) return;
+                          event.preventDefault();
+                          setDragOverTicketId(ticket._id);
+                          const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                          const isAbove = event.clientY < rect.top + rect.height / 2;
+                          setDragOverPosition(isAbove ? "above" : "below");
+                        }}
+                        onDrop={(event) => {
+                          if (archived) return;
+                          handleCardDrop(event, status, ticket._id);
+                        }}
+                      >
                       <CardHeader className="p-4 pb-2">
                         <div className="flex items-start justify-between">
                           <CardTitle className="text-sm font-medium leading-tight">
@@ -341,6 +377,19 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  updateTicket({ id: ticket._id, archived: !archived });
+                                }}
+                              >
+                                {archived ? (
+                                  <ArchiveRestore className="w-4 h-4 mr-2" />
+                                ) : (
+                                  <Archive className="w-4 h-4 mr-2" />
+                                )}
+                                {archived ? "Unarchive" : "Archive"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   handleDelete(ticket._id);
                                 }}
                                 className="text-destructive"
@@ -361,13 +410,18 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              router.push(`${pathname}?tab=docs&doc=${ticket.docId}`);
+                              router.push(`${pathname}?tab=feature-docs&doc=${ticket.docId}`);
                             }}
                           >
                             <Badge variant="secondary" className="mt-1 text-xs max-w-[200px] truncate">
                               Doc: {docsById.get(ticket.docId)!.title}
                             </Badge>
                           </button>
+                        )}
+                        {archived && (
+                          <Badge variant="outline" className="mt-2 text-xs">
+                            Archived
+                          </Badge>
                         )}
                         {ticket.ownerId && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -379,14 +433,10 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                             <span>{ticket.ownerId}</span>
                           </div>
                         )}
-                        {ticket.docs && (
-                          <Badge variant="outline" className="mt-2 text-xs">
-                            Ticket notes
-                          </Badge>
-                        )}
                       </CardContent>
                     </Card>
-                  ))}
+                    );
+                  })}
                 </div>
               </ScrollArea>
             </div>

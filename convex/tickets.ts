@@ -42,7 +42,6 @@ export const create = mutation({
     workspaceId: v.id("workspaces"),
     title: v.string(),
     description: v.string(),
-    docs: v.optional(v.string()),
     docId: v.optional(v.id("featureDocs")),
   },
   handler: async (ctx, args) => {
@@ -57,9 +56,9 @@ export const create = mutation({
       workspaceId: args.workspaceId,
       title: args.title,
       description: args.description,
-      docs: args.docs,
       docId: args.docId,
       order: now,
+      archived: false,
       status: "unclaimed",
       createdAt: now,
       updatedAt: now,
@@ -72,9 +71,9 @@ export const update = mutation({
     id: v.id("tickets"),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
-    docs: v.optional(v.string()),
     docId: v.optional(v.union(v.id("featureDocs"), v.null())),
     order: v.optional(v.number()),
+    archived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { id, docId, ...updates } = args;
@@ -238,6 +237,7 @@ export const move = mutation({
     await ctx.db.patch(args.id, updates);
   },
 });
+
 
 export const remove = mutation({
   args: { id: v.id("tickets") },
