@@ -12,8 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Markdown } from "@/components/markdown";
-import { ArrowLeft, Key, Plus, Trash2, Copy, Check } from "lucide-react";
+import { ArrowLeft, Key, Plus, Trash2, Copy, Check, Hash } from "lucide-react";
 import { useState } from "react";
+import { generateWorkspacePrefix } from "@/lib/utils";
 
 function generateApiKey(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -45,11 +46,17 @@ export default function WorkspaceSettingsPage() {
 
   const [docs, setDocs] = useState<string | null>(null);
   const [isSavingDocs, setIsSavingDocs] = useState(false);
+  const [prefix, setPrefix] = useState<string | null>(null);
+  const [isSavingPrefix, setIsSavingPrefix] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
   const currentDocs = docs ?? workspace?.docs ?? "";
+  const defaultPrefix = workspace ? generateWorkspacePrefix(workspace.name) : "";
+  const currentPrefix = prefix ?? workspace?.prefix ?? defaultPrefix;
+  const normalizedPrefix = currentPrefix.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
+  const prefixIsValid = normalizedPrefix.length >= 2;
 
   const handleSaveDocs = async () => {
     setIsSavingDocs(true);
@@ -89,6 +96,17 @@ export default function WorkspaceSettingsPage() {
     setTimeout(() => setCopiedKeyId(null), 2000);
   };
 
+  const handleSavePrefix = async () => {
+    if (!prefixIsValid) return;
+    setIsSavingPrefix(true);
+    try {
+      await updateWorkspace({ id: workspaceId, prefix: normalizedPrefix });
+      setPrefix(null);
+    } finally {
+      setIsSavingPrefix(false);
+    }
+  };
+
   if (workspace === undefined || apiKeys === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -123,7 +141,7 @@ export default function WorkspaceSettingsPage() {
             <div>
               <h1 className="text-2xl font-bold">{workspace.name} Settings</h1>
               <p className="text-sm text-muted-foreground">
-                Configure workspace docs and API keys
+                Configure prefix, project docs, and API keys
               </p>
             </div>
           </div>
@@ -133,7 +151,56 @@ export default function WorkspaceSettingsPage() {
       <main className="container mx-auto px-6 py-8 max-w-4xl space-y-8">
         <Card>
           <CardHeader>
-            <CardTitle>Workspace Documentation</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Hash className="w-5 h-5" />
+              Workspace Prefix
+            </CardTitle>
+            <CardDescription>
+              Used to generate ticket and feature doc identifiers like {normalizedPrefix || "PRJ"}-12
+              and {normalizedPrefix || "PRJ"}-D4.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="workspace-prefix">Prefix</Label>
+              <Input
+                id="workspace-prefix"
+                value={normalizedPrefix}
+                onChange={(event) => {
+                  const value = event.target.value.toUpperCase().replace(/[^A-Z]/g, "");
+                  setPrefix(value);
+                }}
+                placeholder={defaultPrefix}
+                maxLength={4}
+              />
+              {!prefixIsValid && (
+                <p className="text-xs text-muted-foreground">
+                  Use at least two letters (A-Z).
+                </p>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Example IDs: {normalizedPrefix || "PRJ"}-42 · {normalizedPrefix || "PRJ"}-D7
+            </div>
+            <div className="flex justify-end gap-2">
+              {prefix !== null && (
+                <Button variant="outline" onClick={() => setPrefix(null)}>
+                  Cancel
+                </Button>
+              )}
+              <Button
+                onClick={handleSavePrefix}
+                disabled={!prefixIsValid || prefix === null || isSavingPrefix}
+              >
+                {isSavingPrefix ? "Saving..." : "Save Prefix"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Project Docs</CardTitle>
             <CardDescription>
               Add project context, conventions, and useful links for agents working in this workspace.
               This is returned by the GET /api/workspace/docs endpoint.

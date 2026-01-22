@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { generateWorkspacePrefix } from "./prefix";
 
 export const list = query({
   args: { workspaceId: v.id("workspaces") },
@@ -43,6 +44,7 @@ export const create = mutation({
     title: v.string(),
     description: v.string(),
     docId: v.optional(v.id("featureDocs")),
+    parentTicketId: v.optional(v.id("tickets")),
   },
   handler: async (ctx, args) => {
     if (args.docId) {
@@ -51,12 +53,30 @@ export const create = mutation({
         throw new Error("Invalid feature doc");
       }
     }
+    if (args.parentTicketId) {
+      const parent = await ctx.db.get(args.parentTicketId);
+      if (!parent || parent.workspaceId !== args.workspaceId) {
+        throw new Error("Invalid parent ticket");
+      }
+    }
+    const workspace = await ctx.db.get(args.workspaceId);
+    if (!workspace) {
+      throw new Error("Workspace not found");
+    }
     const now = Date.now();
+    const nextNumber = (workspace.ticketCounter ?? 0) + 1;
+    const prefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
+    await ctx.db.patch(args.workspaceId, {
+      prefix,
+      ticketCounter: nextNumber,
+    });
     return await ctx.db.insert("tickets", {
       workspaceId: args.workspaceId,
       title: args.title,
       description: args.description,
       docId: args.docId,
+      number: nextNumber,
+      parentTicketId: args.parentTicketId,
       order: now,
       archived: false,
       status: "unclaimed",
@@ -74,9 +94,10 @@ export const update = mutation({
     docId: v.optional(v.union(v.id("featureDocs"), v.null())),
     order: v.optional(v.number()),
     archived: v.optional(v.boolean()),
+    parentTicketId: v.optional(v.union(v.id("tickets"), v.null())),
   },
   handler: async (ctx, args) => {
-    const { id, docId, ...updates } = args;
+    const { id, docId, parentTicketId, ...updates } = args;
     const ticket = await ctx.db.get(id);
     if (!ticket) {
       throw new Error("Ticket not found");
@@ -93,10 +114,37 @@ export const update = mutation({
         patch.docId = docId;
       }
     }
+    if (parentTicketId !== undefined) {
+      if (parentTicketId === null) {
+        patch.parentTicketId = undefined;
+      } else {
+        if (parentTicketId === id) {
+          throw new Error("Ticket cannot be its own parent");
+        }
+        const parent = await ctx.db.get(parentTicketId);
+        if (!parent || parent.workspaceId !== ticket.workspaceId) {
+          throw new Error("Invalid parent ticket");
+        }
+        patch.parentTicketId = parentTicketId;
+      }
+    }
     await ctx.db.patch(id, {
       ...patch,
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const listByParent = query({
+  args: {
+    workspaceId: v.id("workspaces"),
+    parentTicketId: v.id("tickets"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tickets")
+      .withIndex("by_parent", (q) => q.eq("parentTicketId", args.parentTicketId))
+      .collect();
   },
 });
 
