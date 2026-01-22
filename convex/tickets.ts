@@ -211,6 +211,34 @@ export const updateStatus = mutation({
   },
 });
 
+export const move = mutation({
+  args: {
+    id: v.id("tickets"),
+    status: v.union(
+      v.literal("unclaimed"),
+      v.literal("in_progress"),
+      v.literal("done")
+    ),
+    order: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ticket = await ctx.db.get(args.id);
+    if (!ticket) {
+      throw new Error("Ticket not found");
+    }
+    const updates: Record<string, unknown> = {
+      status: args.status,
+      order: args.order,
+      updatedAt: Date.now(),
+    };
+    if (args.status === "unclaimed") {
+      updates.ownerId = undefined;
+      updates.ownerType = undefined;
+    }
+    await ctx.db.patch(args.id, updates);
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("tickets") },
   handler: async (ctx, args) => {
