@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Clock, CheckCircle2, Circle, User, Bot, MoreVertical, Trash2, ArrowLeft } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { TicketModal } from "@/components/ticket-modal";
 import {
@@ -56,33 +56,86 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
   const router = useRouter();
   const pathname = usePathname();
 
-  const updateStatus = useMutation(api.tickets.updateStatus);
-  const updateTicket = useMutation(api.tickets.update);
+  const moveTicket = useMutation(api.tickets.move);
   const deleteTicket = useMutation(api.tickets.remove);
 
   const columns: Status[] = ["unclaimed", "in_progress", "done"];
   const getOrder = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
-  const ticketsByStatus = columns.reduce(
-    (acc, status) => {
-      acc[status] = tickets
-        .filter((t) => t.status === status)
-        .slice()
-        .sort((a, b) => getOrder(a) - getOrder(b));
-      return acc;
-    },
-    {} as Record<Status, Ticket[]>
+  const [optimisticMoves, setOptimisticMoves] = useState<
+    Map<string, { status: Status; order: number }>
+  >(new Map());
+
+  const displayTickets = useMemo(() => {
+    if (!optimisticMoves.size) return tickets;
+    return tickets.map((ticket) => {
+      const override = optimisticMoves.get(ticket._id);
+      if (!override) return ticket;
+      return {
+        ...ticket,
+        status: override.status,
+        order: override.order,
+      };
+    });
+  }, [tickets, optimisticMoves]);
+
+  const ticketsByStatus = useMemo(
+    () =>
+      columns.reduce(
+        (acc, status) => {
+          acc[status] = displayTickets
+            .filter((t) => t.status === status)
+            .slice()
+            .sort((a, b) => getOrder(a) - getOrder(b));
+          return acc;
+        },
+        {} as Record<Status, Ticket[]>
+      ),
+    [columns, displayTickets]
   );
+
+  useEffect(() => {
+    if (!optimisticMoves.size) return;
+    setOptimisticMoves((prev) => {
+      const next = new Map(prev);
+      for (const ticket of tickets) {
+        const override = next.get(ticket._id);
+        if (!override) continue;
+        const currentOrder = ticket.order ?? ticket.createdAt;
+        if (ticket.status === override.status && currentOrder === override.order) {
+          next.delete(ticket._id);
+        }
+      }
+      return next;
+    });
+  }, [tickets, optimisticMoves.size]);
   const docsById = useMemo(
     () => new Map(featureDocs.map((doc) => [doc._id, doc])),
     [featureDocs]
   );
 
+  const applyOptimisticMove = (ticketId: Id<"tickets">, status: Status, order: number) => {
+    setOptimisticMoves((prev) => {
+      const next = new Map(prev);
+      next.set(ticketId, { status, order });
+      return next;
+    });
+  };
+
   const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
     const columnTickets = ticketsByStatus[newStatus];
     const lastTicket = columnTickets[columnTickets.length - 1];
     const newOrder = lastTicket ? getOrder(lastTicket) + 1000 : Date.now();
-    await updateStatus({ id: ticketId, status: newStatus });
-    await updateTicket({ id: ticketId, order: newOrder });
+    applyOptimisticMove(ticketId, newStatus, newOrder);
+    try {
+      await moveTicket({ id: ticketId, status: newStatus, order: newOrder });
+    } catch (error) {
+      setOptimisticMoves((prev) => {
+        const next = new Map(prev);
+        next.delete(ticketId);
+        return next;
+      });
+      console.error(error);
+    }
   };
 
   const handleDelete = async (ticketId: Id<"tickets">) => {
@@ -99,8 +152,17 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
     const columnTickets = ticketsByStatus[status];
     const lastTicket = columnTickets[columnTickets.length - 1];
     const newOrder = lastTicket ? getOrder(lastTicket) + 1000 : Date.now();
-    await updateStatus({ id: ticketId, status });
-    await updateTicket({ id: ticketId, order: newOrder });
+    applyOptimisticMove(ticketId, status, newOrder);
+    try {
+      await moveTicket({ id: ticketId, status, order: newOrder });
+    } catch (error) {
+      setOptimisticMoves((prev) => {
+        const next = new Map(prev);
+        next.delete(ticketId);
+        return next;
+      });
+      console.error(error);
+    }
     setDragOverStatus(null);
     setDragOverTicketId(null);
     setDragOverPosition(null);
@@ -138,8 +200,17 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
       newOrder = getOrder(prevTicket) + 1000;
     }
 
-    await updateStatus({ id: ticketId, status });
-    await updateTicket({ id: ticketId, order: newOrder });
+    applyOptimisticMove(ticketId, status, newOrder);
+    try {
+      await moveTicket({ id: ticketId, status, order: newOrder });
+    } catch (error) {
+      setOptimisticMoves((prev) => {
+        const next = new Map(prev);
+        next.delete(ticketId);
+        return next;
+      });
+      console.error(error);
+    }
 
     setDragOverStatus(null);
     setDragOverTicketId(null);

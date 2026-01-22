@@ -31,6 +31,7 @@ export async function GET(
     description: ticket.description,
     docs: ticket.docs,
     docId: ticket.docId,
+    order: ticket.order,
     status: ticket.status,
     ownerId: ticket.ownerId,
     ownerType: ticket.ownerType,
