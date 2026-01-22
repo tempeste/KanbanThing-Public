@@ -59,6 +59,7 @@ export const create = mutation({
       description: args.description,
       docs: args.docs,
       docId: args.docId,
+      order: now,
       status: "unclaimed",
       createdAt: now,
       updatedAt: now,
@@ -73,6 +74,7 @@ export const update = mutation({
     description: v.optional(v.string()),
     docs: v.optional(v.string()),
     docId: v.optional(v.union(v.id("featureDocs"), v.null())),
+    order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { id, docId, ...updates } = args;
