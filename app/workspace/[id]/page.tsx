@@ -3,7 +3,8 @@
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,11 +15,24 @@ import { FeatureDocs } from "@/components/feature-docs";
 
 export default function WorkspacePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const workspaceId = params.id as Id<"workspaces">;
 
   const workspace = useQuery(api.workspaces.get, { id: workspaceId });
   const tickets = useQuery(api.tickets.list, { workspaceId });
   const featureDocs = useQuery(api.featureDocs.list, { workspaceId });
+  const [activeTab, setActiveTab] = useState<"board" | "table" | "docs">("board");
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam === "board" || tabParam === "table" || tabParam === "docs") {
+      setActiveTab(tabParam);
+      return;
+    }
+    if (searchParams.get("doc")) {
+      setActiveTab("docs");
+    }
+  }, [searchParams]);
 
   if (workspace === undefined || tickets === undefined || featureDocs === undefined) {
     return (
@@ -70,7 +84,7 @@ export default function WorkspacePage() {
       </header>
 
       <main className="container mx-auto px-6 py-6">
-        <Tabs defaultValue="board" className="w-full">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="w-full">
           <TabsList className="mb-6">
             <TabsTrigger value="board" className="gap-2">
               <LayoutGrid className="w-4 h-4" />
@@ -104,6 +118,7 @@ export default function WorkspacePage() {
               workspaceId={workspaceId}
               docs={featureDocs}
               tickets={tickets}
+              selectedDocId={searchParams.get("doc") as Id<"featureDocs"> | null}
             />
           </TabsContent>
         </Tabs>

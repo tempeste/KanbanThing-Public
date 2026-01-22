@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Markdown } from "@/components/markdown";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FileText, Plus, Trash2 } from "lucide-react";
+import { TicketModal } from "@/components/ticket-modal";
 
 type FeatureDoc = Doc<"featureDocs">;
 type Ticket = Doc<"tickets">;
@@ -26,9 +28,15 @@ interface FeatureDocsProps {
   workspaceId: Id<"workspaces">;
   docs: FeatureDoc[];
   tickets: Ticket[];
+  selectedDocId?: Id<"featureDocs"> | null;
 }
 
-export function FeatureDocs({ workspaceId, docs, tickets }: FeatureDocsProps) {
+export function FeatureDocs({
+  workspaceId,
+  docs,
+  tickets,
+  selectedDocId,
+}: FeatureDocsProps) {
   const createDoc = useMutation(api.featureDocs.create);
   const updateDoc = useMutation(api.featureDocs.update);
   const deleteDoc = useMutation(api.featureDocs.remove);
@@ -38,6 +46,10 @@ export function FeatureDocs({ workspaceId, docs, tickets }: FeatureDocsProps) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [ticketModalOpen, setTicketModalOpen] = useState(false);
+  const [ticketDocId, setTicketDocId] = useState<Id<"featureDocs"> | null>(null);
+  const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
+  const [highlightedDocId, setHighlightedDocId] = useState<Id<"featureDocs"> | null>(null);
 
   useEffect(() => {
     if (editingDoc) {
@@ -57,6 +69,27 @@ export function FeatureDocs({ workspaceId, docs, tickets }: FeatureDocsProps) {
       return acc;
     }, {});
   }, [tickets]);
+
+  const ticketsByDoc = useMemo(() => {
+    return tickets.reduce<Record<string, Ticket[]>>((acc, ticket) => {
+      if (ticket.docId) {
+        if (!acc[ticket.docId]) acc[ticket.docId] = [];
+        acc[ticket.docId].push(ticket);
+      }
+      return acc;
+    }, {});
+  }, [tickets]);
+
+  useEffect(() => {
+    if (!selectedDocId) return;
+    const element = document.getElementById(`doc-${selectedDocId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedDocId(selectedDocId);
+      const timeout = setTimeout(() => setHighlightedDocId(null), 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [selectedDocId]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -117,7 +150,13 @@ export function FeatureDocs({ workspaceId, docs, tickets }: FeatureDocsProps) {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {docs.map((doc) => (
-            <Card key={doc._id} className="group hover:border-primary/50 transition-colors">
+            <Card
+              key={doc._id}
+              id={`doc-${doc._id}`}
+              className={`group hover:border-primary/50 transition-colors ${
+                highlightedDocId === doc._id ? "ring-2 ring-primary/60" : ""
+              }`}
+            >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
@@ -148,19 +187,55 @@ export function FeatureDocs({ workspaceId, docs, tickets }: FeatureDocsProps) {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground line-clamp-3">
-                  {doc.content || "No content yet."}
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setEditingDoc(doc);
-                    setOpen(true);
-                  }}
-                >
-                  Open Doc
-                </Button>
+                {doc.content ? (
+                  <Markdown
+                    content={doc.content}
+                    className="text-sm max-h-24 overflow-hidden"
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">No content yet.</p>
+                )}
+                <div className="space-y-2">
+                  {(ticketsByDoc[doc._id] ?? []).slice(0, 3).map((ticket) => (
+                    <button
+                      key={ticket._id}
+                      onClick={() => {
+                        setEditingTicket(ticket);
+                        setTicketModalOpen(true);
+                      }}
+                      className="text-left text-sm hover:text-primary transition-colors"
+                    >
+                      • {ticket.title}
+                    </button>
+                  ))}
+                  {(ticketsByDoc[doc._id]?.length ?? 0) > 3 && (
+                    <p className="text-xs text-muted-foreground">
+                      +{(ticketsByDoc[doc._id]?.length ?? 0) - 3} more tickets
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingDoc(doc);
+                      setOpen(true);
+                    }}
+                  >
+                    Open Doc
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditingTicket(null);
+                      setTicketDocId(doc._id);
+                      setTicketModalOpen(true);
+                    }}
+                  >
+                    Add Ticket
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -204,6 +279,15 @@ export function FeatureDocs({ workspaceId, docs, tickets }: FeatureDocsProps) {
                 className="font-mono text-sm"
               />
             </div>
+            {content.trim() && (
+              <div className="space-y-2">
+                <Label>Preview</Label>
+                <Markdown
+                  content={content}
+                  className="rounded-md border bg-muted/30 p-3 max-h-64 overflow-auto"
+                />
+              </div>
+            )}
 
             <DialogFooter className="mt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
@@ -216,6 +300,21 @@ export function FeatureDocs({ workspaceId, docs, tickets }: FeatureDocsProps) {
           </form>
         </DialogContent>
       </Dialog>
+
+      <TicketModal
+        workspaceId={workspaceId}
+        featureDocs={docs}
+        initialDocId={ticketDocId ?? undefined}
+        ticket={editingTicket ?? undefined}
+        open={ticketModalOpen}
+        onOpenChange={(value) => {
+          setTicketModalOpen(value);
+          if (!value) {
+            setTicketDocId(null);
+            setEditingTicket(null);
+          }
+        }}
+      />
     </>
   );
 }

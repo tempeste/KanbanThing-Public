@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Clock, CheckCircle2, Circle, User, Bot, MoreVertical, Trash2, ArrowLeft } from "lucide-react";
 import { useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { TicketModal } from "@/components/ticket-modal";
 import {
   DropdownMenu,
@@ -48,6 +49,9 @@ interface KanbanBoardProps {
 export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<Status | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
 
   const updateStatus = useMutation(api.tickets.updateStatus);
   const deleteTicket = useMutation(api.tickets.remove);
@@ -73,6 +77,14 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
     if (confirm("Delete this ticket?")) {
       await deleteTicket({ id: ticketId });
     }
+  };
+
+  const handleDrop = async (event: React.DragEvent, status: Status) => {
+    event.preventDefault();
+    const ticketId = event.dataTransfer.getData("text/plain") as Id<"tickets">;
+    if (!ticketId) return;
+    await updateStatus({ id: ticketId, status });
+    setDragOverStatus(null);
   };
 
   return (
@@ -102,13 +114,28 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                 </Badge>
               </div>
 
-              <ScrollArea className="flex-1">
-                <div className="space-y-3 pr-2 min-h-[200px]">
+              <ScrollArea
+                className={`flex-1 rounded-lg border border-dashed transition-colors ${
+                  dragOverStatus === status ? "border-primary/60 bg-primary/5" : "border-transparent"
+                }`}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragOverStatus(status);
+                }}
+                onDragLeave={() => setDragOverStatus(null)}
+                onDrop={(event) => handleDrop(event, status)}
+              >
+                <div className="space-y-3 pr-2 min-h-[200px] p-2">
                   {columnTickets.map((ticket) => (
                     <Card
                       key={ticket._id}
+                      draggable
                       className="cursor-pointer hover:border-primary/50 transition-colors group"
                       onClick={() => setEditingTicket(ticket)}
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData("text/plain", ticket._id);
+                        event.dataTransfer.effectAllowed = "move";
+                      }}
                     >
                       <CardHeader className="p-4 pb-2">
                         <div className="flex items-start justify-between">
@@ -178,9 +205,17 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                           {ticket.description}
                         </p>
                         {ticket.docId && docsById.get(ticket.docId) && (
-                          <Badge variant="secondary" className="mt-1 text-xs max-w-[200px] truncate">
-                            Doc: {docsById.get(ticket.docId)!.title}
-                          </Badge>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              router.push(`${pathname}?tab=docs&doc=${ticket.docId}`);
+                            }}
+                          >
+                            <Badge variant="secondary" className="mt-1 text-xs max-w-[200px] truncate">
+                              Doc: {docsById.get(ticket.docId)!.title}
+                            </Badge>
+                          </button>
                         )}
                         {ticket.ownerId && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">

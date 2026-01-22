@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Markdown } from "@/components/markdown";
 import { ArrowLeft, Key, Plus, Trash2, Copy, Check } from "lucide-react";
 import { useState } from "react";
 
@@ -146,6 +147,15 @@ export default function WorkspaceSettingsPage() {
               rows={16}
               className="font-mono text-sm"
             />
+            {currentDocs.trim() && (
+              <div className="space-y-2">
+                <Label>Preview</Label>
+                <Markdown
+                  content={currentDocs}
+                  className="rounded-md border bg-muted/30 p-3 max-h-64 overflow-auto"
+                />
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               {docs !== null && (
                 <Button variant="outline" onClick={() => setDocs(null)}>
@@ -263,11 +273,11 @@ export default function WorkspaceSettingsPage() {
                 <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/docs/DOC_ID</p>
                 <p className="mt-2"># Create feature doc</p>
                 <p className="text-foreground">
-                  curl -X POST -H &quot;X-API-Key: sk_...&quot; -H &quot;Content-Type: application/json&quot; -d '{{&quot;title&quot;:&quot;Subscription feature&quot;,&quot;content&quot;:&quot;...&quot;}}' /api/docs
+                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"title\":\"Subscription feature\",\"content\":\"...\"}' /api/docs"}
                 </p>
                 <p className="mt-2"># Update feature doc</p>
                 <p className="text-foreground">
-                  curl -X PATCH -H &quot;X-API-Key: sk_...&quot; -H &quot;Content-Type: application/json&quot; -d '{{&quot;content&quot;:&quot;...&quot;}}' /api/docs/DOC_ID
+                  {"curl -X PATCH -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"content\":\"...\"}' /api/docs/DOC_ID"}
                 </p>
                 <p className="mt-2"># Delete feature doc</p>
                 <p className="text-foreground">curl -X DELETE -H &quot;X-API-Key: sk_...&quot; /api/docs/DOC_ID</p>
