@@ -22,6 +22,7 @@ export default defineSchema({
     description: v.string(),
     docs: v.optional(v.string()),
     docId: v.optional(v.id("featureDocs")),
+    order: v.optional(v.number()),
     status: v.union(
       v.literal("unclaimed"),
       v.literal("in_progress"),

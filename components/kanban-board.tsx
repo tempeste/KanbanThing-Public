@@ -50,16 +50,24 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<Status | null>(null);
+  const [dragOverTicketId, setDragOverTicketId] = useState<Id<"tickets"> | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<"above" | "below" | null>(null);
+  const [draggingTicketId, setDraggingTicketId] = useState<Id<"tickets"> | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
   const updateStatus = useMutation(api.tickets.updateStatus);
+  const updateTicket = useMutation(api.tickets.update);
   const deleteTicket = useMutation(api.tickets.remove);
 
   const columns: Status[] = ["unclaimed", "in_progress", "done"];
+  const getOrder = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
   const ticketsByStatus = columns.reduce(
     (acc, status) => {
-      acc[status] = tickets.filter((t) => t.status === status);
+      acc[status] = tickets
+        .filter((t) => t.status === status)
+        .slice()
+        .sort((a, b) => getOrder(a) - getOrder(b));
       return acc;
     },
     {} as Record<Status, Ticket[]>
@@ -70,7 +78,11 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
   );
 
   const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
+    const columnTickets = ticketsByStatus[newStatus];
+    const lastTicket = columnTickets[columnTickets.length - 1];
+    const newOrder = lastTicket ? getOrder(lastTicket) + 1000 : Date.now();
     await updateStatus({ id: ticketId, status: newStatus });
+    await updateTicket({ id: ticketId, order: newOrder });
   };
 
   const handleDelete = async (ticketId: Id<"tickets">) => {
@@ -81,10 +93,58 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
 
   const handleDrop = async (event: React.DragEvent, status: Status) => {
     event.preventDefault();
-    const ticketId = event.dataTransfer.getData("text/plain") as Id<"tickets">;
+    const ticketId = (draggingTicketId ||
+      event.dataTransfer.getData("text/plain")) as Id<"tickets">;
     if (!ticketId) return;
+    const columnTickets = ticketsByStatus[status];
+    const lastTicket = columnTickets[columnTickets.length - 1];
+    const newOrder = lastTicket ? getOrder(lastTicket) + 1000 : Date.now();
     await updateStatus({ id: ticketId, status });
+    await updateTicket({ id: ticketId, order: newOrder });
     setDragOverStatus(null);
+    setDragOverTicketId(null);
+    setDragOverPosition(null);
+    setDraggingTicketId(null);
+  };
+
+  const handleCardDrop = async (
+    event: React.DragEvent,
+    status: Status,
+    targetId: Id<"tickets">
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const ticketId = (draggingTicketId ||
+      event.dataTransfer.getData("text/plain")) as Id<"tickets">;
+    if (!ticketId || ticketId === targetId) return;
+
+    const columnTickets = ticketsByStatus[status];
+    const targetIndex = columnTickets.findIndex((t) => t._id === targetId);
+    if (targetIndex === -1) return;
+
+    const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const isAbove = event.clientY < rect.top + rect.height / 2;
+    const targetTicket = columnTickets[targetIndex];
+    const prevTicket = isAbove ? columnTickets[targetIndex - 1] : targetTicket;
+    const nextTicket = isAbove ? targetTicket : columnTickets[targetIndex + 1];
+
+    let newOrder = getOrder(targetTicket);
+    if (prevTicket && nextTicket) {
+      newOrder = (getOrder(prevTicket) + getOrder(nextTicket)) / 2;
+    } else if (!prevTicket && nextTicket) {
+      newOrder = getOrder(nextTicket) - 1000;
+    } else if (prevTicket && !nextTicket) {
+      newOrder = getOrder(prevTicket) + 1000;
+    }
+
+    await updateStatus({ id: ticketId, status });
+    await updateTicket({ id: ticketId, order: newOrder });
+
+    setDragOverStatus(null);
+    setDragOverTicketId(null);
+    setDragOverPosition(null);
+    setDraggingTicketId(null);
   };
 
   return (
@@ -130,12 +190,33 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                     <Card
                       key={ticket._id}
                       draggable
-                      className="cursor-pointer hover:border-primary/50 transition-colors group"
+                      className={`cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors group ${
+                        dragOverTicketId === ticket._id
+                          ? dragOverPosition === "above"
+                            ? "ring-2 ring-primary/60"
+                            : "ring-2 ring-primary/30"
+                          : ""
+                      }`}
                       onClick={() => setEditingTicket(ticket)}
                       onDragStart={(event) => {
                         event.dataTransfer.setData("text/plain", ticket._id);
                         event.dataTransfer.effectAllowed = "move";
+                        setDraggingTicketId(ticket._id);
                       }}
+                      onDragEnd={() => {
+                        setDragOverStatus(null);
+                        setDragOverTicketId(null);
+                        setDragOverPosition(null);
+                        setDraggingTicketId(null);
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setDragOverTicketId(ticket._id);
+                        const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                        const isAbove = event.clientY < rect.top + rect.height / 2;
+                        setDragOverPosition(isAbove ? "above" : "below");
+                      }}
+                      onDrop={(event) => handleCardDrop(event, status, ticket._id)}
                     >
                       <CardHeader className="p-4 pb-2">
                         <div className="flex items-start justify-between">
