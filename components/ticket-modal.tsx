@@ -14,10 +14,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Markdown } from "@/components/markdown";
 
 type Ticket = Doc<"tickets">;
 type FeatureDoc = Doc<"featureDocs">;
@@ -41,7 +39,6 @@ export function TicketModal({
 }: TicketModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [docs, setDocs] = useState("");
   const [docId, setDocId] = useState<Id<"featureDocs"> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
@@ -61,12 +58,10 @@ export function TicketModal({
     if (ticket) {
       setTitle(ticket.title);
       setDescription(ticket.description);
-      setDocs(ticket.docs || "");
       setDocId(ticket.docId ?? null);
     } else {
       setTitle("");
       setDescription("");
-      setDocs("");
       setDocId(initialDocId ?? null);
     }
   }, [ticket, open, initialDocId]);
@@ -82,7 +77,6 @@ export function TicketModal({
           id: ticket._id,
           title: title.trim(),
           description: description.trim(),
-          docs: docs.trim() || undefined,
           docId: docId ?? null,
         });
       } else {
@@ -90,7 +84,6 @@ export function TicketModal({
           workspaceId,
           title: title.trim(),
           description: description.trim(),
-          docs: docs.trim() || undefined,
           docId: docId ?? undefined,
         });
       }
@@ -107,142 +100,107 @@ export function TicketModal({
           <DialogTitle>{isEditing ? "Edit Ticket" : "Create Ticket"}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <Tabs defaultValue="details" className="w-full">
-            <TabsList className="mb-4">
-              <TabsTrigger value="details">Details</TabsTrigger>
-              <TabsTrigger value="docs">Docs</TabsTrigger>
-            </TabsList>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="title">Title</Label>
+            <Input
+              id="title"
+              placeholder="Ticket title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
+          </div>
 
-            <TabsContent value="details" className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  placeholder="Ticket title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  autoFocus
-                />
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="description">
+              Description
+              <span className="text-muted-foreground ml-2 font-normal">
+                - keep this ralph-sized (single, small change)
+              </span>
+            </Label>
+            <Textarea
+              id="description"
+              placeholder="Add price modal with monthly/annual toggle..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
+            />
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">
-                  Description
-                  <span className="text-muted-foreground ml-2 font-normal">
-                    - keep this ralph-sized (single, small change)
-                  </span>
-                </Label>
-                <Textarea
-                  id="description"
-                  placeholder="Add price modal with monthly/annual toggle..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={4}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="docId">Feature Doc</Label>
-                <select
-                  id="docId"
-                  value={docId ?? ""}
-                  onChange={(e) =>
-                    setDocId(e.target.value ? (e.target.value as Id<"featureDocs">) : null)
-                  }
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          <div className="space-y-2">
+            <Label htmlFor="docId">Feature Doc</Label>
+            <select
+              id="docId"
+              value={docId ?? ""}
+              onChange={(e) =>
+                setDocId(e.target.value ? (e.target.value as Id<"featureDocs">) : null)
+              }
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">No doc (ungrouped)</option>
+              {featureDocs.map((doc) => (
+                <option
+                  key={doc._id}
+                  value={doc._id}
+                  disabled={doc.archived && doc._id !== docId}
                 >
-                  <option value="">No doc (ungrouped)</option>
-                  {featureDocs.map((doc) => (
-                    <option key={doc._id} value={doc._id}>
-                      {doc.title}
-                    </option>
-                  ))}
-                </select>
-                {featureDocs.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Create a feature doc to group related tickets.
-                  </p>
-                )}
+                  {doc.title}
+                  {doc.archived ? " (archived)" : ""}
+                </option>
+              ))}
+            </select>
+            {featureDocs.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Create a feature doc to group related tickets.
+              </p>
+            )}
+          </div>
+
+          {activeDoc && (
+            <div className="flex items-center justify-between rounded-md border p-3 text-sm">
+              <div>
+                <p className="font-medium">{activeDoc.title}</p>
                 <p className="text-xs text-muted-foreground">
-                  Feature docs carry big-picture context. Ticket notes capture the exact task.
+                  Open the feature doc for full context.
                 </p>
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  router.push(`${pathname}?tab=feature-docs&doc=${activeDoc._id}`);
+                  onOpenChange(false);
+                }}
+              >
+                Open Doc
+              </Button>
+            </div>
+          )}
 
-              {activeDoc && (
-                <div className="flex items-center justify-between rounded-md border p-3 text-sm">
-                  <div>
-                    <p className="font-medium">{activeDoc.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Open the feature doc for full context.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      router.push(`${pathname}?tab=docs&doc=${activeDoc._id}`);
-                      onOpenChange(false);
-                    }}
-                  >
-                    Open Doc
-                  </Button>
-                </div>
-              )}
-
-              {isEditing && ticket && (
-                <div className="pt-4 border-t">
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    <p>
-                      <span className="font-medium">Status:</span> {ticket.status.replace("_", " ")}
-                    </p>
-                    {ticket.ownerId && (
-                      <p>
-                        <span className="font-medium">Owner:</span> {ticket.ownerId} ({ticket.ownerType})
-                      </p>
-                    )}
-                    <p>
-                      <span className="font-medium">Created:</span>{" "}
-                      {new Date(ticket.createdAt).toLocaleString()}
-                    </p>
-                    <p>
-                      <span className="font-medium">Updated:</span>{" "}
-                      {new Date(ticket.updatedAt).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="docs" className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="docs">
-                  Ticket Notes (Markdown)
-                  <span className="text-muted-foreground ml-2 font-normal">
-                    - Add context, relevant files, acceptance criteria
-                  </span>
-                </Label>
-                <Textarea
-                  id="docs"
-                  placeholder="# Context&#10;&#10;## Relevant Files&#10;- src/...&#10;&#10;## Acceptance Criteria&#10;- [ ] ..."
-                  value={docs}
-                  onChange={(e) => setDocs(e.target.value)}
-                  rows={12}
-                  className="font-mono text-sm"
-                />
+          {isEditing && ticket && (
+            <div className="pt-4 border-t">
+              <div className="text-sm text-muted-foreground space-y-1">
+                <p>
+                  <span className="font-medium">Status:</span> {ticket.status.replace("_", " ")}
+                </p>
+                {ticket.ownerId && (
+                  <p>
+                    <span className="font-medium">Owner:</span> {ticket.ownerId} ({ticket.ownerType})
+                  </p>
+                )}
+                <p>
+                  <span className="font-medium">Created:</span>{" "}
+                  {new Date(ticket.createdAt).toLocaleString()}
+                </p>
+                <p>
+                  <span className="font-medium">Updated:</span>{" "}
+                  {new Date(ticket.updatedAt).toLocaleString()}
+                </p>
               </div>
-              {docs.trim() && (
-                <div className="space-y-2">
-                  <Label>Preview</Label>
-                  <Markdown
-                    content={docs}
-                    className="rounded-md border bg-muted/30 p-3 max-h-64 overflow-auto"
-                  />
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
+            </div>
+          )}
 
           <DialogFooter className="mt-6">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

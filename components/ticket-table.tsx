@@ -28,6 +28,8 @@ import {
   Plus,
   MoreVertical,
   Trash2,
+  Archive,
+  ArchiveRestore,
   Circle,
   Clock,
   CheckCircle2,
@@ -74,15 +76,23 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
   const [globalFilter, setGlobalFilter] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
   const updateStatus = useMutation(api.tickets.updateStatus);
   const deleteTicket = useMutation(api.tickets.remove);
+  const updateTicket = useMutation(api.tickets.update);
   const docsById = useMemo(
     () => new Map(featureDocs.map((doc) => [doc._id, doc])),
     [featureDocs]
   );
+  const isArchived = (ticket: Ticket) => ticket.archived ?? false;
+
+  const filteredTickets = useMemo(() => {
+    if (showArchived) return tickets;
+    return tickets.filter((ticket) => !isArchived(ticket));
+  }, [tickets, showArchived]);
 
   const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
     await updateStatus({ id: ticketId, status: newStatus });
@@ -107,27 +117,27 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
         </Button>
       ),
       cell: (info) => (
-        <button
-          onClick={() => setEditingTicket(info.row.original)}
-          className="font-medium hover:text-primary transition-colors text-left"
-        >
-          {info.getValue()}
-        </button>
+        <div className="space-y-1">
+          <button
+            onClick={() => setEditingTicket(info.row.original)}
+            className="font-medium hover:text-primary transition-colors text-left"
+          >
+            {info.getValue()}
+          </button>
+          {isArchived(info.row.original) && (
+            <Badge variant="outline" className="text-[10px]">
+              Archived
+            </Badge>
+          )}
+        </div>
       ),
     }),
     columnHelper.accessor("description", {
       header: "Description",
       cell: (info) => (
-        <div className="space-y-1">
-          <span className="text-muted-foreground text-sm line-clamp-1 max-w-[300px]">
-            {info.getValue()}
-          </span>
-          {info.row.original.docs && (
-            <Badge variant="outline" className="text-[10px]">
-              Ticket notes
-            </Badge>
-          )}
-        </div>
+        <span className="text-muted-foreground text-sm line-clamp-1 max-w-[300px]">
+          {info.getValue()}
+        </span>
       ),
     }),
     columnHelper.accessor("docId", {
@@ -141,7 +151,7 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
         return (
           <button
             type="button"
-            onClick={() => router.push(`${pathname}?tab=docs&doc=${doc._id}`)}
+            onClick={() => router.push(`${pathname}?tab=feature-docs&doc=${doc._id}`)}
             className="text-left text-sm max-w-[220px] truncate inline-block hover:text-primary"
           >
             {doc.title}
@@ -238,6 +248,16 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
+                onClick={() => updateTicket({ id: ticket._id, archived: !isArchived(ticket) })}
+              >
+                {isArchived(ticket) ? (
+                  <ArchiveRestore className="w-4 h-4 mr-2" />
+                ) : (
+                  <Archive className="w-4 h-4 mr-2" />
+                )}
+                {isArchived(ticket) ? "Unarchive" : "Archive"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 onClick={() => handleDelete(ticket._id)}
                 className="text-destructive"
               >
@@ -252,7 +272,7 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
   ];
 
   const table = useReactTable({
-    data: tickets,
+    data: filteredTickets,
     columns,
     state: { sorting, columnFilters, globalFilter },
     onSortingChange: setSorting,
@@ -303,10 +323,19 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
             ))}
           </div>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Ticket
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={showArchived ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowArchived((prev) => !prev)}
+          >
+            {showArchived ? "Hide Archived" : "Show Archived"}
+          </Button>
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Ticket
+          </Button>
+        </div>
       </div>
 
       <div className="border rounded-lg">

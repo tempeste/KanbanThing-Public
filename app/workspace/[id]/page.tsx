@@ -21,16 +21,16 @@ export default function WorkspacePage() {
   const workspace = useQuery(api.workspaces.get, { id: workspaceId });
   const tickets = useQuery(api.tickets.list, { workspaceId });
   const featureDocs = useQuery(api.featureDocs.list, { workspaceId });
-  const [activeTab, setActiveTab] = useState<"board" | "table" | "docs">("board");
+  const [activeTab, setActiveTab] = useState<"board" | "table" | "feature-docs">("board");
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam === "board" || tabParam === "table" || tabParam === "docs") {
+    if (tabParam === "board" || tabParam === "table" || tabParam === "feature-docs") {
       setActiveTab(tabParam);
       return;
     }
-    if (searchParams.get("doc")) {
-      setActiveTab("docs");
+    if (tabParam === "docs" || searchParams.get("doc")) {
+      setActiveTab("feature-docs");
     }
   }, [searchParams]);
 
@@ -94,9 +94,9 @@ export default function WorkspacePage() {
               <Table className="w-4 h-4" />
               Table
             </TabsTrigger>
-            <TabsTrigger value="docs" className="gap-2">
+            <TabsTrigger value="feature-docs" className="gap-2">
               <FileText className="w-4 h-4" />
-              Docs
+              Feature Docs
             </TabsTrigger>
           </TabsList>
           <TabsContent value="board">
@@ -113,7 +113,7 @@ export default function WorkspacePage() {
               featureDocs={featureDocs}
             />
           </TabsContent>
-          <TabsContent value="docs">
+          <TabsContent value="feature-docs">
             <FeatureDocs
               workspaceId={workspaceId}
               docs={featureDocs}
