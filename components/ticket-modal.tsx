@@ -15,7 +15,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Markdown } from "@/components/markdown";
 
 type Ticket = Doc<"tickets">;
 type FeatureDoc = Doc<"featureDocs">;
@@ -23,6 +25,7 @@ type FeatureDoc = Doc<"featureDocs">;
 interface TicketModalProps {
   workspaceId: Id<"workspaces">;
   featureDocs: FeatureDoc[];
+  initialDocId?: Id<"featureDocs">;
   ticket?: Ticket;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -31,6 +34,7 @@ interface TicketModalProps {
 export function TicketModal({
   workspaceId,
   featureDocs,
+  initialDocId,
   ticket,
   open,
   onOpenChange,
@@ -40,13 +44,20 @@ export function TicketModal({
   const [docs, setDocs] = useState("");
   const [docId, setDocId] = useState<Id<"featureDocs"> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   const createTicket = useMutation(api.tickets.create);
   const updateTicket = useMutation(api.tickets.update);
 
   const isEditing = !!ticket;
+  const activeDoc = useMemo(
+    () => (docId ? featureDocs.find((doc) => doc._id === docId) ?? null : null),
+    [docId, featureDocs]
+  );
 
   useEffect(() => {
+    if (!open) return;
     if (ticket) {
       setTitle(ticket.title);
       setDescription(ticket.description);
@@ -56,9 +67,9 @@ export function TicketModal({
       setTitle("");
       setDescription("");
       setDocs("");
-      setDocId(null);
+      setDocId(initialDocId ?? null);
     }
-  }, [ticket, open]);
+  }, [ticket, open, initialDocId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,7 +164,32 @@ export function TicketModal({
                     Create a feature doc to group related tickets.
                   </p>
                 )}
+                <p className="text-xs text-muted-foreground">
+                  Feature docs carry big-picture context. Ticket notes capture the exact task.
+                </p>
               </div>
+
+              {activeDoc && (
+                <div className="flex items-center justify-between rounded-md border p-3 text-sm">
+                  <div>
+                    <p className="font-medium">{activeDoc.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Open the feature doc for full context.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      router.push(`${pathname}?tab=docs&doc=${activeDoc._id}`);
+                      onOpenChange(false);
+                    }}
+                  >
+                    Open Doc
+                  </Button>
+                </div>
+              )}
 
               {isEditing && ticket && (
                 <div className="pt-4 border-t">
@@ -196,6 +232,15 @@ export function TicketModal({
                   className="font-mono text-sm"
                 />
               </div>
+              {docs.trim() && (
+                <div className="space-y-2">
+                  <Label>Preview</Label>
+                  <Markdown
+                    content={docs}
+                    className="rounded-md border bg-muted/30 p-3 max-h-64 overflow-auto"
+                  />
+                </div>
+              )}
             </TabsContent>
           </Tabs>
 

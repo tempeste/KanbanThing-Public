@@ -23,6 +23,7 @@ import {
   ColumnFiltersState,
 } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Plus,
   MoreVertical,
@@ -73,6 +74,8 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
   const [globalFilter, setGlobalFilter] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
 
   const updateStatus = useMutation(api.tickets.updateStatus);
   const deleteTicket = useMutation(api.tickets.remove);
@@ -135,7 +138,15 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
         if (!doc) {
           return <span className="text-muted-foreground text-sm">-</span>;
         }
-        return <span className="text-sm max-w-[220px] truncate inline-block">{doc.title}</span>;
+        return (
+          <button
+            type="button"
+            onClick={() => router.push(`${pathname}?tab=docs&doc=${doc._id}`)}
+            className="text-left text-sm max-w-[220px] truncate inline-block hover:text-primary"
+          >
+            {doc.title}
+          </button>
+        );
       },
     }),
     columnHelper.accessor("status", {
