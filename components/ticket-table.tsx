@@ -10,6 +10,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -39,6 +43,7 @@ import {
   User,
 } from "lucide-react";
 import { TicketModal } from "@/components/ticket-modal";
+import { formatDocNumber, formatTicketNumber } from "@/lib/utils";
 
 type Ticket = Doc<"tickets">;
 type FeatureDoc = Doc<"featureDocs">;
@@ -68,9 +73,15 @@ interface TicketTableProps {
   workspaceId: Id<"workspaces">;
   tickets: Ticket[];
   featureDocs: FeatureDoc[];
+  workspacePrefix: string;
 }
 
-export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTableProps) {
+export function TicketTable({
+  workspaceId,
+  tickets,
+  featureDocs,
+  workspacePrefix,
+}: TicketTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -86,6 +97,10 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
   const docsById = useMemo(
     () => new Map(featureDocs.map((doc) => [doc._id, doc])),
     [featureDocs]
+  );
+  const ticketsById = useMemo(
+    () => new Map(tickets.map((ticket) => [ticket._id, ticket])),
+    [tickets]
   );
   const isArchived = (ticket: Ticket) => ticket.archived ?? false;
 
@@ -105,6 +120,17 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
   };
 
   const columns = [
+    columnHelper.accessor("number", {
+      header: "ID",
+      cell: (info) => {
+        const formatted = formatTicketNumber(workspacePrefix, info.getValue());
+        return (
+          <span className="text-xs font-mono text-muted-foreground">
+            {formatted ?? "-"}
+          </span>
+        );
+      },
+    }),
     columnHelper.accessor("title", {
       header: ({ column }) => (
         <Button
@@ -124,6 +150,16 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
           >
             {info.getValue()}
           </button>
+          {info.row.original.parentTicketId && ticketsById.get(info.row.original.parentTicketId) && (
+            <div className="text-xs text-muted-foreground">
+              Sub-ticket of{" "}
+              {formatTicketNumber(
+                workspacePrefix,
+                ticketsById.get(info.row.original.parentTicketId)?.number
+              ) ?? "ticket"}{" "}
+              · {ticketsById.get(info.row.original.parentTicketId)?.title}
+            </div>
+          )}
           {isArchived(info.row.original) && (
             <Badge variant="outline" className="text-[10px]">
               Archived
@@ -148,13 +184,14 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
         if (!doc) {
           return <span className="text-muted-foreground text-sm">-</span>;
         }
+        const docNumber = formatDocNumber(workspacePrefix, doc.number);
         return (
           <button
             type="button"
             onClick={() => router.push(`${pathname}?tab=feature-docs&doc=${doc._id}`)}
             className="text-left text-sm max-w-[220px] truncate inline-block hover:text-primary"
           >
-            {doc.title}
+            {docNumber ? `${docNumber} · ${doc.title}` : doc.title}
           </button>
         );
       },
@@ -247,6 +284,27 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
                   Move to Done
                 </DropdownMenuItem>
               )}
+              <DropdownMenuSeparator />
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Move to Feature Doc</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem
+                    onClick={() => updateTicket({ id: ticket._id, docId: null })}
+                  >
+                    Ungrouped
+                  </DropdownMenuItem>
+                  {featureDocs.map((doc) => (
+                    <DropdownMenuItem
+                      key={doc._id}
+                      disabled={doc.archived && doc._id !== ticket.docId}
+                      onClick={() => updateTicket({ id: ticket._id, docId: doc._id })}
+                    >
+                      {formatDocNumber(workspacePrefix, doc.number) ?? "DOC"} · {doc.title}
+                      {doc.archived ? " (archived)" : ""}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuItem
                 onClick={() => updateTicket({ id: ticket._id, archived: !isArchived(ticket) })}
               >
@@ -378,6 +436,8 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
       <TicketModal
         workspaceId={workspaceId}
         featureDocs={featureDocs}
+        tickets={tickets}
+        workspacePrefix={workspacePrefix}
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
       />
@@ -386,6 +446,8 @@ export function TicketTable({ workspaceId, tickets, featureDocs }: TicketTablePr
         <TicketModal
           workspaceId={workspaceId}
           featureDocs={featureDocs}
+          tickets={tickets}
+          workspacePrefix={workspacePrefix}
           ticket={editingTicket}
           open={true}
           onOpenChange={(open) => !open && setEditingTicket(null)}

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { useMemo, useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { formatDocNumber, formatTicketNumber } from "@/lib/utils";
 
 type Ticket = Doc<"tickets">;
 type FeatureDoc = Doc<"featureDocs">;
@@ -23,6 +24,8 @@ type FeatureDoc = Doc<"featureDocs">;
 interface TicketModalProps {
   workspaceId: Id<"workspaces">;
   featureDocs: FeatureDoc[];
+  tickets: Ticket[];
+  workspacePrefix: string;
   initialDocId?: Id<"featureDocs">;
   ticket?: Ticket;
   open: boolean;
@@ -32,6 +35,8 @@ interface TicketModalProps {
 export function TicketModal({
   workspaceId,
   featureDocs,
+  tickets,
+  workspacePrefix,
   initialDocId,
   ticket,
   open,
@@ -40,6 +45,7 @@ export function TicketModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [docId, setDocId] = useState<Id<"featureDocs"> | null>(null);
+  const [parentTicketId, setParentTicketId] = useState<Id<"tickets"> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -59,10 +65,12 @@ export function TicketModal({
       setTitle(ticket.title);
       setDescription(ticket.description);
       setDocId(ticket.docId ?? null);
+      setParentTicketId(ticket.parentTicketId ?? null);
     } else {
       setTitle("");
       setDescription("");
       setDocId(initialDocId ?? null);
+      setParentTicketId(null);
     }
   }, [ticket, open, initialDocId]);
 
@@ -78,6 +86,7 @@ export function TicketModal({
           title: title.trim(),
           description: description.trim(),
           docId: docId ?? null,
+          parentTicketId: parentTicketId ?? null,
         });
       } else {
         await createTicket({
@@ -85,6 +94,7 @@ export function TicketModal({
           title: title.trim(),
           description: description.trim(),
           docId: docId ?? undefined,
+          parentTicketId: parentTicketId ?? undefined,
         });
       }
       onOpenChange(false);
@@ -97,7 +107,11 @@ export function TicketModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Ticket" : "Create Ticket"}</DialogTitle>
+          <DialogTitle>
+            {isEditing
+              ? `${formatTicketNumber(workspacePrefix, ticket?.number) ?? "Ticket"} · Edit`
+              : "Create Ticket"}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -139,22 +153,49 @@ export function TicketModal({
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <option value="">No doc (ungrouped)</option>
-              {featureDocs.map((doc) => (
-                <option
-                  key={doc._id}
-                  value={doc._id}
-                  disabled={doc.archived && doc._id !== docId}
-                >
-                  {doc.title}
-                  {doc.archived ? " (archived)" : ""}
-                </option>
-              ))}
+              {featureDocs.map((doc) => {
+                const docNumber = formatDocNumber(workspacePrefix, doc.number);
+                return (
+                  <option
+                    key={doc._id}
+                    value={doc._id}
+                    disabled={doc.archived && doc._id !== docId}
+                  >
+                    {docNumber ? `${docNumber} · ${doc.title}` : doc.title}
+                    {doc.archived ? " (archived)" : ""}
+                  </option>
+                );
+              })}
             </select>
             {featureDocs.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 Create a feature doc to group related tickets.
               </p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="parentTicket">Parent Ticket</Label>
+            <select
+              id="parentTicket"
+              value={parentTicketId ?? ""}
+              onChange={(event) =>
+                setParentTicketId(
+                  event.target.value ? (event.target.value as Id<"tickets">) : null
+                )
+              }
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">No parent</option>
+              {tickets
+                .filter((candidate) => candidate._id !== ticket?._id)
+                .map((candidate) => (
+                  <option key={candidate._id} value={candidate._id}>
+                    {formatTicketNumber(workspacePrefix, candidate.number) ?? "T"} ·{" "}
+                    {candidate.title}
+                  </option>
+                ))}
+            </select>
           </div>
 
           {activeDoc && (

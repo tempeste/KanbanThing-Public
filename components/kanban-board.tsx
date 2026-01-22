@@ -19,16 +19,22 @@ import {
   ArrowLeft,
   Archive,
   ArchiveRestore,
+  GripVertical,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { TicketModal } from "@/components/ticket-modal";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { formatDocNumber, formatTicketNumber } from "@/lib/utils";
 
 type Ticket = Doc<"tickets">;
 type FeatureDoc = Doc<"featureDocs">;
@@ -56,9 +62,15 @@ interface KanbanBoardProps {
   workspaceId: Id<"workspaces">;
   tickets: Ticket[];
   featureDocs: FeatureDoc[];
+  workspacePrefix: string;
 }
 
-export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardProps) {
+export function KanbanBoard({
+  workspaceId,
+  tickets,
+  featureDocs,
+  workspacePrefix,
+}: KanbanBoardProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<Status | null>(null);
@@ -66,6 +78,8 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
   const [dragOverPosition, setDragOverPosition] = useState<"above" | "below" | null>(null);
   const [draggingTicketId, setDraggingTicketId] = useState<Id<"tickets"> | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const dragPreviewRef = useRef<string | null>(null);
+  const draggingRef = useRef<Id<"tickets"> | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -113,6 +127,40 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
       ),
     [columns, visibleTickets]
   );
+  const buildTicketList = (columnTickets: Ticket[]) => {
+    const idsInColumn = new Set(columnTickets.map((ticket) => ticket._id));
+    const childrenByParent = new Map<Id<"tickets">, Ticket[]>();
+    for (const ticket of columnTickets) {
+      if (ticket.parentTicketId && idsInColumn.has(ticket.parentTicketId)) {
+        const list = childrenByParent.get(ticket.parentTicketId) ?? [];
+        list.push(ticket);
+        childrenByParent.set(ticket.parentTicketId, list);
+      }
+    }
+    for (const list of childrenByParent.values()) {
+      list.sort((a, b) => getOrder(a) - getOrder(b));
+    }
+
+    const roots = columnTickets.filter(
+      (ticket) => !ticket.parentTicketId || !idsInColumn.has(ticket.parentTicketId)
+    );
+    roots.sort((a, b) => getOrder(a) - getOrder(b));
+
+    const flattened: Array<{ ticket: Ticket; depth: number }> = [];
+    const visit = (ticket: Ticket, depth: number) => {
+      flattened.push({ ticket, depth });
+      const children = childrenByParent.get(ticket._id);
+      if (!children) return;
+      for (const child of children) {
+        visit(child, depth + 1);
+      }
+    };
+
+    for (const root of roots) {
+      visit(root, 0);
+    }
+    return flattened;
+  };
 
   useEffect(() => {
     if (!optimisticMoves.size) return;
@@ -140,6 +188,36 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
       next.set(ticketId, { status, order });
       return next;
     });
+  };
+
+  const getColumnTickets = (status: Status, excludeId?: Id<"tickets"> | null) => {
+    const list = ticketsByStatus[status] ?? [];
+    if (!excludeId) return list;
+    return list.filter((ticket) => ticket._id !== excludeId);
+  };
+
+  const calculateDropOrder = (
+    status: Status,
+    targetId: Id<"tickets">,
+    position: "above" | "below",
+    draggingId?: Id<"tickets"> | null
+  ) => {
+    const columnTickets = getColumnTickets(status, draggingId);
+    const targetIndex = columnTickets.findIndex((ticket) => ticket._id === targetId);
+    if (targetIndex === -1) return null;
+    const prevTicket = position === "above" ? columnTickets[targetIndex - 1] : columnTickets[targetIndex];
+    const nextTicket = position === "above" ? columnTickets[targetIndex] : columnTickets[targetIndex + 1];
+
+    if (prevTicket && nextTicket) {
+      return (getOrder(prevTicket) + getOrder(nextTicket)) / 2;
+    }
+    if (!prevTicket && nextTicket) {
+      return getOrder(nextTicket) - 1000;
+    }
+    if (prevTicket && !nextTicket) {
+      return getOrder(prevTicket) + 1000;
+    }
+    return Date.now();
   };
 
   const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
@@ -170,7 +248,7 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
     const ticketId = (draggingTicketId ||
       event.dataTransfer.getData("text/plain")) as Id<"tickets">;
     if (!ticketId) return;
-    const columnTickets = ticketsByStatus[status];
+    const columnTickets = getColumnTickets(status, ticketId);
     const lastTicket = columnTickets[columnTickets.length - 1];
     const newOrder = lastTicket ? getOrder(lastTicket) + 1000 : Date.now();
     applyOptimisticMove(ticketId, status, newOrder);
@@ -188,6 +266,8 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
     setDragOverTicketId(null);
     setDragOverPosition(null);
     setDraggingTicketId(null);
+    dragPreviewRef.current = null;
+    draggingRef.current = null;
   };
 
   const handleCardDrop = async (
@@ -202,24 +282,15 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
       event.dataTransfer.getData("text/plain")) as Id<"tickets">;
     if (!ticketId || ticketId === targetId) return;
 
-    const columnTickets = ticketsByStatus[status];
-    const targetIndex = columnTickets.findIndex((t) => t._id === targetId);
-    if (targetIndex === -1) return;
-
     const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
     const isAbove = event.clientY < rect.top + rect.height / 2;
-    const targetTicket = columnTickets[targetIndex];
-    const prevTicket = isAbove ? columnTickets[targetIndex - 1] : targetTicket;
-    const nextTicket = isAbove ? targetTicket : columnTickets[targetIndex + 1];
-
-    let newOrder = getOrder(targetTicket);
-    if (prevTicket && nextTicket) {
-      newOrder = (getOrder(prevTicket) + getOrder(nextTicket)) / 2;
-    } else if (!prevTicket && nextTicket) {
-      newOrder = getOrder(nextTicket) - 1000;
-    } else if (prevTicket && !nextTicket) {
-      newOrder = getOrder(prevTicket) + 1000;
-    }
+    const newOrder = calculateDropOrder(
+      status,
+      targetId,
+      isAbove ? "above" : "below",
+      ticketId
+    );
+    if (newOrder === null) return;
 
     applyOptimisticMove(ticketId, status, newOrder);
     try {
@@ -237,6 +308,8 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
     setDragOverTicketId(null);
     setDragOverPosition(null);
     setDraggingTicketId(null);
+    dragPreviewRef.current = null;
+    draggingRef.current = null;
   };
 
   return (
@@ -286,31 +359,22 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                 onDrop={(event) => handleDrop(event, status)}
               >
                 <div className="space-y-3 pr-2 min-h-[200px] p-2">
-                  {columnTickets.map((ticket) => {
+                  {buildTicketList(columnTickets).map(({ ticket, depth }) => {
                     const archived = isArchived(ticket);
                     return (
                       <Card
                         key={ticket._id}
-                        draggable={!archived}
-                        className={`cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors group ${
+                        className={`hover:border-primary/50 transition-colors group ${
                           dragOverTicketId === ticket._id
                             ? dragOverPosition === "above"
                               ? "ring-2 ring-primary/60"
                               : "ring-2 ring-primary/30"
                             : ""
                         } ${archived ? "opacity-60" : ""}`}
-                        onClick={() => setEditingTicket(ticket)}
-                        onDragStart={(event) => {
-                          if (archived) return;
-                          event.dataTransfer.setData("text/plain", ticket._id);
-                          event.dataTransfer.effectAllowed = "move";
-                          setDraggingTicketId(ticket._id);
-                        }}
-                        onDragEnd={() => {
-                          setDragOverStatus(null);
-                          setDragOverTicketId(null);
-                          setDragOverPosition(null);
-                          setDraggingTicketId(null);
+                        style={{ marginLeft: depth * 16 }}
+                        onClick={() => {
+                          if (draggingRef.current) return;
+                          setEditingTicket(ticket);
                         }}
                         onDragOver={(event) => {
                           if (archived) return;
@@ -319,6 +383,21 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                           const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
                           const isAbove = event.clientY < rect.top + rect.height / 2;
                           setDragOverPosition(isAbove ? "above" : "below");
+                          const draggingId =
+                            draggingTicketId ||
+                            (event.dataTransfer.getData("text/plain") as Id<"tickets">);
+                          if (!draggingId || draggingId === ticket._id) return;
+                          const previewOrder = calculateDropOrder(
+                            status,
+                            ticket._id,
+                            isAbove ? "above" : "below",
+                            draggingId
+                          );
+                          if (previewOrder === null) return;
+                          const nextKey = `${draggingId}:${status}:${previewOrder}`;
+                          if (dragPreviewRef.current === nextKey) return;
+                          dragPreviewRef.current = nextKey;
+                          applyOptimisticMove(draggingId, status, previewOrder);
                         }}
                         onDrop={(event) => {
                           if (archived) return;
@@ -327,9 +406,42 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                       >
                       <CardHeader className="p-4 pb-2">
                         <div className="flex items-start justify-between">
-                          <CardTitle className="text-sm font-medium leading-tight">
+                          <div className="flex items-start gap-2 flex-1">
+                            <button
+                              type="button"
+                              draggable={!archived}
+                              className="mt-0.5 text-muted-foreground hover:text-primary"
+                              onClick={(event) => event.stopPropagation()}
+                              onDragStart={(event) => {
+                                if (archived) return;
+                                event.stopPropagation();
+                                event.dataTransfer.setData("text/plain", ticket._id);
+                                event.dataTransfer.effectAllowed = "move";
+                                dragPreviewRef.current = null;
+                                draggingRef.current = ticket._id;
+                                setDraggingTicketId(ticket._id);
+                              }}
+                              onDragEnd={() => {
+                                setDragOverStatus(null);
+                                setDragOverTicketId(null);
+                                setDragOverPosition(null);
+                                setDraggingTicketId(null);
+                                dragPreviewRef.current = null;
+                                draggingRef.current = null;
+                              }}
+                              title="Drag to reorder"
+                            >
+                              <GripVertical className="w-4 h-4" />
+                            </button>
+                            <CardTitle className="text-sm font-medium leading-tight">
+                            {ticket.number && (
+                              <span className="text-xs text-muted-foreground mr-2">
+                                {formatTicketNumber(workspacePrefix, ticket.number)}
+                              </span>
+                            )}
                             {ticket.title}
-                          </CardTitle>
+                            </CardTitle>
+                          </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                               <Button
@@ -374,6 +486,34 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                                   Move to Done
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger>Move to Feature Doc</DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent>
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      updateTicket({ id: ticket._id, docId: null });
+                                    }}
+                                  >
+                                    Ungrouped
+                                  </DropdownMenuItem>
+                                  {featureDocs.map((doc) => (
+                                    <DropdownMenuItem
+                                      key={doc._id}
+                                      disabled={doc.archived && doc._id !== ticket.docId}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateTicket({ id: ticket._id, docId: doc._id });
+                                      }}
+                                    >
+                                      {formatDocNumber(workspacePrefix, doc.number) ?? "DOC"} ·{" "}
+                                      {doc.title}
+                                      {doc.archived ? " (archived)" : ""}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuSubContent>
+                              </DropdownMenuSub>
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -414,7 +554,16 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
                             }}
                           >
                             <Badge variant="secondary" className="mt-1 text-xs max-w-[200px] truncate">
-                              Doc: {docsById.get(ticket.docId)!.title}
+                              Doc:{" "}
+                              {formatDocNumber(
+                                workspacePrefix,
+                                docsById.get(ticket.docId)!.number
+                              )
+                                ? `${formatDocNumber(
+                                    workspacePrefix,
+                                    docsById.get(ticket.docId)!.number
+                                  )} · ${docsById.get(ticket.docId)!.title}`
+                                : docsById.get(ticket.docId)!.title}
                             </Badge>
                           </button>
                         )}
@@ -447,6 +596,8 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
       <TicketModal
         workspaceId={workspaceId}
         featureDocs={featureDocs}
+        tickets={tickets}
+        workspacePrefix={workspacePrefix}
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
       />
@@ -455,6 +606,8 @@ export function KanbanBoard({ workspaceId, tickets, featureDocs }: KanbanBoardPr
         <TicketModal
           workspaceId={workspaceId}
           featureDocs={featureDocs}
+          tickets={tickets}
+          workspacePrefix={workspacePrefix}
           ticket={editingTicket}
           open={true}
           onOpenChange={(open) => !open && setEditingTicket(null)}

@@ -29,6 +29,9 @@ export async function GET(
     id: doc._id,
     title: doc.title,
     content: doc.content,
+    number: doc.number ?? null,
+    status: doc.status ?? "unclaimed",
+    order: doc.order ?? doc.createdAt,
     parentDocId: doc.parentDocId ?? null,
     archived: doc.archived ?? false,
     createdAt: doc.createdAt,
@@ -62,14 +65,22 @@ export async function PATCH(
     typeof body?.parentDocId === "string"
       ? body.parentDocId
       : body?.parentDocId === null
-        ? null
-        : undefined;
+      ? null
+      : undefined;
+  const status =
+    typeof body?.status === "string" &&
+    ["unclaimed", "in_progress", "done"].includes(body.status)
+      ? (body.status as "unclaimed" | "in_progress" | "done")
+      : undefined;
+  const order = typeof body?.order === "number" ? body.order : undefined;
   const archived = typeof body?.archived === "boolean" ? body.archived : undefined;
 
   if (
     title === undefined &&
     content === undefined &&
     parentDocId === undefined &&
+    status === undefined &&
+    order === undefined &&
     archived === undefined
   ) {
     return Response.json(
@@ -85,12 +96,20 @@ export async function PATCH(
     });
   }
 
-  if (title !== undefined || content !== undefined || parentDocId !== undefined) {
+  if (
+    title !== undefined ||
+    content !== undefined ||
+    parentDocId !== undefined ||
+    status !== undefined ||
+    order !== undefined
+  ) {
     await convex.mutation(api.featureDocs.update, {
       id: doc._id,
       title,
       content,
       parentDocId,
+      status,
+      order,
     });
   }
 

@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { generateWorkspacePrefix } from "./prefix";
 
 export const list = query({
   args: { workspaceId: v.id("workspaces") },
@@ -27,6 +28,10 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const workspace = await ctx.db.get(args.workspaceId);
+    if (!workspace) {
+      throw new Error("Workspace not found");
+    }
     let parentDocId: typeof args.parentDocId | undefined = args.parentDocId;
     if (parentDocId === null) {
       parentDocId = undefined;
@@ -37,10 +42,19 @@ export const create = mutation({
         throw new Error("Invalid parent doc");
       }
     }
+    const nextNumber = (workspace.docCounter ?? 0) + 1;
+    const prefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
+    await ctx.db.patch(args.workspaceId, {
+      prefix,
+      docCounter: nextNumber,
+    });
     return await ctx.db.insert("featureDocs", {
       workspaceId: args.workspaceId,
       title: args.title,
       content: args.content,
+      number: nextNumber,
+      status: "unclaimed",
+      order: now,
       parentDocId,
       archived: false,
       createdAt: now,
@@ -55,6 +69,14 @@ export const update = mutation({
     title: v.optional(v.string()),
     content: v.optional(v.string()),
     parentDocId: v.optional(v.union(v.id("featureDocs"), v.null())),
+    status: v.optional(
+      v.union(
+        v.literal("unclaimed"),
+        v.literal("in_progress"),
+        v.literal("done")
+      )
+    ),
+    order: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { id, parentDocId, ...updates } = args;
@@ -78,6 +100,44 @@ export const update = mutation({
       }
     }
     await ctx.db.patch(id, { ...patch, updatedAt: Date.now() });
+  },
+});
+
+export const setStatus = mutation({
+  args: {
+    id: v.id("featureDocs"),
+    status: v.union(
+      v.literal("unclaimed"),
+      v.literal("in_progress"),
+      v.literal("done")
+    ),
+  },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db.get(args.id);
+    if (!doc) {
+      throw new Error("Feature doc not found");
+    }
+    await ctx.db.patch(args.id, {
+      status: args.status,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const move = mutation({
+  args: {
+    id: v.id("featureDocs"),
+    order: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db.get(args.id);
+    if (!doc) {
+      throw new Error("Feature doc not found");
+    }
+    await ctx.db.patch(args.id, {
+      order: args.order,
+      updatedAt: Date.now(),
+    });
   },
 });
 

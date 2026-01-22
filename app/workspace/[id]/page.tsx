@@ -12,6 +12,7 @@ import { ArrowLeft, Settings, LayoutGrid, Table, FileText } from "lucide-react";
 import { KanbanBoard } from "@/components/kanban-board";
 import { TicketTable } from "@/components/ticket-table";
 import { FeatureDocs } from "@/components/feature-docs";
+import { generateWorkspacePrefix } from "@/lib/utils";
 
 export default function WorkspacePage() {
   const params = useParams();
@@ -54,6 +55,7 @@ export default function WorkspacePage() {
       </div>
     );
   }
+  const workspacePrefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20">
@@ -104,6 +106,7 @@ export default function WorkspacePage() {
               workspaceId={workspaceId}
               tickets={tickets}
               featureDocs={featureDocs}
+              workspacePrefix={workspacePrefix}
             />
           </TabsContent>
           <TabsContent value="table">
@@ -111,6 +114,7 @@ export default function WorkspacePage() {
               workspaceId={workspaceId}
               tickets={tickets}
               featureDocs={featureDocs}
+              workspacePrefix={workspacePrefix}
             />
           </TabsContent>
           <TabsContent value="feature-docs">
@@ -118,6 +122,7 @@ export default function WorkspacePage() {
               workspaceId={workspaceId}
               docs={featureDocs}
               tickets={tickets}
+              workspacePrefix={workspacePrefix}
               selectedDocId={searchParams.get("doc") as Id<"featureDocs"> | null}
             />
           </TabsContent>

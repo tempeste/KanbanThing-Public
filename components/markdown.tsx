@@ -12,7 +12,12 @@ interface MarkdownProps {
 export function Markdown({ content, className }: MarkdownProps) {
   if (!content.trim()) return null;
   return (
-    <div className={cn("prose prose-sm max-w-none text-foreground", className)}>
+    <div
+      className={cn(
+        "prose prose-sm max-w-none text-foreground dark:prose-invert",
+        className
+      )}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   );
