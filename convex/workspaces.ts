@@ -28,7 +28,6 @@ export const create = mutation({
       docs: args.docs,
       prefix,
       ticketCounter: 0,
-      docCounter: 0,
       createdAt: Date.now(),
     });
   },
@@ -61,15 +60,6 @@ export const remove = mutation({
       .collect();
     for (const ticket of tickets) {
       await ctx.db.delete(ticket._id);
-    }
-
-    // Delete all feature docs in workspace
-    const docs = await ctx.db
-      .query("featureDocs")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-      .collect();
-    for (const doc of docs) {
-      await ctx.db.delete(doc._id);
     }
 
     // Delete all API keys in workspace
@@ -106,6 +96,15 @@ export const backfillIdentifiers = mutation({
       .query("tickets")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
       .collect();
+    const childCounts = new Map<string, { count: number; done: number }>();
+    for (const ticket of tickets) {
+      if (!ticket.parentId) continue;
+      if (ticket.archived) continue;
+      const entry = childCounts.get(ticket.parentId) ?? { count: 0, done: 0 };
+      entry.count += 1;
+      if (ticket.status === "done") entry.done += 1;
+      childCounts.set(ticket.parentId, entry);
+    }
     const sortedTickets = tickets.slice().sort((a, b) => a.createdAt - b.createdAt);
     for (const ticket of sortedTickets) {
       const patch: Record<string, unknown> = {};
@@ -116,8 +115,18 @@ export const backfillIdentifiers = mutation({
       if (ticket.order === undefined) {
         patch.order = ticket.createdAt;
       }
+      if (ticket.parentId === undefined) {
+        patch.parentId = null;
+      }
       if (ticket.archived === undefined) {
         patch.archived = false;
+      }
+      const counts = childCounts.get(ticket._id) ?? { count: 0, done: 0 };
+      if (ticket.childCount === undefined || ticket.childCount !== counts.count) {
+        patch.childCount = counts.count;
+      }
+      if (ticket.childDoneCount === undefined || ticket.childDoneCount !== counts.done) {
+        patch.childDoneCount = counts.done;
       }
       if (Object.keys(patch).length > 0) {
         patch.updatedAt = Date.now();
@@ -128,38 +137,52 @@ export const backfillIdentifiers = mutation({
       updates.ticketCounter = ticketCounter;
     }
 
-    let docCounter = workspace.docCounter ?? 0;
-    const docs = await ctx.db
-      .query("featureDocs")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-      .collect();
-    const sortedDocs = docs.slice().sort((a, b) => a.createdAt - b.createdAt);
-    for (const doc of sortedDocs) {
-      const patch: Record<string, unknown> = {};
-      if (!doc.number) {
-        docCounter += 1;
-        patch.number = docCounter;
-      }
-      if (!doc.status) {
-        patch.status = "unclaimed";
-      }
-      if (doc.order === undefined) {
-        patch.order = doc.createdAt;
-      }
-      if (doc.archived === undefined) {
-        patch.archived = false;
-      }
-      if (Object.keys(patch).length > 0) {
-        patch.updatedAt = Date.now();
-        await ctx.db.patch(doc._id, patch);
-      }
-    }
-    if (docCounter !== (workspace.docCounter ?? 0)) {
-      updates.docCounter = docCounter;
-    }
-
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(args.id, updates);
+    }
+  },
+});
+
+export const resetWorkspaceTickets = mutation({
+  args: { id: v.id("workspaces") },
+  handler: async (ctx, args) => {
+    const workspace = await ctx.db.get(args.id);
+    if (!workspace) {
+      throw new Error("Workspace not found");
+    }
+
+    const tickets = await ctx.db
+      .query("tickets")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .collect();
+
+    for (const ticket of tickets) {
+      await ctx.db.delete(ticket._id);
+    }
+
+    await ctx.db.patch(args.id, {
+      ticketCounter: 0,
+    });
+  },
+});
+
+export const resetAllTickets = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const workspaces = await ctx.db.query("workspaces").collect();
+    for (const workspace of workspaces) {
+      const tickets = await ctx.db
+        .query("tickets")
+        .withIndex("by_workspace", (q) => q.eq("workspaceId", workspace._id))
+        .collect();
+
+      for (const ticket of tickets) {
+        await ctx.db.delete(ticket._id);
+      }
+
+      await ctx.db.patch(workspace._id, {
+        ticketCounter: 0,
+      });
     }
   },
 });

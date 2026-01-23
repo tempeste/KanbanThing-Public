@@ -10,18 +10,22 @@ export async function GET(request: NextRequest) {
   const convex = getConvexClient();
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
-  const docId = searchParams.get("docId");
+  const parentParamRaw = searchParams.get("parentId");
+  const parentParam = parentParamRaw?.trim() ?? null;
+  const parentId =
+    parentParam === null || parentParam === "" || parentParam === "root" || parentParam === "null"
+      ? null
+      : parentParam;
 
   let tickets;
-  if (docId) {
-    tickets = await convex.query(api.tickets.listByDoc, {
+  if (parentParam !== null) {
+    tickets = await convex.query(api.tickets.listByParent, {
       workspaceId: auth.workspaceId,
-      docId: docId as Id<"featureDocs">,
-      status:
-        status && ["unclaimed", "in_progress", "done"].includes(status)
-          ? (status as "unclaimed" | "in_progress" | "done")
-          : undefined,
+      parentId: parentId as Id<"tickets"> | null,
     });
+    if (status && ["unclaimed", "in_progress", "done"].includes(status)) {
+      tickets = tickets.filter((ticket) => ticket.status === status);
+    }
   } else if (status && ["unclaimed", "in_progress", "done"].includes(status)) {
     tickets = await convex.query(api.tickets.listByStatus, {
       workspaceId: auth.workspaceId,
@@ -42,10 +46,12 @@ export async function GET(request: NextRequest) {
       status: t.status,
       ownerId: t.ownerId,
       ownerType: t.ownerType,
-      docId: t.docId,
-      parentTicketId: t.parentTicketId ?? null,
+      parentId: t.parentId ?? null,
       order: t.order,
       archived: t.archived ?? false,
+      childCount: t.childCount ?? 0,
+      childDoneCount: t.childDoneCount ?? 0,
+      hasChildren: (t.childCount ?? 0) > 0,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     })),

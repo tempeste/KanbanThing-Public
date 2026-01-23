@@ -14,7 +14,7 @@ export function Markdown({ content, className }: MarkdownProps) {
   return (
     <div
       className={cn(
-        "prose prose-sm max-w-none text-foreground dark:prose-invert",
+        "prose max-w-none text-foreground dark:prose-invert",
         className
       )}
     >

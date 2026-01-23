@@ -18,16 +18,16 @@ export async function POST(
   });
 
   if (!ticket) {
-    return Response.json({ error: "Ticket not found" }, { status: 404 });
+    return Response.json({ error: "Issue not found" }, { status: 404 });
   }
 
   if (ticket.workspaceId !== auth.workspaceId) {
-    return Response.json({ error: "Ticket not found" }, { status: 404 });
+    return Response.json({ error: "Issue not found" }, { status: 404 });
   }
 
   if (ticket.status !== "unclaimed") {
     return Response.json(
-      { error: "Ticket is not available to claim", currentStatus: ticket.status },
+      { error: "Issue is not available to claim", currentStatus: ticket.status },
       { status: 409 }
     );
   }
@@ -50,18 +50,20 @@ export async function POST(
         title: updatedTicket!.title,
         description: updatedTicket!.description,
         number: updatedTicket!.number ?? null,
-        docId: updatedTicket!.docId,
-        parentTicketId: updatedTicket!.parentTicketId ?? null,
+        parentId: updatedTicket!.parentId ?? null,
         order: updatedTicket!.order,
         archived: updatedTicket!.archived ?? false,
         status: updatedTicket!.status,
         ownerId: updatedTicket!.ownerId,
         ownerType: updatedTicket!.ownerType,
+        childCount: updatedTicket!.childCount ?? 0,
+        childDoneCount: updatedTicket!.childDoneCount ?? 0,
+        hasChildren: (updatedTicket!.childCount ?? 0) > 0,
       },
     });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to claim ticket" },
+      { error: error instanceof Error ? error.message : "Failed to claim issue" },
       { status: 500 }
     );
   }
