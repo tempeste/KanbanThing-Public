@@ -1,55 +1,38 @@
 "use client";
 
+import Link from "next/link";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import {
+  Archive,
+  ArchiveRestore,
+  Bot,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  Clock,
+  GripVertical,
+  MoreVertical,
+  Plus,
+  Trash2,
+  User,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  useReactTable,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  flexRender,
-  createColumnHelper,
-  SortingState,
-  ColumnFiltersState,
-} from "@tanstack/react-table";
-import { useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import {
-  Plus,
-  MoreVertical,
-  Trash2,
-  Archive,
-  ArchiveRestore,
-  Circle,
-  Clock,
-  CheckCircle2,
-  ArrowUpDown,
-  Search,
-  Bot,
-  User,
-} from "lucide-react";
-import { TicketModal } from "@/components/ticket-modal";
-import { formatDocNumber, formatTicketNumber } from "@/lib/utils";
+import { formatTicketNumber } from "@/lib/utils";
 
-type Ticket = Doc<"tickets">;
-type FeatureDoc = Doc<"featureDocs">;
-type Status = "unclaimed" | "in_progress" | "done";
-
-const STATUS_CONFIG: Record<Status, { label: string; icon: React.ReactNode; colorClass: string }> = {
+const STATUS_CONFIG = {
   unclaimed: {
     label: "Unclaimed",
     icon: <Circle className="w-3 h-3" />,
@@ -65,394 +48,468 @@ const STATUS_CONFIG: Record<Status, { label: string; icon: React.ReactNode; colo
     icon: <CheckCircle2 className="w-3 h-3" />,
     colorClass: "bg-done/20 text-done",
   },
-};
+} as const;
 
-const columnHelper = createColumnHelper<Ticket>();
+type Ticket = Doc<"tickets">;
+
+type Status = "unclaimed" | "in_progress" | "done";
 
 interface TicketTableProps {
   workspaceId: Id<"workspaces">;
   tickets: Ticket[];
-  featureDocs: FeatureDoc[];
   workspacePrefix: string;
 }
 
-export function TicketTable({
-  workspaceId,
-  tickets,
-  featureDocs,
-  workspacePrefix,
-}: TicketTableProps) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [globalFilter, setGlobalFilter] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
-  const [showArchived, setShowArchived] = useState(false);
+const getOrderValue = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
+
+export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTableProps) {
   const router = useRouter();
-  const pathname = usePathname();
+  const [showArchived, setShowArchived] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [dragOverId, setDragOverId] = useState<Id<"tickets"> | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<
+    "above" | "below" | "inside" | null
+  >(null);
+  const [optimisticMoves, setOptimisticMoves] = useState<
+    Map<string, { parentId: Id<"tickets"> | null; order: number }>
+  >(new Map());
 
   const updateStatus = useMutation(api.tickets.updateStatus);
-  const deleteTicket = useMutation(api.tickets.remove);
   const updateTicket = useMutation(api.tickets.update);
-  const docsById = useMemo(
-    () => new Map(featureDocs.map((doc) => [doc._id, doc])),
-    [featureDocs]
-  );
+  const deleteTicket = useMutation(api.tickets.remove);
+
+  const mergedTickets = useMemo(() => {
+    if (!optimisticMoves.size) return tickets;
+    return tickets.map((ticket) => {
+      const override = optimisticMoves.get(ticket._id);
+      if (!override) return ticket;
+      return {
+        ...ticket,
+        parentId: override.parentId,
+        order: override.order,
+      };
+    });
+  }, [tickets, optimisticMoves]);
+
+  const visibleTickets = useMemo(() => {
+    if (showArchived) return mergedTickets;
+    return mergedTickets.filter((ticket) => !(ticket.archived ?? false));
+  }, [mergedTickets, showArchived]);
+
   const ticketsById = useMemo(
-    () => new Map(tickets.map((ticket) => [ticket._id, ticket])),
-    [tickets]
+    () => new Map(visibleTickets.map((ticket) => [ticket._id, ticket])),
+    [visibleTickets]
   );
-  const isArchived = (ticket: Ticket) => ticket.archived ?? false;
 
-  const filteredTickets = useMemo(() => {
-    if (showArchived) return tickets;
-    return tickets.filter((ticket) => !isArchived(ticket));
-  }, [tickets, showArchived]);
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, Ticket[]>();
+    for (const ticket of visibleTickets) {
+      const hasVisibleParent = ticket.parentId ? ticketsById.has(ticket.parentId) : false;
+      const key = hasVisibleParent ? ticket.parentId! : "root";
+      const list = map.get(key) ?? [];
+      list.push(ticket);
+      map.set(key, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => getOrderValue(a) - getOrderValue(b));
+    }
+    return map;
+  }, [visibleTickets, ticketsById]);
 
-  const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
-    await updateStatus({ id: ticketId, status: newStatus });
+  const buildTree = () => {
+    const result: Array<{ ticket: Ticket; depth: number }> = [];
+    const visit = (ticket: Ticket, depth: number) => {
+      result.push({ ticket, depth });
+      if (collapsed.has(ticket._id)) return;
+      const children = childrenByParent.get(ticket._id) ?? [];
+      for (const child of children) {
+        visit(child, depth + 1);
+      }
+    };
+    const roots = childrenByParent.get("root") ?? [];
+    for (const root of roots) {
+      visit(root, 0);
+    }
+    return result;
+  };
+
+  const treeRows = useMemo(() => buildTree(), [childrenByParent, collapsed]);
+
+  useEffect(() => {
+    if (!optimisticMoves.size) return;
+    setOptimisticMoves((prev) => {
+      const next = new Map(prev);
+      for (const ticket of tickets) {
+        const override = next.get(ticket._id);
+        if (!override) continue;
+        const currentOrder = ticket.order ?? ticket.createdAt;
+        if (
+          ticket.parentId === override.parentId &&
+          currentOrder === override.order
+        ) {
+          next.delete(ticket._id);
+        }
+      }
+      return next;
+    });
+  }, [tickets, optimisticMoves.size]);
+
+  const toggleCollapsed = (ticketId: Id<"tickets">) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) {
+        next.delete(ticketId);
+      } else {
+        next.add(ticketId);
+      }
+      return next;
+    });
+  };
+
+  const isDescendant = (ancestorId: Id<"tickets">, candidateId: Id<"tickets">) => {
+    let current = ticketsById.get(candidateId);
+    while (current?.parentId) {
+      if (current.parentId === ancestorId) return true;
+      current = ticketsById.get(current.parentId);
+    }
+    return false;
+  };
+
+  const calculateOrder = (
+    siblings: Ticket[],
+    targetId: Id<"tickets">,
+    position: "above" | "below",
+    draggingId: Id<"tickets">
+  ) => {
+    const list = siblings.filter((ticket) => ticket._id !== draggingId);
+    const targetIndex = list.findIndex((ticket) => ticket._id === targetId);
+    if (targetIndex === -1) return null;
+    const prevTicket = position === "above" ? list[targetIndex - 1] : list[targetIndex];
+    const nextTicket = position === "above" ? list[targetIndex] : list[targetIndex + 1];
+
+    if (prevTicket && nextTicket) {
+      return (getOrderValue(prevTicket) + getOrderValue(nextTicket)) / 2;
+    }
+    if (!prevTicket && nextTicket) {
+      return getOrderValue(nextTicket) - 1000;
+    }
+    if (prevTicket && !nextTicket) {
+      return getOrderValue(prevTicket) + 1000;
+    }
+    return list.length ? getOrderValue(list[list.length - 1]) + 1000 : 0;
+  };
+
+  const applyOptimisticMove = (
+    ticketId: Id<"tickets">,
+    parentId: Id<"tickets"> | null,
+    order: number
+  ) => {
+    setOptimisticMoves((prev) => {
+      const next = new Map(prev);
+      next.set(ticketId, { parentId, order });
+      return next;
+    });
+  };
+
+  const handleDrop = async (
+    event: React.DragEvent<HTMLDivElement>,
+    targetTicket: Ticket
+  ) => {
+    event.preventDefault();
+    const draggedId = event.dataTransfer.getData("application/x-ticket-id") as Id<"tickets">;
+    if (!draggedId || draggedId === targetTicket._id) return;
+
+    if (isDescendant(draggedId, targetTicket._id)) return;
+
+    if (dragOverPosition === "inside") {
+      const siblings = childrenByParent.get(targetTicket._id) ?? [];
+      const lastTicket = siblings[siblings.length - 1];
+      const draggedTicket = ticketsById.get(draggedId);
+      const order = lastTicket
+        ? getOrderValue(lastTicket) + 1000
+        : draggedTicket
+        ? getOrderValue(draggedTicket)
+        : 0;
+      applyOptimisticMove(draggedId, targetTicket._id, order);
+      await updateTicket({ id: draggedId, parentId: targetTicket._id, order });
+    } else if (dragOverPosition === "above" || dragOverPosition === "below") {
+      const nextParentId = targetTicket.parentId ?? null;
+      const siblings = childrenByParent.get(nextParentId ?? "root") ?? [];
+      const order = calculateOrder(siblings, targetTicket._id, dragOverPosition, draggedId);
+      if (!order) return;
+      applyOptimisticMove(draggedId, nextParentId, order);
+      await updateTicket({ id: draggedId, parentId: nextParentId, order });
+    }
+
+    setDragOverId(null);
+    setDragOverPosition(null);
   };
 
   const handleDelete = async (ticketId: Id<"tickets">) => {
-    if (confirm("Delete this ticket?")) {
+    if (confirm("Delete this issue and its sub-issues?")) {
       await deleteTicket({ id: ticketId });
     }
   };
 
-  const columns = [
-    columnHelper.accessor("number", {
-      header: "ID",
-      cell: (info) => {
-        const formatted = formatTicketNumber(workspacePrefix, info.getValue());
-        return (
-          <span className="text-xs font-mono text-muted-foreground">
-            {formatted ?? "-"}
-          </span>
-        );
-      },
-    }),
-    columnHelper.accessor("title", {
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-4"
-        >
-          Title
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
-      cell: (info) => (
-        <div className="space-y-1">
-          <button
-            onClick={() => setEditingTicket(info.row.original)}
-            className="font-medium hover:text-primary transition-colors text-left"
-          >
-            {info.getValue()}
-          </button>
-          {info.row.original.parentTicketId && ticketsById.get(info.row.original.parentTicketId) && (
-            <div className="text-xs text-muted-foreground">
-              Sub-ticket of{" "}
-              {formatTicketNumber(
-                workspacePrefix,
-                ticketsById.get(info.row.original.parentTicketId)?.number
-              ) ?? "ticket"}{" "}
-              · {ticketsById.get(info.row.original.parentTicketId)?.title}
-            </div>
-          )}
-          {isArchived(info.row.original) && (
-            <Badge variant="outline" className="text-[10px]">
-              Archived
-            </Badge>
-          )}
-        </div>
-      ),
-    }),
-    columnHelper.accessor("description", {
-      header: "Description",
-      cell: (info) => (
-        <span className="text-muted-foreground text-sm line-clamp-1 max-w-[300px]">
-          {info.getValue()}
-        </span>
-      ),
-    }),
-    columnHelper.accessor("docId", {
-      header: "Doc",
-      cell: (info) => {
-        const docId = info.getValue();
-        const doc = docId ? docsById.get(docId) : null;
-        if (!doc) {
-          return <span className="text-muted-foreground text-sm">-</span>;
-        }
-        const docNumber = formatDocNumber(workspacePrefix, doc.number);
-        return (
-          <button
-            type="button"
-            onClick={() => router.push(`${pathname}?tab=feature-docs&doc=${doc._id}`)}
-            className="text-left text-sm max-w-[220px] truncate inline-block hover:text-primary"
-          >
-            {docNumber ? `${docNumber} · ${doc.title}` : doc.title}
-          </button>
-        );
-      },
-    }),
-    columnHelper.accessor("status", {
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-4"
-        >
-          Status
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
-      cell: (info) => {
-        const status = info.getValue() as Status;
-        const config = STATUS_CONFIG[status];
-        return (
-          <Badge variant="outline" className={`gap-1 ${config.colorClass}`}>
-            {config.icon}
-            {config.label}
-          </Badge>
-        );
-      },
-      filterFn: "equals",
-    }),
-    columnHelper.accessor("ownerId", {
-      header: "Owner",
-      cell: (info) => {
-        const ownerId = info.getValue();
-        const ownerType = info.row.original.ownerType;
-        if (!ownerId) return <span className="text-muted-foreground">-</span>;
-        return (
-          <div className="flex items-center gap-1 text-sm">
-            {ownerType === "agent" ? (
-              <Bot className="w-3 h-3 text-muted-foreground" />
-            ) : (
-              <User className="w-3 h-3 text-muted-foreground" />
-            )}
-            <span>{ownerId}</span>
-          </div>
-        );
-      },
-    }),
-    columnHelper.accessor("updatedAt", {
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-4"
-        >
-          Updated
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
-      cell: (info) => (
-        <span className="text-sm text-muted-foreground">
-          {new Date(info.getValue()).toLocaleDateString()}
-        </span>
-      ),
-    }),
-    columnHelper.display({
-      id: "actions",
-      cell: (info) => {
-        const ticket = info.row.original;
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreVertical className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {ticket.status !== "unclaimed" && (
-                <DropdownMenuItem onClick={() => handleStatusChange(ticket._id, "unclaimed")}>
-                  <Circle className="w-4 h-4 mr-2" />
-                  Move to Unclaimed
-                </DropdownMenuItem>
-              )}
-              {ticket.status !== "in_progress" && (
-                <DropdownMenuItem onClick={() => handleStatusChange(ticket._id, "in_progress")}>
-                  <Clock className="w-4 h-4 mr-2" />
-                  Move to In Progress
-                </DropdownMenuItem>
-              )}
-              {ticket.status !== "done" && (
-                <DropdownMenuItem onClick={() => handleStatusChange(ticket._id, "done")}>
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Move to Done
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>Move to Feature Doc</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem
-                    onClick={() => updateTicket({ id: ticket._id, docId: null })}
-                  >
-                    Ungrouped
-                  </DropdownMenuItem>
-                  {featureDocs.map((doc) => (
-                    <DropdownMenuItem
-                      key={doc._id}
-                      disabled={doc.archived && doc._id !== ticket.docId}
-                      onClick={() => updateTicket({ id: ticket._id, docId: doc._id })}
-                    >
-                      {formatDocNumber(workspacePrefix, doc.number) ?? "DOC"} · {doc.title}
-                      {doc.archived ? " (archived)" : ""}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuItem
-                onClick={() => updateTicket({ id: ticket._id, archived: !isArchived(ticket) })}
-              >
-                {isArchived(ticket) ? (
-                  <ArchiveRestore className="w-4 h-4 mr-2" />
-                ) : (
-                  <Archive className="w-4 h-4 mr-2" />
-                )}
-                {isArchived(ticket) ? "Unarchive" : "Archive"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleDelete(ticket._id)}
-                className="text-destructive"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
-    }),
-  ];
+  const handleDragStart = (
+    event: React.DragEvent<HTMLElement>,
+    ticketId: Id<"tickets">
+  ) => {
+    event.dataTransfer.setData("application/x-ticket-id", ticketId);
+    event.dataTransfer.setData("text/plain", ticketId);
+    event.dataTransfer.effectAllowed = "move";
+  };
 
-  const table = useReactTable({
-    data: filteredTickets,
-    columns,
-    state: { sorting, columnFilters, globalFilter },
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-  });
+  const handleRowClick = useCallback(
+    (event: React.MouseEvent<HTMLElement>, ticketId: Id<"tickets">) => {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement;
+      if (target.closest("a,button,select,textarea,input,[role='menuitem']")) return;
+      router.push(`/workspace/${workspaceId}/tickets/${ticketId}`);
+    },
+    [router, workspaceId]
+  );
+
+  const handleRowKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>, ticketId: Id<"tickets">) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      router.push(`/workspace/${workspaceId}/tickets/${ticketId}`);
+    },
+    [router, workspaceId]
+  );
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-6 gap-4">
-        <div className="flex items-center gap-4 flex-1">
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search tickets..."
-              value={globalFilter}
-              onChange={(e) => setGlobalFilter(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <div className="flex gap-2">
-            {(["all", "unclaimed", "in_progress", "done"] as const).map((status) => (
-              <Button
-                key={status}
-                variant={
-                  (status === "all" && !columnFilters.find((f) => f.id === "status")) ||
-                  columnFilters.find((f) => f.id === "status" && f.value === status)
-                    ? "default"
-                    : "outline"
-                }
-                size="sm"
-                onClick={() => {
-                  if (status === "all") {
-                    setColumnFilters((prev) => prev.filter((f) => f.id !== "status"));
-                  } else {
-                    setColumnFilters((prev) => [
-                      ...prev.filter((f) => f.id !== "status"),
-                      { id: "status", value: status },
-                    ]);
-                  }
-                }}
-              >
-                {status === "all" ? "All" : STATUS_CONFIG[status].label}
-              </Button>
-            ))}
-          </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Issue List</h2>
+          <p className="text-sm text-muted-foreground">
+            Drag to reorder, or drop onto an issue to nest it.
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant={showArchived ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowArchived((prev) => !prev)}
-          >
-            {showArchived ? "Hide Archived" : "Show Archived"}
+          <Button asChild>
+            <Link href={`/workspace/${workspaceId}/tickets/new`}>
+              <Plus className="w-4 h-4 mr-2" />
+              New Issue
+            </Link>
           </Button>
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Ticket
+          <Button variant="outline" onClick={() => setShowArchived((prev) => !prev)}>
+            {showArchived ? "Hide Archived" : "Show Archived"}
           </Button>
         </div>
       </div>
 
-      <div className="border rounded-lg">
-        <table className="w-full">
-          <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b bg-muted/50">
-                {headerGroup.headers.map((header) => (
-                  <th key={header.id} className="px-4 py-3 text-left text-sm font-medium">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} className="px-4 py-12 text-center text-muted-foreground">
-                  No tickets found
-                </td>
-              </tr>
-            ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b hover:bg-muted/30 transition-colors">
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <div className="rounded-xl border bg-card/50">
+        <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_140px_160px_120px] gap-4 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b">
+          <div>Issue</div>
+          <div>Status</div>
+          <div>Owner</div>
+          <div className="text-right">Actions</div>
+        </div>
+        <div className="divide-y">
+          {treeRows.length === 0 && (
+            <div className="px-4 py-8 text-sm text-muted-foreground">No issues yet.</div>
+          )}
+          {treeRows.map(({ ticket, depth }) => {
+            const hasChildren = (ticket.childCount ?? 0) > 0;
+            const isCollapsed = collapsed.has(ticket._id);
+            const statusConfig = STATUS_CONFIG[ticket.status];
+            const ticketNumber = formatTicketNumber(workspacePrefix, ticket.number);
+            const parentTicket = ticket.parentId ? ticketsById.get(ticket.parentId) : null;
+            const progressTotal = ticket.childCount ?? 0;
+            const progressDone = ticket.childDoneCount ?? 0;
+            const dragClass =
+              dragOverId === ticket._id
+                ? dragOverPosition === "inside"
+                  ? "bg-accent/30 ring-1 ring-primary/30"
+                  : dragOverPosition === "above"
+                  ? "border-t-2 border-primary/60"
+                  : "border-b-2 border-primary/60"
+                : "";
+
+            return (
+              <div
+                key={ticket._id}
+                className={`flex flex-col gap-3 px-4 py-3 transition-colors hover:bg-accent/20 md:grid md:grid-cols-[minmax(0,1fr)_140px_160px_120px] md:items-center ${dragClass}`}
+                role="button"
+                tabIndex={0}
+                draggable
+                onDragStart={(event) => handleDragStart(event, ticket._id)}
+                onClick={(event) => handleRowClick(event, ticket._id)}
+                onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                  const offset = event.clientY - rect.top;
+                  const threshold = rect.height * 0.25;
+                  let position: "above" | "below" | "inside" = "inside";
+                  if (offset < threshold) position = "above";
+                  else if (offset > rect.height - threshold) position = "below";
+                  setDragOverId(ticket._id);
+                  setDragOverPosition(position);
+                }}
+                onDragLeave={() => {
+                  setDragOverId(null);
+                  setDragOverPosition(null);
+                }}
+                onDrop={(event) => handleDrop(event, ticket)}
+              >
+                <div className="relative flex items-start gap-2" style={{ paddingLeft: `${depth * 16}px` }}>
+                  {depth > 0 && (
+                    <>
+                      <span
+                        className="absolute top-2 bottom-2 w-px bg-border/50"
+                        style={{ left: `${Math.max(depth * 16 - 8, 0)}px` }}
+                      />
+                      <span
+                        className="absolute top-1/2 h-px w-3 bg-border/50"
+                        style={{ left: `${Math.max(depth * 16 - 8, 0)}px` }}
+                      />
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    className="mt-0.5 text-muted-foreground hover:text-foreground"
+                    draggable
+                    onDragStart={(event) => {
+                      handleDragStart(event, ticket._id);
+                    }}
+                  >
+                    <GripVertical className="w-4 h-4" />
+                  </button>
+                  {hasChildren ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleCollapsed(ticket._id)}
+                      className="mt-0.5 text-muted-foreground hover:text-foreground"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </button>
+                  ) : (
+                    <span className="mt-0.5 w-4" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {ticketNumber ?? "—"}
+                      </span>
+                      <Link
+                        href={`/workspace/${workspaceId}/tickets/${ticket._id}`}
+                        className="font-medium hover:text-primary"
+                      >
+                        {ticket.title}
+                      </Link>
+                    </div>
+                    {parentTicket && (
+                      <div className="text-xs text-muted-foreground">
+                        Sub-issue of{" "}
+                        <span className="font-mono">
+                          {formatTicketNumber(workspacePrefix, parentTicket.number) ?? "—"}
+                        </span>{" "}
+                        · {parentTicket.title}
+                      </div>
+                    )}
+                    {progressTotal > 0 && (
+                      <Badge variant="outline" className="mt-1 text-[10px]">
+                        {progressDone}/{progressTotal} sub-issues
+                      </Badge>
+                    )}
+                    {ticket.archived && (
+                      <Badge variant="outline" className="mt-1 text-[10px]">
+                        Archived
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground md:hidden">Status</span>
+                  <Badge variant="outline" className={`gap-1 ${statusConfig.colorClass}`}>
+                    {statusConfig.icon}
+                    {statusConfig.label}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground md:hidden">Owner</span>
+                  {ticket.ownerId ? (
+                    <span className="inline-flex items-center gap-1 text-sm">
+                      {ticket.ownerType === "agent" ? (
+                        <Bot className="w-3 h-3 text-muted-foreground" />
+                      ) : (
+                        <User className="w-3 h-3 text-muted-foreground" />
+                      )}
+                      {ticket.ownerId}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground text-sm">—</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-end gap-2 md:justify-end">
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href={`/workspace/${workspaceId}/tickets/new?parentId=${ticket._id}`}>
+                      <Plus className="w-3 h-3 mr-1" />
+                      Sub-issue
+                    </Link>
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {Object.entries(STATUS_CONFIG).map(([status, config]) => (
+                        <DropdownMenuItem
+                          key={status}
+                          onClick={() => updateStatus({
+                            id: ticket._id,
+                            status: status as Status,
+                          })}
+                        >
+                          Move to {config.label}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() =>
+                          updateTicket({
+                            id: ticket._id,
+                            archived: !(ticket.archived ?? false),
+                          })
+                        }
+                      >
+                        {ticket.archived ? (
+                          <>
+                            <ArchiveRestore className="w-4 h-4 mr-2" />
+                            Unarchive
+                          </>
+                        ) : (
+                          <>
+                            <Archive className="w-4 h-4 mr-2" />
+                            Archive
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => handleDelete(ticket._id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
-
-      <TicketModal
-        workspaceId={workspaceId}
-        featureDocs={featureDocs}
-        tickets={tickets}
-        workspacePrefix={workspacePrefix}
-        open={isCreateOpen}
-        onOpenChange={setIsCreateOpen}
-      />
-
-      {editingTicket && (
-        <TicketModal
-          workspaceId={workspaceId}
-          featureDocs={featureDocs}
-          tickets={tickets}
-          workspacePrefix={workspacePrefix}
-          ticket={editingTicket}
-          open={true}
-          onOpenChange={(open) => !open && setEditingTicket(null)}
-        />
-      )}
-    </>
+    </div>
   );
 }

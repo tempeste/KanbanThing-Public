@@ -18,11 +18,11 @@ export async function GET(
   });
 
   if (!ticket) {
-    return Response.json({ error: "Ticket not found" }, { status: 404 });
+    return Response.json({ error: "Issue not found" }, { status: 404 });
   }
 
   if (ticket.workspaceId !== auth.workspaceId) {
-    return Response.json({ error: "Ticket not found" }, { status: 404 });
+    return Response.json({ error: "Issue not found" }, { status: 404 });
   }
 
   return Response.json({
@@ -30,13 +30,15 @@ export async function GET(
     title: ticket.title,
     description: ticket.description,
     number: ticket.number ?? null,
-    docId: ticket.docId,
-    parentTicketId: ticket.parentTicketId ?? null,
+    parentId: ticket.parentId ?? null,
     order: ticket.order,
     archived: ticket.archived ?? false,
     status: ticket.status,
     ownerId: ticket.ownerId,
     ownerType: ticket.ownerType,
+    childCount: ticket.childCount ?? 0,
+    childDoneCount: ticket.childDoneCount ?? 0,
+    hasChildren: (ticket.childCount ?? 0) > 0,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
   });

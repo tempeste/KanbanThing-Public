@@ -18,16 +18,16 @@ export async function POST(
   });
 
   if (!ticket) {
-    return Response.json({ error: "Ticket not found" }, { status: 404 });
+    return Response.json({ error: "Issue not found" }, { status: 404 });
   }
 
   if (ticket.workspaceId !== auth.workspaceId) {
-    return Response.json({ error: "Ticket not found" }, { status: 404 });
+    return Response.json({ error: "Issue not found" }, { status: 404 });
   }
 
   if (ticket.status !== "in_progress") {
     return Response.json(
-      { error: "Ticket must be in progress to complete", currentStatus: ticket.status },
+      { error: "Issue must be in progress to complete", currentStatus: ticket.status },
       { status: 409 }
     );
   }
@@ -51,7 +51,7 @@ export async function POST(
     });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to complete ticket" },
+      { error: error instanceof Error ? error.message : "Failed to complete issue" },
       { status: 500 }
     );
   }

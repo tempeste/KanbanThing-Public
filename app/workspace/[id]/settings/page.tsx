@@ -43,6 +43,7 @@ export default function WorkspaceSettingsPage() {
   const updateWorkspace = useMutation(api.workspaces.update);
   const createApiKey = useMutation(api.apiKeys.create);
   const deleteApiKey = useMutation(api.apiKeys.remove);
+  const resetWorkspaceTickets = useMutation(api.workspaces.resetWorkspaceTickets);
 
   const [docs, setDocs] = useState<string | null>(null);
   const [isSavingDocs, setIsSavingDocs] = useState(false);
@@ -51,6 +52,7 @@ export default function WorkspaceSettingsPage() {
   const [newKeyName, setNewKeyName] = useState("");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   const currentDocs = docs ?? workspace?.docs ?? "";
   const defaultPrefix = workspace ? generateWorkspacePrefix(workspace.name) : "";
@@ -82,6 +84,18 @@ export default function WorkspaceSettingsPage() {
 
     setGeneratedKey(key);
     setNewKeyName("");
+  };
+
+  const handleResetTickets = async () => {
+    if (!confirm("Delete all issues in this workspace? This cannot be undone.")) {
+      return;
+    }
+    setIsResetting(true);
+    try {
+      await resetWorkspaceTickets({ id: workspaceId });
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   const handleDeleteKey = async (id: Id<"apiKeys">) => {
@@ -129,7 +143,7 @@ export default function WorkspaceSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20">
+    <div className="min-h-screen bg-background">
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center gap-4">
@@ -156,8 +170,7 @@ export default function WorkspaceSettingsPage() {
               Workspace Prefix
             </CardTitle>
             <CardDescription>
-              Used to generate ticket and feature doc identifiers like {normalizedPrefix || "PRJ"}-12
-              and {normalizedPrefix || "PRJ"}-D4.
+              Used to generate issue identifiers like {normalizedPrefix || "PRJ"}-12.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -180,7 +193,7 @@ export default function WorkspaceSettingsPage() {
               )}
             </div>
             <div className="text-xs text-muted-foreground">
-              Example IDs: {normalizedPrefix || "PRJ"}-42 · {normalizedPrefix || "PRJ"}-D7
+              Example IDs: {normalizedPrefix || "PRJ"}-42
             </div>
             <div className="flex justify-end gap-2">
               {prefix !== null && (
@@ -333,29 +346,43 @@ export default function WorkspaceSettingsPage() {
               <Label>API Usage</Label>
               <div className="text-sm text-muted-foreground space-y-1 font-mono bg-muted p-3 rounded-lg">
                 <p># Get workspace docs</p>
-                <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/workspace/docs</p>
-                <p className="mt-2"># List feature docs</p>
-                <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/docs</p>
-                <p className="mt-2"># Get feature doc</p>
-                <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/docs/DOC_ID</p>
-                <p className="mt-2"># Create feature doc</p>
                 <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"title\":\"Subscription feature\",\"content\":\"...\"}' /api/docs"}
+                  {"curl -H \"X-API-Key: sk_...\" /api/workspace/docs"}
                 </p>
-                <p className="mt-2"># Update feature doc</p>
+                <p className="mt-2"># List issues</p>
                 <p className="text-foreground">
-                  {"curl -X PATCH -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"content\":\"...\"}' /api/docs/DOC_ID"}
+                  {"curl -H \"X-API-Key: sk_...\" /api/tickets"}
                 </p>
-                <p className="mt-2"># Delete feature doc</p>
-                <p className="text-foreground">curl -X DELETE -H &quot;X-API-Key: sk_...&quot; /api/docs/DOC_ID</p>
-                <p className="mt-2"># List tickets</p>
-                <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/tickets</p>
-                <p className="mt-2"># List tickets for a doc</p>
-                <p className="text-foreground">curl -H &quot;X-API-Key: sk_...&quot; /api/tickets?docId=DOC_ID</p>
-                <p className="mt-2"># Claim a ticket</p>
-                <p className="text-foreground">curl -X POST -H &quot;X-API-Key: sk_...&quot; /api/tickets/ID/claim</p>
+                <p className="mt-2"># List child issues</p>
+                <p className="text-foreground">
+                  {"curl -H \"X-API-Key: sk_...\" /api/tickets?parentId=ISSUE_ID"}
+                </p>
+                <p className="mt-2"># Claim an issue</p>
+                <p className="text-foreground">
+                  {"curl -X POST -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/claim"}
+                </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-destructive">Danger Zone</CardTitle>
+            <CardDescription>
+              Resetting clears all issues in this workspace. This cannot be undone.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
+            <div>
+              <div className="font-medium">Delete all issues</div>
+              <p className="text-sm text-muted-foreground">
+                Use this to start fresh while keeping the workspace and API keys.
+              </p>
+            </div>
+            <Button variant="destructive" onClick={handleResetTickets} disabled={isResetting}>
+              {isResetting ? "Resetting..." : "Delete issues"}
+            </Button>
           </CardContent>
         </Card>
       </main>

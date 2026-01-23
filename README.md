@@ -1,23 +1,22 @@
 # KanbanThing
 
-LLM-friendly task board for human-agent collaboration. Both humans (via web UI) and LLM agents (via REST API) can view, claim, and complete tickets with real-time sync.
+LLM-friendly task board for human-agent collaboration. Both humans (via web UI) and LLM agents (via REST API) can view, claim, and complete issues with real-time sync.
 
 ## Features
 
-- **Workspaces**: Project-level isolation for tickets and API keys
+- **Workspaces**: Project-level isolation for issues and API keys
 - **Kanban Board**: Visual board with unclaimed → in_progress → done columns
-- **Table View**: Sortable, filterable ticket list using TanStack Table
+- **Issue List**: Hierarchical issue list with drag-to-reparent
 - **Real-time Sync**: Changes via API instantly reflect in the UI (Convex)
-- **Agent REST API**: Simple endpoints for LLM agents to interact with tickets
+- **Agent REST API**: Simple endpoints for LLM agents to interact with issues
 - **Workspace Docs**: Markdown documentation for project context
-- **Ticket Docs**: Per-ticket context for agents
+- **Nested Issues**: Parent/child issues with progress tracking
 
 ## Tech Stack
 
 - **Next.js 14+** (App Router)
 - **Convex** (real-time backend)
 - **shadcn/ui** + **Tailwind CSS**
-- **TanStack Table**
 
 ## Setup
 
@@ -61,35 +60,38 @@ All API requests require an `X-API-Key` header. Generate keys from the workspace
 # Get workspace docs (project context)
 curl -H "X-API-Key: sk_..." http://localhost:3000/api/workspace/docs
 
-# List all tickets
+# List all issues
 curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets
 
-# List unclaimed tickets only
+# List unclaimed issues only
 curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets?status=unclaimed
 
-# Get single ticket with docs
-curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/TICKET_ID
+# Get single issue
+curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID
 
-# Claim a ticket (marks as in_progress)
-curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/TICKET_ID/claim
+# List child issues
+curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets?parentId=PARENT_ISSUE_ID
 
-# Complete a ticket (marks as done)
-curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/TICKET_ID/complete
+# Claim an issue (marks as in_progress)
+curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/claim
+
+# Complete an issue (marks as done)
+curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/complete
 ```
 
 ### Typical Agent Workflow
 
 1. Fetch workspace docs to understand project context
-2. List unclaimed tickets
-3. Pick a ticket and claim it
-4. Fetch ticket docs for specific context
+2. List unclaimed issues
+3. Pick an issue and claim it
+4. Read issue description and child issues for context
 5. Do the work
-6. Mark ticket as complete
+6. Mark issue as complete
 
 ## Data Model
 
-- **Workspaces**: Container for tickets and API keys
-- **Tickets**: Tasks with title, description, status, and optional docs
+- **Workspaces**: Container for issues and API keys
+- **Issues**: Tasks with title, markdown description, nested children, and status
 - **API Keys**: Workspace-scoped keys for agent authentication
 
 ## Status Flow
@@ -98,4 +100,4 @@ curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/TICKET_ID/
 unclaimed → in_progress → done
 ```
 
-Any agent or user can claim any unclaimed ticket. Once claimed, only completion or release moves the ticket forward.
+Any agent or user can claim any unclaimed issue. Once claimed, only completion or release moves the issue forward.

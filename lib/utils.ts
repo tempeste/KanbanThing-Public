@@ -27,8 +27,3 @@ export function formatTicketNumber(prefix: string, number?: number | null) {
   if (!number) return null
   return `${prefix}-${number}`
 }
-
-export function formatDocNumber(prefix: string, number?: number | null) {
-  if (!number) return null
-  return `${prefix}-D${number}`
-}

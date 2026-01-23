@@ -3,39 +3,27 @@
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Settings, LayoutGrid, Table, FileText } from "lucide-react";
+import { ArrowLeft, Settings, LayoutGrid, List } from "lucide-react";
 import { KanbanBoard } from "@/components/kanban-board";
 import { TicketTable } from "@/components/ticket-table";
-import { FeatureDocs } from "@/components/feature-docs";
 import { generateWorkspacePrefix } from "@/lib/utils";
 
 export default function WorkspacePage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const workspaceId = params.id as Id<"workspaces">;
 
   const workspace = useQuery(api.workspaces.get, { id: workspaceId });
   const tickets = useQuery(api.tickets.list, { workspaceId });
-  const featureDocs = useQuery(api.featureDocs.list, { workspaceId });
-  const [activeTab, setActiveTab] = useState<"board" | "table" | "feature-docs">("board");
+  const tabParam = searchParams.get("tab");
+  const activeTab = tabParam === "list" || tabParam === "board" ? tabParam : "board";
 
-  useEffect(() => {
-    const tabParam = searchParams.get("tab");
-    if (tabParam === "board" || tabParam === "table" || tabParam === "feature-docs") {
-      setActiveTab(tabParam);
-      return;
-    }
-    if (tabParam === "docs" || searchParams.get("doc")) {
-      setActiveTab("feature-docs");
-    }
-  }, [searchParams]);
-
-  if (workspace === undefined || tickets === undefined || featureDocs === undefined) {
+  if (workspace === undefined || tickets === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
@@ -58,7 +46,7 @@ export default function WorkspacePage() {
   const workspacePrefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20">
+    <div className="min-h-screen bg-background">
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -71,7 +59,7 @@ export default function WorkspacePage() {
               <div>
                 <h1 className="text-2xl font-bold">{workspace.name}</h1>
                 <p className="text-sm text-muted-foreground">
-                  {tickets.length} ticket{tickets.length !== 1 ? "s" : ""}
+                  {tickets.length} issue{tickets.length !== 1 ? "s" : ""}
                 </p>
               </div>
             </div>
@@ -86,44 +74,37 @@ export default function WorkspacePage() {
       </header>
 
       <main className="container mx-auto px-6 py-6">
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            const params = new URLSearchParams(searchParams.toString());
+            params.set("tab", value);
+            router.replace(`/workspace/${workspaceId}?${params.toString()}`);
+          }}
+          className="w-full"
+        >
           <TabsList className="mb-6">
             <TabsTrigger value="board" className="gap-2">
               <LayoutGrid className="w-4 h-4" />
               Board
             </TabsTrigger>
-            <TabsTrigger value="table" className="gap-2">
-              <Table className="w-4 h-4" />
-              Table
-            </TabsTrigger>
-            <TabsTrigger value="feature-docs" className="gap-2">
-              <FileText className="w-4 h-4" />
-              Feature Docs
+            <TabsTrigger value="list" className="gap-2">
+              <List className="w-4 h-4" />
+              List
             </TabsTrigger>
           </TabsList>
           <TabsContent value="board">
             <KanbanBoard
               workspaceId={workspaceId}
               tickets={tickets}
-              featureDocs={featureDocs}
               workspacePrefix={workspacePrefix}
             />
           </TabsContent>
-          <TabsContent value="table">
+          <TabsContent value="list">
             <TicketTable
               workspaceId={workspaceId}
               tickets={tickets}
-              featureDocs={featureDocs}
               workspacePrefix={workspacePrefix}
-            />
-          </TabsContent>
-          <TabsContent value="feature-docs">
-            <FeatureDocs
-              workspaceId={workspaceId}
-              docs={featureDocs}
-              tickets={tickets}
-              workspacePrefix={workspacePrefix}
-              selectedDocId={searchParams.get("doc") as Id<"featureDocs"> | null}
             />
           </TabsContent>
         </Tabs>

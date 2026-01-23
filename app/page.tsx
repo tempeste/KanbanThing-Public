@@ -25,7 +25,7 @@ export default function Home() {
   };
 
   const handleDelete = async (id: Id<"workspaces">) => {
-    if (confirm("Delete this workspace and all its tickets?")) {
+    if (confirm("Delete this workspace and all its issues?")) {
       await deleteWorkspace({ id });
     }
   };
