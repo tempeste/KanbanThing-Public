@@ -7,28 +7,10 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Archive,
-  ArchiveRestore,
-  Bot,
-  GripVertical,
-  MoreVertical,
-  Plus,
-  Trash2,
-  User,
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { formatTicketNumber } from "@/lib/utils";
-import { IssueStatusBadge, IssueStatus, STATUS_META } from "@/components/issue-status";
+import { Plus } from "lucide-react";
+import { IssueStatusBadge, IssueStatus } from "@/components/issue-status";
+import { TicketCard } from "@/components/ticket-card";
 
 type Ticket = Doc<"tickets">;
 
@@ -280,27 +262,19 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
               <ScrollArea className="h-[calc(100vh-240px)] px-3 py-3">
                 <div className="space-y-3">
                   {(ticketsByStatus[status] ?? []).map((ticket) => {
-                    const ticketNumber = formatTicketNumber(workspacePrefix, ticket.number);
-                    const progressTotal = ticket.childCount ?? 0;
-                    const progressDone = ticket.childDoneCount ?? 0;
                     const parentTicket = ticket.parentId
                       ? ticketsById.get(ticket.parentId)
                       : null;
 
                     return (
-                      <Card
+                      <TicketCard
                         key={ticket._id}
-                        className={`group relative rounded-lg border border-border/60 bg-background/40 p-3 shadow-sm transition hover:border-primary/40 hover:bg-accent/30 ${
-                          dragOverTicketId === ticket._id
-                            ? "border-primary/40 shadow-md"
-                            : ""
-                        }`}
-                        role="button"
-                        tabIndex={0}
-                        draggable
+                        ticket={ticket}
+                        workspaceId={workspaceId}
+                        workspacePrefix={workspacePrefix}
+                        parentTicket={parentTicket}
+                        isDragOver={dragOverTicketId === ticket._id}
                         onDragStart={(event) => handleDragStart(event, ticket._id)}
-                        onClick={(event) => handleCardClick(event, ticket._id)}
-                        onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
                         onDragOver={(event) => {
                           event.preventDefault();
                           const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
@@ -325,136 +299,22 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                           setDragOverTicketId(null);
                           setDragOverPosition(null);
                         }}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-2">
-                            <button
-                              type="button"
-                              className="mt-1 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition"
-                              draggable
-                              onDragStart={(event) => {
-                                handleDragStart(event, ticket._id);
-                              }}
-                              onDragEnd={() => {
-                                setDragOverTicketId(null);
-                                setDragOverPosition(null);
-                                setDragOverStatus(null);
-                              }}
-                            >
-                              <GripVertical className="w-4 h-4" />
-                            </button>
-                            <div className="min-w-0">
-                              <Link
-                                href={`/workspace/${workspaceId}/tickets/${ticket._id}`}
-                                className="flex flex-wrap items-center gap-2 font-medium hover:text-primary text-sm"
-                              >
-                                <span className="font-mono text-xs text-muted-foreground">
-                                  {ticketNumber ?? "—"}
-                                </span>
-                                {ticket.title}
-                              </Link>
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                {progressTotal > 0 && (
-                                  <Badge variant="outline" className="text-[10px]">
-                                    {progressDone}/{progressTotal} sub-issues
-                                  </Badge>
-                                )}
-                                {ticket.archived && (
-                                  <Badge variant="outline" className="text-[10px]">
-                                    Archived
-                                  </Badge>
-                                )}
-                              </div>
-                              {parentTicket && (
-                                <div className="mt-2 text-[11px] text-muted-foreground">
-                                  Sub-issue of{" "}
-                                  <span className="font-mono">
-                                    {formatTicketNumber(workspacePrefix, parentTicket.number) ?? "—"}
-                                  </span>{" "}
-                                  · {parentTicket.title}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {STATUS_COLUMNS.map((nextStatus) => (
-                                <DropdownMenuItem
-                                  key={nextStatus}
-                                  onClick={() => handleStatusChange(ticket._id, nextStatus)}
-                                >
-                                  Move to {STATUS_META[nextStatus].label}
-                                </DropdownMenuItem>
-                              ))}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  updateTicket({
-                                    id: ticket._id,
-                                    archived: !(ticket.archived ?? false),
-                                  })
-                                }
-                              >
-                                {ticket.archived ? (
-                                  <>
-                                    <ArchiveRestore className="w-4 h-4 mr-2" />
-                                    Unarchive
-                                  </>
-                                ) : (
-                                  <>
-                                    <Archive className="w-4 h-4 mr-2" />
-                                    Archive
-                                  </>
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => handleDelete(ticket._id)}
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-
-                        {ticket.description && (
-                          <p className="mt-3 text-xs text-muted-foreground line-clamp-2">
-                            {ticket.description}
-                          </p>
-                        )}
-
-                        <div className="mt-4 flex items-center gap-2">
-                          <Button variant="outline" size="sm" asChild>
-                            <Link href={`/workspace/${workspaceId}/tickets/${ticket._id}`}>
-                              Open
-                            </Link>
-                          </Button>
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link
-                              href={`/workspace/${workspaceId}/tickets/new?parentId=${ticket._id}`}
-                            >
-                              <Plus className="w-3 h-3 mr-1" />
-                              Sub-issue
-                            </Link>
-                          </Button>
-                          {ticket.ownerId && (
-                            <Badge variant="outline" className="ml-auto gap-1 text-xs">
-                              {ticket.ownerType === "agent" ? (
-                                <Bot className="w-3 h-3" />
-                              ) : (
-                                <User className="w-3 h-3" />
-                              )}
-                              {ticket.ownerId}
-                            </Badge>
-                          )}
-                        </div>
-                      </Card>
+                        onDragHandleEnd={() => {
+                          setDragOverTicketId(null);
+                          setDragOverPosition(null);
+                          setDragOverStatus(null);
+                        }}
+                        onClick={(event) => handleCardClick(event, ticket._id)}
+                        onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
+                        onStatusChange={(newStatus) => handleStatusChange(ticket._id, newStatus)}
+                        onArchiveToggle={() =>
+                          updateTicket({
+                            id: ticket._id,
+                            archived: !(ticket.archived ?? false),
+                          })
+                        }
+                        onDelete={() => handleDelete(ticket._id)}
+                      />
                     );
                   })}
                 </div>
