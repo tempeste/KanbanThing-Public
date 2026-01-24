@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -12,11 +12,8 @@ import {
   Archive,
   ArchiveRestore,
   Bot,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Circle,
-  Clock,
   GripVertical,
   MoreVertical,
   Plus,
@@ -31,28 +28,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatTicketNumber } from "@/lib/utils";
-
-const STATUS_CONFIG = {
-  unclaimed: {
-    label: "Unclaimed",
-    icon: <Circle className="w-3 h-3" />,
-    colorClass: "bg-unclaimed/20 text-unclaimed",
-  },
-  in_progress: {
-    label: "In Progress",
-    icon: <Clock className="w-3 h-3" />,
-    colorClass: "bg-in-progress/20 text-in-progress",
-  },
-  done: {
-    label: "Done",
-    icon: <CheckCircle2 className="w-3 h-3" />,
-    colorClass: "bg-done/20 text-done",
-  },
-} as const;
+import { IssueStatusBadge, IssueStatus, STATUS_META } from "@/components/issue-status";
 
 type Ticket = Doc<"tickets">;
 
-type Status = "unclaimed" | "in_progress" | "done";
+type Status = IssueStatus;
 
 interface TicketTableProps {
   workspaceId: Id<"workspaces">;
@@ -78,10 +58,24 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
   const updateTicket = useMutation(api.tickets.update);
   const deleteTicket = useMutation(api.tickets.remove);
 
+  const resolvedOptimisticMoves = useMemo(() => {
+    if (!optimisticMoves.size) return optimisticMoves;
+    const next = new Map(optimisticMoves);
+    for (const ticket of tickets) {
+      const override = next.get(ticket._id);
+      if (!override) continue;
+      const currentOrder = ticket.order ?? ticket.createdAt;
+      if (ticket.parentId === override.parentId && currentOrder === override.order) {
+        next.delete(ticket._id);
+      }
+    }
+    return next;
+  }, [optimisticMoves, tickets]);
+
   const mergedTickets = useMemo(() => {
-    if (!optimisticMoves.size) return tickets;
+    if (!resolvedOptimisticMoves.size) return tickets;
     return tickets.map((ticket) => {
-      const override = optimisticMoves.get(ticket._id);
+      const override = resolvedOptimisticMoves.get(ticket._id);
       if (!override) return ticket;
       return {
         ...ticket,
@@ -89,7 +83,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
         order: override.order,
       };
     });
-  }, [tickets, optimisticMoves]);
+  }, [tickets, resolvedOptimisticMoves]);
 
   const visibleTickets = useMemo(() => {
     if (showArchived) return mergedTickets;
@@ -116,7 +110,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
     return map;
   }, [visibleTickets, ticketsById]);
 
-  const buildTree = () => {
+  const treeRows = useMemo(() => {
     const result: Array<{ ticket: Ticket; depth: number }> = [];
     const visit = (ticket: Ticket, depth: number) => {
       result.push({ ticket, depth });
@@ -131,28 +125,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
       visit(root, 0);
     }
     return result;
-  };
-
-  const treeRows = useMemo(() => buildTree(), [childrenByParent, collapsed]);
-
-  useEffect(() => {
-    if (!optimisticMoves.size) return;
-    setOptimisticMoves((prev) => {
-      const next = new Map(prev);
-      for (const ticket of tickets) {
-        const override = next.get(ticket._id);
-        if (!override) continue;
-        const currentOrder = ticket.order ?? ticket.createdAt;
-        if (
-          ticket.parentId === override.parentId &&
-          currentOrder === override.order
-        ) {
-          next.delete(ticket._id);
-        }
-      }
-      return next;
-    });
-  }, [tickets, optimisticMoves.size]);
+  }, [childrenByParent, collapsed]);
 
   const toggleCollapsed = (ticketId: Id<"tickets">) => {
     setCollapsed((prev) => {
@@ -265,7 +238,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement;
       if (target.closest("a,button,select,textarea,input,[role='menuitem']")) return;
-      router.push(`/workspace/${workspaceId}/tickets/${ticketId}`);
+      router.push(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
     },
     [router, workspaceId]
   );
@@ -274,7 +247,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
     (event: React.KeyboardEvent<HTMLElement>, ticketId: Id<"tickets">) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      router.push(`/workspace/${workspaceId}/tickets/${ticketId}`);
+      router.push(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
     },
     [router, workspaceId]
   );
@@ -315,7 +288,6 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
           {treeRows.map(({ ticket, depth }) => {
             const hasChildren = (ticket.childCount ?? 0) > 0;
             const isCollapsed = collapsed.has(ticket._id);
-            const statusConfig = STATUS_CONFIG[ticket.status];
             const ticketNumber = formatTicketNumber(workspacePrefix, ticket.number);
             const parentTicket = ticket.parentId ? ticketsById.get(ticket.parentId) : null;
             const progressTotal = ticket.childCount ?? 0;
@@ -400,7 +372,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
                         {ticketNumber ?? "—"}
                       </span>
                       <Link
-                        href={`/workspace/${workspaceId}/tickets/${ticket._id}`}
+                        href={`/workspace/${workspaceId}/tickets/${ticket._id}?tab=list`}
                         className="font-medium hover:text-primary"
                       >
                         {ticket.title}
@@ -429,10 +401,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground md:hidden">Status</span>
-                  <Badge variant="outline" className={`gap-1 ${statusConfig.colorClass}`}>
-                    {statusConfig.icon}
-                    {statusConfig.label}
-                  </Badge>
+                  <IssueStatusBadge status={ticket.status} />
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground md:hidden">Owner</span>
@@ -463,7 +432,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {Object.entries(STATUS_CONFIG).map(([status, config]) => (
+                      {Object.entries(STATUS_META).map(([status, config]) => (
                         <DropdownMenuItem
                           key={status}
                           onClick={() => updateStatus({

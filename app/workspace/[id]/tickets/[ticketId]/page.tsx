@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -13,47 +13,20 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Markdown } from "@/components/markdown";
-import {
-  ArrowLeft,
-  Archive,
-  ArchiveRestore,
-  Bot,
-  CheckCircle2,
-  Circle,
-  Clock,
-  Plus,
-  Trash2,
-  User,
-} from "lucide-react";
+import { ArrowLeft, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { formatTicketNumber, generateWorkspacePrefix } from "@/lib/utils";
-
-const STATUS_CONFIG = {
-  unclaimed: {
-    label: "Unclaimed",
-    icon: <Circle className="w-3 h-3" />,
-    colorClass: "bg-unclaimed/20 text-unclaimed",
-  },
-  in_progress: {
-    label: "In Progress",
-    icon: <Clock className="w-3 h-3" />,
-    colorClass: "bg-in-progress/20 text-in-progress",
-  },
-  done: {
-    label: "Done",
-    icon: <CheckCircle2 className="w-3 h-3" />,
-    colorClass: "bg-done/20 text-done",
-  },
-} as const;
+import { IssueStatusBadge } from "@/components/issue-status";
+import { SubIssuesCard } from "@/components/issue-detail/sub-issues-card";
+import { IssueSidebar } from "@/components/issue-detail/issue-sidebar";
 
 type Ticket = Doc<"tickets">;
-
-type Status = "unclaimed" | "in_progress" | "done";
 
 const getOrderValue = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
 
 export default function TicketDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const workspaceId = params.id as Id<"workspaces">;
   const ticketId = params.ticketId as Id<"tickets">;
 
@@ -75,7 +48,11 @@ export default function TicketDetailPage() {
 
   const ticket = hierarchy?.ticket ?? null;
   const ancestors = hierarchy?.ancestors ?? [];
-  const ticketsList = allTickets ?? [];
+  const ticketsList = useMemo(() => allTickets ?? [], [allTickets]);
+  const activeTicketId = ticket?._id ?? null;
+  const activeParentId = ticket?.parentId ?? null;
+  const backTab = searchParams.get("tab");
+  const backHref = backTab ? `/workspace/${workspaceId}?tab=${backTab}` : `/workspace/${workspaceId}`;
   const children = useMemo(() => {
     if (!hierarchy?.children) return [];
     return hierarchy.children
@@ -84,24 +61,25 @@ export default function TicketDetailPage() {
       .sort((a, b) => getOrderValue(a) - getOrderValue(b));
   }, [hierarchy?.children]);
   const availableParents = useMemo(
-    () => ticketsList.filter((candidate) => candidate._id !== ticket?._id),
-    [ticketsList, ticket?._id]
+    () => ticketsList.filter((candidate) => candidate._id !== activeTicketId),
+    [ticketsList, activeTicketId]
   );
   const parentTicket = useMemo(() => {
-    if (!ticket?.parentId) return null;
-    return availableParents.find((candidate) => candidate._id === ticket.parentId) ?? null;
-  }, [availableParents, ticket?.parentId]);
+    if (!activeParentId) return null;
+    return availableParents.find((candidate) => candidate._id === activeParentId) ?? null;
+  }, [availableParents, activeParentId]);
   const descendantIds = useMemo(() => {
-    if (!ticket) return new Set<string>();
-    const childrenByParent = new Map<string, Ticket[]>();
+    if (!activeTicketId) return new Set<Id<"tickets">>();
+    const childrenByParent = new Map<Id<"tickets">, Ticket[]>();
     for (const entry of ticketsList) {
-      if (!entry.parentId) continue;
-      const list = childrenByParent.get(entry.parentId) ?? [];
+      const parentId = entry.parentId;
+      if (!parentId) continue;
+      const list = childrenByParent.get(parentId) ?? [];
       list.push(entry);
-      childrenByParent.set(entry.parentId, list);
+      childrenByParent.set(parentId, list);
     }
-    const visited = new Set<string>();
-    const stack = [ticket._id as string];
+    const visited = new Set<Id<"tickets">>();
+    const stack: Id<"tickets">[] = [activeTicketId];
     while (stack.length) {
       const current = stack.pop();
       if (!current) continue;
@@ -113,15 +91,15 @@ export default function TicketDetailPage() {
       }
     }
     return visited;
-  }, [ticket?._id, ticketsList]);
+  }, [activeTicketId, ticketsList]);
   const availableChildCandidates = useMemo(() => {
-    if (!ticket) return [];
+    if (!activeTicketId) return [];
     return ticketsList
-      .filter((candidate) => candidate._id !== ticket._id)
+      .filter((candidate) => candidate._id !== activeTicketId)
       .filter((candidate) => !(candidate.archived ?? false))
-      .filter((candidate) => !descendantIds.has(candidate._id as string))
-      .filter((candidate) => candidate.parentId !== ticket._id);
-  }, [ticketsList, descendantIds, ticket?._id]);
+      .filter((candidate) => !descendantIds.has(candidate._id))
+      .filter((candidate) => candidate.parentId !== activeTicketId);
+  }, [ticketsList, descendantIds, activeTicketId]);
 
   useEffect(() => {
     if (!ticket || isEditing) return;
@@ -143,7 +121,7 @@ export default function TicketDetailPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Issue not found</h1>
-          <Link href={`/workspace/${workspaceId}`}>
+          <Link href={backHref}>
             <Button>Back to Workspace</Button>
           </Link>
         </div>
@@ -153,7 +131,6 @@ export default function TicketDetailPage() {
 
   const workspacePrefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
   const ticketNumber = formatTicketNumber(workspacePrefix, ticket.number);
-  const statusConfig = STATUS_CONFIG[ticket.status];
   const progressTotal = ticket.childCount ?? 0;
   const progressDone = ticket.childDoneCount ?? 0;
   const progressPct = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : 0;
@@ -178,7 +155,7 @@ export default function TicketDetailPage() {
   const handleDelete = async () => {
     if (confirm("Delete this issue and its sub-issues?")) {
       await deleteTicket({ id: ticket._id });
-      router.push(`/workspace/${workspaceId}?tab=list`);
+      router.push(backHref);
     }
   };
 
@@ -206,7 +183,7 @@ export default function TicketDetailPage() {
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild>
-              <Link href={`/workspace/${workspaceId}`}>
+              <Link href={backHref}>
                 <ArrowLeft className="w-5 h-5" />
               </Link>
             </Button>
@@ -278,10 +255,7 @@ export default function TicketDetailPage() {
                 {ticketNumber && (
                   <span className="font-mono">{ticketNumber}</span>
                 )}
-                <Badge variant="outline" className={`gap-1 ${statusConfig.colorClass}`}>
-                  {statusConfig.icon}
-                  {statusConfig.label}
-                </Badge>
+                <IssueStatusBadge status={ticket.status} />
                 {progressTotal > 0 && (
                   <Badge variant="outline" className="text-[10px]">
                     {progressDone}/{progressTotal} sub-issues
@@ -391,173 +365,34 @@ export default function TicketDetailPage() {
               </Card>
             )}
 
-            <Card className="p-6 bg-card/40">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold">Sub-issues</h3>
-                    {progressTotal > 0 && (
-                      <Badge variant="outline" className="text-[10px]">
-                        {progressDone}/{progressTotal}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Break down the work into ralph-sized steps.
-                  </p>
-                </div>
-                <Button asChild>
-                  <Link href={`/workspace/${workspaceId}/tickets/new?parentId=${ticket._id}`}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Sub-issue
-                  </Link>
-                </Button>
-              </div>
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="w-full">
-                  <Label htmlFor="existing-sub-issue">Add existing issue</Label>
-                  <select
-                    id="existing-sub-issue"
-                    value={existingChildId}
-                    onChange={(event) =>
-                      setExistingChildId(
-                        event.target.value ? (event.target.value as Id<"tickets">) : ""
-                      )
-                    }
-                    className="mt-2 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  >
-                    <option value="">Select an issue</option>
-                    {availableChildCandidates.map((candidate) => (
-                      <option key={candidate._id} value={candidate._id}>
-                        {formatTicketNumber(workspacePrefix, candidate.number) ?? "—"} ·{" "}
-                        {candidate.title}
-                      </option>
-                    ))}
-                  </select>
-                  {availableChildCandidates.length === 0 && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      No available issues to add.
-                    </p>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={handleAddExistingChild}
-                  disabled={!existingChildId || isAddingExisting}
-                >
-                  {isAddingExisting ? "Adding..." : "Add existing"}
-                </Button>
-              </div>
-              <div className="mt-4 space-y-3">
-                {children.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No sub-issues yet.</p>
-                )}
-                {children.map((child) => {
-                  const childStatus = STATUS_CONFIG[child.status];
-                  return (
-                    <div
-                      key={child._id}
-                      className="flex items-center justify-between rounded-lg border border-border/60 bg-background/40 px-3 py-2"
-                    >
-                      <div>
-                        <Link
-                          href={`/workspace/${workspaceId}/tickets/${child._id}`}
-                          className="font-medium hover:text-primary"
-                        >
-                          {child.title}
-                        </Link>
-                        <div className="text-xs text-muted-foreground font-mono">
-                          {formatTicketNumber(workspacePrefix, child.number) ?? "—"}
-                        </div>
-                      </div>
-                      <Badge variant="outline" className={`gap-1 ${childStatus.colorClass}`}>
-                        {childStatus.icon}
-                        {childStatus.label}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
+            <SubIssuesCard
+              workspaceId={workspaceId}
+              workspacePrefix={workspacePrefix}
+              ticketId={ticket._id}
+              progressDone={progressDone}
+              progressTotal={progressTotal}
+              subIssues={children}
+              availableChildCandidates={availableChildCandidates}
+              existingChildId={existingChildId}
+              onExistingChildChange={setExistingChildId}
+              onAddExisting={handleAddExistingChild}
+              isAddingExisting={isAddingExisting}
+            />
           </div>
 
-          <aside className="space-y-4">
-            <Card className="p-4 space-y-3 bg-card/40">
-              <div>
-                <div className="text-xs text-muted-foreground">Status</div>
-                <Badge variant="outline" className={`mt-1 gap-1 ${statusConfig.colorClass}`}>
-                  {statusConfig.icon}
-                  {statusConfig.label}
-                </Badge>
-                <select
-                  className="mt-2 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm"
-                  value={ticket.status}
-                  onChange={(event) =>
-                    updateStatus({
-                      id: ticket._id,
-                      status: event.target.value as Status,
-                    })
-                  }
-                >
-                  {Object.entries(STATUS_CONFIG).map(([status, config]) => (
-                    <option key={status} value={status}>
-                      {config.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Owner</div>
-                {ticket.ownerId ? (
-                  <div className="mt-1 inline-flex items-center gap-1 text-sm">
-                    {ticket.ownerType === "agent" ? (
-                      <Bot className="w-3 h-3 text-muted-foreground" />
-                    ) : (
-                      <User className="w-3 h-3 text-muted-foreground" />
-                    )}
-                    {ticket.ownerId}
-                  </div>
-                ) : (
-                  <div className="mt-1 text-sm text-muted-foreground">Unassigned</div>
-                )}
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Updated</div>
-                <div className="text-sm">
-                  {new Date(ticket.updatedAt).toLocaleString()}
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-4 space-y-2 bg-card/40">
-              <div className="text-xs text-muted-foreground">Project Docs</div>
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/workspace/${workspaceId}/settings`}>Open project docs</Link>
-              </Button>
-            </Card>
-
-            <Card className="p-4 bg-card/40">
-              <div className="text-xs text-muted-foreground">Sub-issue progress</div>
-              {progressTotal > 0 ? (
-                <>
-                  <div className="mt-2 flex items-center justify-between text-sm">
-                    <span>
-                      {progressDone}/{progressTotal} done
-                    </span>
-                    <span>{progressPct}%</span>
-                  </div>
-                  <div className="mt-2 h-2 rounded-full bg-muted">
-                    <div
-                      className="h-2 rounded-full bg-primary"
-                      style={{ width: `${progressPct}%` }}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="mt-2 text-sm text-muted-foreground">No sub-issues yet.</div>
-              )}
-            </Card>
-          </aside>
+          <IssueSidebar
+            ticket={ticket}
+            workspaceId={workspaceId}
+            progressDone={progressDone}
+            progressTotal={progressTotal}
+            progressPct={progressPct}
+            onStatusChange={(status) =>
+              updateStatus({
+                id: ticket._id,
+                status,
+              })
+            }
+          />
         </div>
       </main>
     </div>
