@@ -18,6 +18,8 @@ import { formatTicketNumber, generateWorkspacePrefix } from "@/lib/utils";
 import { IssueStatusBadge } from "@/components/issue-status";
 import { SubIssuesCard } from "@/components/issue-detail/sub-issues-card";
 import { IssueSidebar } from "@/components/issue-detail/issue-sidebar";
+import { ArchivedBadge } from "@/components/archived-badge";
+import { ArchivedBanner } from "@/components/archived-banner";
 
 type Ticket = Doc<"tickets">;
 
@@ -248,6 +250,8 @@ export default function TicketDetailPage() {
           </span>
         </div>
 
+        {ticket.archived && <ArchivedBanner />}
+
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-6">
             <div className="space-y-2">
@@ -261,11 +265,7 @@ export default function TicketDetailPage() {
                     {progressDone}/{progressTotal} sub-issues
                   </Badge>
                 )}
-                {ticket.archived && (
-                  <Badge variant="outline" className="text-[10px]">
-                    Archived
-                  </Badge>
-                )}
+                {ticket.archived && <ArchivedBadge />}
               </div>
               <h1 className="text-3xl font-semibold tracking-tight">{ticket.title}</h1>
               {ticket.parentId && (

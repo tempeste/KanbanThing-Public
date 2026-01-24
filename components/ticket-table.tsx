@@ -7,32 +7,10 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Archive,
-  ArchiveRestore,
-  Bot,
-  ChevronDown,
-  ChevronRight,
-  GripVertical,
-  MoreVertical,
-  Plus,
-  Trash2,
-  User,
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { formatTicketNumber } from "@/lib/utils";
-import { IssueStatusBadge, IssueStatus, STATUS_META } from "@/components/issue-status";
+import { Plus } from "lucide-react";
+import { TicketTableRow } from "@/components/ticket-table-row";
 
 type Ticket = Doc<"tickets">;
-
-type Status = IssueStatus;
 
 interface TicketTableProps {
   workspaceId: Id<"workspaces">;
@@ -288,10 +266,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
           {treeRows.map(({ ticket, depth }) => {
             const hasChildren = (ticket.childCount ?? 0) > 0;
             const isCollapsed = collapsed.has(ticket._id);
-            const ticketNumber = formatTicketNumber(workspacePrefix, ticket.number);
             const parentTicket = ticket.parentId ? ticketsById.get(ticket.parentId) : null;
-            const progressTotal = ticket.childCount ?? 0;
-            const progressDone = ticket.childDoneCount ?? 0;
             const dragClass =
               dragOverId === ticket._id
                 ? dragOverPosition === "inside"
@@ -302,15 +277,18 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
                 : "";
 
             return (
-              <div
+              <TicketTableRow
                 key={ticket._id}
-                className={`flex flex-col gap-3 px-4 py-3 transition-colors hover:bg-accent/20 md:grid md:grid-cols-[minmax(0,1fr)_140px_160px_120px] md:items-center ${dragClass}`}
-                role="button"
-                tabIndex={0}
-                draggable
+                ticket={ticket}
+                workspaceId={workspaceId}
+                workspacePrefix={workspacePrefix}
+                parentTicket={parentTicket}
+                depth={depth}
+                hasChildren={hasChildren}
+                isCollapsed={isCollapsed}
+                dragClass={dragClass}
+                onToggleCollapse={() => toggleCollapsed(ticket._id)}
                 onDragStart={(event) => handleDragStart(event, ticket._id)}
-                onClick={(event) => handleRowClick(event, ticket._id)}
-                onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
                 onDragOver={(event) => {
                   event.preventDefault();
                   const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
@@ -327,154 +305,17 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
                   setDragOverPosition(null);
                 }}
                 onDrop={(event) => handleDrop(event, ticket)}
-              >
-                <div className="relative flex items-start gap-2" style={{ paddingLeft: `${depth * 16}px` }}>
-                  {depth > 0 && (
-                    <>
-                      <span
-                        className="absolute top-2 bottom-2 w-px bg-border/50"
-                        style={{ left: `${Math.max(depth * 16 - 8, 0)}px` }}
-                      />
-                      <span
-                        className="absolute top-1/2 h-px w-3 bg-border/50"
-                        style={{ left: `${Math.max(depth * 16 - 8, 0)}px` }}
-                      />
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    className="mt-0.5 text-muted-foreground hover:text-foreground"
-                    draggable
-                    onDragStart={(event) => {
-                      handleDragStart(event, ticket._id);
-                    }}
-                  >
-                    <GripVertical className="w-4 h-4" />
-                  </button>
-                  {hasChildren ? (
-                    <button
-                      type="button"
-                      onClick={() => toggleCollapsed(ticket._id)}
-                      className="mt-0.5 text-muted-foreground hover:text-foreground"
-                    >
-                      {isCollapsed ? (
-                        <ChevronRight className="w-4 h-4" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4" />
-                      )}
-                    </button>
-                  ) : (
-                    <span className="mt-0.5 w-4" />
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {ticketNumber ?? "—"}
-                      </span>
-                      <Link
-                        href={`/workspace/${workspaceId}/tickets/${ticket._id}?tab=list`}
-                        className="font-medium hover:text-primary"
-                      >
-                        {ticket.title}
-                      </Link>
-                    </div>
-                    {parentTicket && (
-                      <div className="text-xs text-muted-foreground">
-                        Sub-issue of{" "}
-                        <span className="font-mono">
-                          {formatTicketNumber(workspacePrefix, parentTicket.number) ?? "—"}
-                        </span>{" "}
-                        · {parentTicket.title}
-                      </div>
-                    )}
-                    {progressTotal > 0 && (
-                      <Badge variant="outline" className="mt-1 text-[10px]">
-                        {progressDone}/{progressTotal} sub-issues
-                      </Badge>
-                    )}
-                    {ticket.archived && (
-                      <Badge variant="outline" className="mt-1 text-[10px]">
-                        Archived
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground md:hidden">Status</span>
-                  <IssueStatusBadge status={ticket.status} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground md:hidden">Owner</span>
-                  {ticket.ownerId ? (
-                    <span className="inline-flex items-center gap-1 text-sm">
-                      {ticket.ownerType === "agent" ? (
-                        <Bot className="w-3 h-3 text-muted-foreground" />
-                      ) : (
-                        <User className="w-3 h-3 text-muted-foreground" />
-                      )}
-                      {ticket.ownerId}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground text-sm">—</span>
-                  )}
-                </div>
-                <div className="flex items-center justify-end gap-2 md:justify-end">
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={`/workspace/${workspaceId}/tickets/new?parentId=${ticket._id}`}>
-                      <Plus className="w-3 h-3 mr-1" />
-                      Sub-issue
-                    </Link>
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {Object.entries(STATUS_META).map(([status, config]) => (
-                        <DropdownMenuItem
-                          key={status}
-                          onClick={() => updateStatus({
-                            id: ticket._id,
-                            status: status as Status,
-                          })}
-                        >
-                          Move to {config.label}
-                        </DropdownMenuItem>
-                      ))}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() =>
-                          updateTicket({
-                            id: ticket._id,
-                            archived: !(ticket.archived ?? false),
-                          })
-                        }
-                      >
-                        {ticket.archived ? (
-                          <>
-                            <ArchiveRestore className="w-4 h-4 mr-2" />
-                            Unarchive
-                          </>
-                        ) : (
-                          <>
-                            <Archive className="w-4 h-4 mr-2" />
-                            Archive
-                          </>
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => handleDelete(ticket._id)}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
+                onClick={(event) => handleRowClick(event, ticket._id)}
+                onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
+                onStatusChange={(status) => updateStatus({ id: ticket._id, status })}
+                onArchiveToggle={() =>
+                  updateTicket({
+                    id: ticket._id,
+                    archived: !(ticket.archived ?? false),
+                  })
+                }
+                onDelete={() => handleDelete(ticket._id)}
+              />
             );
           })}
         </div>
