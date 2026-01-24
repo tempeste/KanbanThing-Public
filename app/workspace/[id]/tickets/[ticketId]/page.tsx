@@ -75,6 +75,7 @@ export default function TicketDetailPage() {
 
   const ticket = hierarchy?.ticket ?? null;
   const ancestors = hierarchy?.ancestors ?? [];
+  const ticketsList = allTickets ?? [];
   const children = useMemo(() => {
     if (!hierarchy?.children) return [];
     return hierarchy.children
@@ -82,6 +83,45 @@ export default function TicketDetailPage() {
       .slice()
       .sort((a, b) => getOrderValue(a) - getOrderValue(b));
   }, [hierarchy?.children]);
+  const availableParents = useMemo(
+    () => ticketsList.filter((candidate) => candidate._id !== ticket?._id),
+    [ticketsList, ticket?._id]
+  );
+  const parentTicket = useMemo(() => {
+    if (!ticket?.parentId) return null;
+    return availableParents.find((candidate) => candidate._id === ticket.parentId) ?? null;
+  }, [availableParents, ticket?.parentId]);
+  const descendantIds = useMemo(() => {
+    if (!ticket) return new Set<string>();
+    const childrenByParent = new Map<string, Ticket[]>();
+    for (const entry of ticketsList) {
+      if (!entry.parentId) continue;
+      const list = childrenByParent.get(entry.parentId) ?? [];
+      list.push(entry);
+      childrenByParent.set(entry.parentId, list);
+    }
+    const visited = new Set<string>();
+    const stack = [ticket._id as string];
+    while (stack.length) {
+      const current = stack.pop();
+      if (!current) continue;
+      const childrenList = childrenByParent.get(current) ?? [];
+      for (const child of childrenList) {
+        if (visited.has(child._id)) continue;
+        visited.add(child._id);
+        stack.push(child._id as string);
+      }
+    }
+    return visited;
+  }, [ticket?._id, ticketsList]);
+  const availableChildCandidates = useMemo(() => {
+    if (!ticket) return [];
+    return ticketsList
+      .filter((candidate) => candidate._id !== ticket._id)
+      .filter((candidate) => !(candidate.archived ?? false))
+      .filter((candidate) => !descendantIds.has(candidate._id as string))
+      .filter((candidate) => candidate.parentId !== ticket._id);
+  }, [ticketsList, descendantIds, ticket?._id]);
 
   useEffect(() => {
     if (!ticket || isEditing) return;
@@ -118,41 +158,6 @@ export default function TicketDetailPage() {
   const progressDone = ticket.childDoneCount ?? 0;
   const progressPct = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : 0;
 
-  const availableParents = allTickets.filter((candidate) => candidate._id !== ticket._id);
-  const parentTicket = ticket.parentId
-    ? availableParents.find((candidate) => candidate._id === ticket.parentId)
-    : null;
-  const descendantIds = useMemo(() => {
-    if (!ticket) return new Set<string>();
-    const childrenByParent = new Map<string, Ticket[]>();
-    for (const entry of allTickets) {
-      if (!entry.parentId) continue;
-      const list = childrenByParent.get(entry.parentId) ?? [];
-      list.push(entry);
-      childrenByParent.set(entry.parentId, list);
-    }
-    const visited = new Set<string>();
-    const stack = [ticket._id as string];
-    while (stack.length) {
-      const current = stack.pop();
-      if (!current) continue;
-      const childrenList = childrenByParent.get(current) ?? [];
-      for (const child of childrenList) {
-        if (visited.has(child._id)) continue;
-        visited.add(child._id);
-        stack.push(child._id as string);
-      }
-    }
-    return visited;
-  }, [allTickets, ticket]);
-  const availableChildCandidates = useMemo(() => {
-    if (!ticket) return [];
-    return allTickets
-      .filter((candidate) => candidate._id !== ticket._id)
-      .filter((candidate) => !(candidate.archived ?? false))
-      .filter((candidate) => !descendantIds.has(candidate._id as string))
-      .filter((candidate) => candidate.parentId !== ticket._id);
-  }, [allTickets, descendantIds, ticket]);
 
   const handleSave = async () => {
     if (!title.trim()) return;
