@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -14,9 +14,6 @@ import {
   Archive,
   ArchiveRestore,
   Bot,
-  CheckCircle2,
-  Circle,
-  Clock,
   GripVertical,
   MoreVertical,
   Plus,
@@ -31,28 +28,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatTicketNumber } from "@/lib/utils";
-
-const STATUS_CONFIG = {
-  unclaimed: {
-    label: "Unclaimed",
-    icon: <Circle className="w-4 h-4" />,
-    colorClass: "bg-unclaimed/20 text-unclaimed border-unclaimed/30",
-  },
-  in_progress: {
-    label: "In Progress",
-    icon: <Clock className="w-4 h-4" />,
-    colorClass: "bg-in-progress/20 text-in-progress border-in-progress/30",
-  },
-  done: {
-    label: "Done",
-    icon: <CheckCircle2 className="w-4 h-4" />,
-    colorClass: "bg-done/20 text-done border-done/30",
-  },
-} as const;
+import { IssueStatusBadge, IssueStatus, STATUS_META } from "@/components/issue-status";
 
 type Ticket = Doc<"tickets">;
 
-type Status = "unclaimed" | "in_progress" | "done";
+type Status = IssueStatus;
 
 interface KanbanBoardProps {
   workspaceId: Id<"workspaces">;
@@ -61,6 +41,12 @@ interface KanbanBoardProps {
 }
 
 const getOrderValue = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
+const STATUS_COLUMNS: Status[] = ["unclaimed", "in_progress", "done"];
+const STATUS_BORDER_CLASS: Record<Status, string> = {
+  unclaimed: "border-unclaimed/30",
+  in_progress: "border-in-progress/30",
+  done: "border-done/30",
+};
 
 export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoardProps) {
   const router = useRouter();
@@ -73,17 +59,29 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
   const updateTicket = useMutation(api.tickets.update);
   const deleteTicket = useMutation(api.tickets.remove);
 
-  const columns: Status[] = ["unclaimed", "in_progress", "done"];
-
   const [optimisticMoves, setOptimisticMoves] = useState<
     Map<string, { status: Status; order: number }>
   >(new Map());
 
+  const resolvedOptimisticMoves = useMemo(() => {
+    if (!optimisticMoves.size) return optimisticMoves;
+    const next = new Map(optimisticMoves);
+    for (const ticket of tickets) {
+      const override = next.get(ticket._id);
+      if (!override) continue;
+      const currentOrder = ticket.order ?? ticket.createdAt;
+      if (ticket.status === override.status && currentOrder === override.order) {
+        next.delete(ticket._id);
+      }
+    }
+    return next;
+  }, [optimisticMoves, tickets]);
+
   const visibleTickets = useMemo(() => {
     const base = showArchived ? tickets : tickets.filter((ticket) => !(ticket.archived ?? false));
-    if (!optimisticMoves.size) return base;
+    if (!resolvedOptimisticMoves.size) return base;
     return base.map((ticket) => {
-      const override = optimisticMoves.get(ticket._id);
+      const override = resolvedOptimisticMoves.get(ticket._id);
       if (!override) return ticket;
       return {
         ...ticket,
@@ -91,7 +89,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
         order: override.order,
       };
     });
-  }, [tickets, showArchived, optimisticMoves]);
+  }, [tickets, showArchived, resolvedOptimisticMoves]);
 
   const ticketsById = useMemo(
     () => new Map(tickets.map((ticket) => [ticket._id, ticket])),
@@ -99,7 +97,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
   );
 
   const ticketsByStatus = useMemo(() => {
-    return columns.reduce(
+    return STATUS_COLUMNS.reduce(
       (acc, status) => {
         acc[status] = visibleTickets
           .filter((ticket) => ticket.status === status)
@@ -109,23 +107,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
       },
       {} as Record<Status, Ticket[]>
     );
-  }, [columns, visibleTickets]);
-
-  useEffect(() => {
-    if (!optimisticMoves.size) return;
-    setOptimisticMoves((prev) => {
-      const next = new Map(prev);
-      for (const ticket of tickets) {
-        const override = next.get(ticket._id);
-        if (!override) continue;
-        const currentOrder = ticket.order ?? ticket.createdAt;
-        if (ticket.status === override.status && currentOrder === override.order) {
-          next.delete(ticket._id);
-        }
-      }
-      return next;
-    });
-  }, [tickets, optimisticMoves.size]);
+  }, [visibleTickets]);
 
   const applyOptimisticMove = (ticketId: Id<"tickets">, status: Status, order: number) => {
     setOptimisticMoves((prev) => {
@@ -240,8 +222,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {columns.map((status) => {
-          const config = STATUS_CONFIG[status];
+        {STATUS_COLUMNS.map((status) => {
           return (
             <div
               key={status}
@@ -286,10 +267,11 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 bg-background/30">
                 <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium border ${config.colorClass}`}>
-                    {config.icon}
-                    {config.label}
-                  </span>
+                  <IssueStatusBadge
+                    status={status}
+                    size="md"
+                    className={STATUS_BORDER_CLASS[status]}
+                  />
                   <span className="text-xs text-muted-foreground">
                     {ticketsByStatus[status]?.length ?? 0}
                   </span>
@@ -401,12 +383,12 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {columns.map((nextStatus) => (
+                              {STATUS_COLUMNS.map((nextStatus) => (
                                 <DropdownMenuItem
                                   key={nextStatus}
                                   onClick={() => handleStatusChange(ticket._id, nextStatus)}
                                 >
-                                  Move to {STATUS_CONFIG[nextStatus].label}
+                                  Move to {STATUS_META[nextStatus].label}
                                 </DropdownMenuItem>
                               ))}
                               <DropdownMenuSeparator />

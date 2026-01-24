@@ -26,13 +26,17 @@ const getCountedState = (archived: boolean | undefined, status: StatusType) => {
   return { counted, done };
 };
 
-const applyCountsDelta = async (ctx: any, parentId: string, delta: CountsDelta) => {
+const applyCountsDelta = async (
+  ctx: MutationCtx,
+  parentId: Id<"tickets">,
+  delta: CountsDelta
+) => {
   if (!delta.count && !delta.done) return;
-  const parent = await ctx.db.get(parentId as never);
+  const parent = await ctx.db.get(parentId);
   if (!parent) return;
   const nextCount = Math.max(0, (parent.childCount ?? 0) + delta.count);
   const nextDone = Math.max(0, (parent.childDoneCount ?? 0) + delta.done);
-  await ctx.db.patch(parentId as never, {
+  await ctx.db.patch(parentId, {
     childCount: nextCount,
     childDoneCount: nextDone,
     updatedAt: Date.now(),
@@ -40,16 +44,16 @@ const applyCountsDelta = async (ctx: any, parentId: string, delta: CountsDelta) 
 };
 
 const ensureValidParent = async (
-  ctx: any,
-  workspaceId: string,
-  ticketId: string | null,
-  parentId: string | null
+  ctx: MutationCtx,
+  workspaceId: Id<"workspaces">,
+  ticketId: Id<"tickets"> | null,
+  parentId: Id<"tickets"> | null
 ) => {
   if (!parentId) return;
   if (ticketId && parentId === ticketId) {
     throw new Error("Ticket cannot be its own parent");
   }
-  let current = await ctx.db.get(parentId as never);
+  let current = await ctx.db.get(parentId);
   if (!current || current.workspaceId !== workspaceId) {
     throw new Error("Invalid parent ticket");
   }
@@ -57,9 +61,45 @@ const ensureValidParent = async (
     if (ticketId && current.parentId === ticketId) {
       throw new Error("Ticket cannot be moved under its own descendant");
     }
-    const next = await ctx.db.get(current.parentId as never);
+    const next = await ctx.db.get(current.parentId);
     if (!next) break;
     current = next;
+  }
+};
+
+const cascadeArchive = async (
+  ctx: MutationCtx,
+  workspaceId: Id<"workspaces">,
+  rootId: Id<"tickets">,
+  archived: boolean
+) => {
+  const queue: Id<"tickets">[] = [rootId];
+  while (queue.length) {
+    const currentId = queue.shift();
+    if (!currentId) continue;
+    const children = await ctx.db
+      .query("tickets")
+      .withIndex("by_workspace_parent", (q) =>
+        q.eq("workspaceId", workspaceId).eq("parentId", currentId)
+      )
+      .collect();
+    for (const child of children) {
+      queue.push(child._id);
+      const prevArchived = child.archived ?? false;
+      if (prevArchived === archived) continue;
+      const prevState = getCountedState(prevArchived, child.status);
+      const nextState = getCountedState(archived, child.status);
+      if (child.parentId) {
+        await applyCountsDelta(ctx, child.parentId, {
+          count: nextState.counted ? 1 : -1,
+          done: nextState.done ? 1 : prevState.done ? -1 : 0,
+        });
+      }
+      await ctx.db.patch(child._id, {
+        archived,
+        updatedAt: Date.now(),
+      });
+    }
   }
 };
 
@@ -208,6 +248,7 @@ export const update = mutation({
 
     const nextParentId = parentId !== undefined ? parentId : ticket.parentId;
     const nextArchived = archived !== undefined ? archived : ticket.archived ?? false;
+    const archiveChanged = archived !== undefined && nextArchived !== (ticket.archived ?? false);
 
     await ensureValidParent(ctx, ticket.workspaceId, id, nextParentId ?? null);
 
@@ -240,12 +281,21 @@ export const update = mutation({
       archived: nextArchived,
       updatedAt: Date.now(),
     });
+
+    if (archiveChanged) {
+      await cascadeArchive(ctx, ticket.workspaceId, id, nextArchived);
+    }
   },
 });
 
 const applyStatusChange = async (
-  ctx: any,
-  ticket: { parentId: string | null; archived?: boolean; status: StatusType; _id: string },
+  ctx: MutationCtx,
+  ticket: {
+    parentId: Id<"tickets"> | null;
+    archived?: boolean;
+    status: StatusType;
+    _id: Id<"tickets">;
+  },
   status: StatusType
 ) => {
   if (ticket.status === status) return;
@@ -268,7 +318,7 @@ const applyStatusChange = async (
     updates.ownerId = undefined;
     updates.ownerType = undefined;
   }
-  await ctx.db.patch(ticket._id as never, updates);
+  await ctx.db.patch(ticket._id, updates);
 };
 
 export const claim = mutation({
@@ -364,13 +414,13 @@ const deleteSubtree = async (
     const children = await ctx.db
       .query("tickets")
       .withIndex("by_workspace_parent", (q) =>
-        q.eq("workspaceId", workspaceId).eq("parentId", currentId as never)
+        q.eq("workspaceId", workspaceId).eq("parentId", currentId)
       )
       .collect();
     for (const child of children) {
       stack.push(child._id);
     }
-    await ctx.db.delete(currentId as never);
+    await ctx.db.delete(currentId);
   }
 };
 
