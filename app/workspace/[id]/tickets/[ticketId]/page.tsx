@@ -87,7 +87,7 @@ export default function TicketDetailPage() {
       for (const child of childrenList) {
         if (visited.has(child._id)) continue;
         visited.add(child._id);
-        stack.push(child._id as string);
+        stack.push(child._id);
       }
     }
     return visited;
