@@ -53,17 +53,18 @@ const ensureValidParent = async (
   if (ticketId && parentId === ticketId) {
     throw new Error("Ticket cannot be its own parent");
   }
-  let current = await ctx.db.get(parentId);
-  if (!current || current.workspaceId !== workspaceId) {
+  const parent = await ctx.db.get(parentId);
+  if (!parent || parent.workspaceId !== workspaceId) {
     throw new Error("Invalid parent ticket");
   }
-  while (current.parentId) {
-    if (ticketId && current.parentId === ticketId) {
+  let ancestorId: Id<"tickets"> | null = parent.parentId;
+  while (ancestorId) {
+    if (ticketId && ancestorId === ticketId) {
       throw new Error("Ticket cannot be moved under its own descendant");
     }
-    const next = await ctx.db.get(current.parentId);
-    if (!next) break;
-    current = next;
+    const ancestor = await ctx.db.get(ancestorId);
+    if (!ancestor) break;
+    ancestorId = ancestor.parentId;
   }
 };
 
