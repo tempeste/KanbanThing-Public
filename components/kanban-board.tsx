@@ -81,9 +81,8 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
 
   const visibleTickets = useMemo(() => {
     const base = showArchived ? tickets : tickets.filter((ticket) => !(ticket.archived ?? false));
-    const rootOnly = base.filter((ticket) => !ticket.parentId);
-    if (!optimisticMoves.size) return rootOnly;
-    return rootOnly.map((ticket) => {
+    if (!optimisticMoves.size) return base;
+    return base.map((ticket) => {
       const override = optimisticMoves.get(ticket._id);
       if (!override) return ticket;
       return {
@@ -93,6 +92,11 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
       };
     });
   }, [tickets, showArchived, optimisticMoves]);
+
+  const ticketsById = useMemo(
+    () => new Map(tickets.map((ticket) => [ticket._id, ticket])),
+    [tickets]
+  );
 
   const ticketsByStatus = useMemo(() => {
     return columns.reduce(
@@ -219,7 +223,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
         <div>
           <h2 className="text-lg font-semibold">Board</h2>
           <p className="text-sm text-muted-foreground">
-            Top-level issues only. Open an issue to manage sub-issues.
+            All issues, including sub-issues. Use list view to reparent.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -297,6 +301,9 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                     const ticketNumber = formatTicketNumber(workspacePrefix, ticket.number);
                     const progressTotal = ticket.childCount ?? 0;
                     const progressDone = ticket.childDoneCount ?? 0;
+                    const parentTicket = ticket.parentId
+                      ? ticketsById.get(ticket.parentId)
+                      : null;
 
                     return (
                       <Card
@@ -376,6 +383,15 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                                   </Badge>
                                 )}
                               </div>
+                              {parentTicket && (
+                                <div className="mt-2 text-[11px] text-muted-foreground">
+                                  Sub-issue of{" "}
+                                  <span className="font-mono">
+                                    {formatTicketNumber(workspacePrefix, parentTicket.number) ?? "—"}
+                                  </span>{" "}
+                                  · {parentTicket.title}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <DropdownMenu>
