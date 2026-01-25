@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
-import { ConvexClientProvider } from "@/components/convex-provider";
+import { ConvexAuthProvider } from "@/components/convex-auth-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const spaceGrotesk = Space_Grotesk({
@@ -29,11 +29,11 @@ export default function RootLayout({
       <body
         className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <ConvexClientProvider>
+        <ConvexAuthProvider>
           <TooltipProvider>
             {children}
           </TooltipProvider>
-        </ConvexClientProvider>
+        </ConvexAuthProvider>
       </body>
     </html>
   );

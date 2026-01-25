@@ -12,9 +12,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Markdown } from "@/components/markdown";
-import { ArrowLeft, Key, Plus, Trash2, Copy, Check, Hash } from "lucide-react";
+import { ArrowLeft, Key, Plus, Trash2, Copy, Check, Hash, Users, Crown, Shield, User } from "lucide-react";
 import { useState } from "react";
 import { generateWorkspacePrefix } from "@/lib/utils";
+import { useSession } from "@/lib/auth-client";
 
 function generateApiKey(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -36,14 +37,24 @@ async function hashKey(key: string): Promise<string> {
 export default function WorkspaceSettingsPage() {
   const params = useParams();
   const workspaceId = params.id as Id<"workspaces">;
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
 
   const workspace = useQuery(api.workspaces.get, { id: workspaceId });
   const apiKeys = useQuery(api.apiKeys.list, { workspaceId });
+  const members = useQuery(api.workspaceMembers.listByWorkspace, { workspaceId });
+  const currentMembership = useQuery(
+    api.workspaceMembers.getMembership,
+    userId ? { workspaceId, betterAuthUserId: userId } : "skip"
+  );
 
   const updateWorkspace = useMutation(api.workspaces.update);
   const createApiKey = useMutation(api.apiKeys.create);
   const deleteApiKey = useMutation(api.apiKeys.remove);
   const resetWorkspaceTickets = useMutation(api.workspaces.resetWorkspaceTickets);
+  const addMember = useMutation(api.workspaceMembers.add);
+  const removeMember = useMutation(api.workspaceMembers.remove);
+  const updateMemberRole = useMutation(api.workspaceMembers.updateRole);
 
   const [docs, setDocs] = useState<string | null>(null);
   const [isSavingDocs, setIsSavingDocs] = useState(false);
@@ -53,6 +64,10 @@ export default function WorkspaceSettingsPage() {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
+  const [newMemberUserId, setNewMemberUserId] = useState("");
+  const [isAddingMember, setIsAddingMember] = useState(false);
+
+  const canManageMembers = currentMembership?.role === "owner" || currentMembership?.role === "admin";
 
   const currentDocs = docs ?? workspace?.docs ?? "";
   const defaultPrefix = workspace ? generateWorkspacePrefix(workspace.name) : "";
@@ -101,6 +116,49 @@ export default function WorkspaceSettingsPage() {
   const handleDeleteKey = async (id: Id<"apiKeys">) => {
     if (confirm("Delete this API key? Any agents using it will lose access.")) {
       await deleteApiKey({ id });
+    }
+  };
+
+  const handleAddMember = async () => {
+    if (!newMemberUserId.trim()) return;
+    setIsAddingMember(true);
+    try {
+      await addMember({
+        workspaceId,
+        betterAuthUserId: newMemberUserId.trim(),
+        role: "member",
+      });
+      setNewMemberUserId("");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to add member");
+    } finally {
+      setIsAddingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberUserId: string) => {
+    if (confirm("Remove this member from the workspace?")) {
+      try {
+        await removeMember({ workspaceId, betterAuthUserId: memberUserId });
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Failed to remove member");
+      }
+    }
+  };
+
+  const handleChangeRole = async (memberUserId: string, newRole: "owner" | "admin" | "member") => {
+    try {
+      await updateMemberRole({ workspaceId, betterAuthUserId: memberUserId, role: newRole });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to change role");
+    }
+  };
+
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case "owner": return <Crown className="w-4 h-4 text-amber-500" />;
+      case "admin": return <Shield className="w-4 h-4 text-blue-500" />;
+      default: return <User className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
@@ -365,6 +423,81 @@ export default function WorkspaceSettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {canManageMembers && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Members
+              </CardTitle>
+              <CardDescription>
+                Manage who has access to this workspace. Owners have full control, admins can manage members, and members can view and edit tickets.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="User ID to add"
+                  value={newMemberUserId}
+                  onChange={(e) => setNewMemberUserId(e.target.value)}
+                />
+                <Button onClick={handleAddMember} disabled={!newMemberUserId.trim() || isAddingMember}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Member
+                </Button>
+              </div>
+
+              {members && members.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <Label>Current Members</Label>
+                    {members.map((member) => (
+                      <div
+                        key={member._id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          {getRoleIcon(member.role)}
+                          <div>
+                            <p className="font-medium font-mono text-sm">{member.betterAuthUserId}</p>
+                            <p className="text-xs text-muted-foreground capitalize">
+                              {member.role}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {currentMembership?.role === "owner" && member.betterAuthUserId !== userId && (
+                            <select
+                              className="h-8 px-2 text-sm border rounded-md bg-background"
+                              value={member.role}
+                              onChange={(e) => handleChangeRole(member.betterAuthUserId, e.target.value as "owner" | "admin" | "member")}
+                            >
+                              <option value="member">Member</option>
+                              <option value="admin">Admin</option>
+                              <option value="owner">Owner</option>
+                            </select>
+                          )}
+                          {member.betterAuthUserId !== userId && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => handleRemoveMember(member.betterAuthUserId)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="border-destructive/40">
           <CardHeader>

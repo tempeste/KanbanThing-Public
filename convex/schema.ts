@@ -7,8 +7,19 @@ export default defineSchema({
     docs: v.optional(v.string()),
     prefix: v.optional(v.string()),
     ticketCounter: v.optional(v.number()),
+    createdBy: v.optional(v.string()), // Better Auth user ID
     createdAt: v.number(),
   }),
+
+  workspaceMembers: defineTable({
+    workspaceId: v.id("workspaces"),
+    betterAuthUserId: v.string(), // References Better Auth's user.id
+    role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
+    createdAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_user", ["betterAuthUserId"])
+    .index("by_workspace_user", ["workspaceId", "betterAuthUserId"]),
 
   tickets: defineTable({
     workspaceId: v.id("workspaces"),
