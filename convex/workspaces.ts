@@ -33,6 +33,106 @@ export const create = mutation({
   },
 });
 
+export const createWithOwner = mutation({
+  args: {
+    name: v.string(),
+    docs: v.optional(v.string()),
+    betterAuthUserId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const prefix = generateWorkspacePrefix(args.name);
+    const workspaceId = await ctx.db.insert("workspaces", {
+      name: args.name,
+      docs: args.docs,
+      prefix,
+      ticketCounter: 0,
+      createdBy: args.betterAuthUserId,
+      createdAt: Date.now(),
+    });
+
+    // Add the creator as owner
+    await ctx.db.insert("workspaceMembers", {
+      workspaceId,
+      betterAuthUserId: args.betterAuthUserId,
+      role: "owner",
+      createdAt: Date.now(),
+    });
+
+    return workspaceId;
+  },
+});
+
+export const listForUser = query({
+  args: { betterAuthUserId: v.string() },
+  handler: async (ctx, args) => {
+    // Get all memberships for this user
+    const memberships = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_user", (q) => q.eq("betterAuthUserId", args.betterAuthUserId))
+      .collect();
+
+    // Fetch the workspaces
+    const workspaces = await Promise.all(
+      memberships.map(async (m) => {
+        const workspace = await ctx.db.get(m.workspaceId);
+        return workspace ? { ...workspace, role: m.role } : null;
+      })
+    );
+
+    return workspaces.filter((w) => w !== null);
+  },
+});
+
+export const removeWithCleanup = mutation({
+  args: {
+    id: v.id("workspaces"),
+    betterAuthUserId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Check if user is owner
+    const membership = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_workspace_user", (q) =>
+        q.eq("workspaceId", args.id).eq("betterAuthUserId", args.betterAuthUserId)
+      )
+      .first();
+
+    if (!membership || membership.role !== "owner") {
+      throw new Error("Only workspace owners can delete workspaces");
+    }
+
+    // Delete all tickets in workspace
+    const tickets = await ctx.db
+      .query("tickets")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .collect();
+    for (const ticket of tickets) {
+      await ctx.db.delete(ticket._id);
+    }
+
+    // Delete all API keys in workspace
+    const apiKeys = await ctx.db
+      .query("apiKeys")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .collect();
+    for (const apiKey of apiKeys) {
+      await ctx.db.delete(apiKey._id);
+    }
+
+    // Delete all memberships
+    const memberships = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .collect();
+    for (const m of memberships) {
+      await ctx.db.delete(m._id);
+    }
+
+    // Delete workspace
+    await ctx.db.delete(args.id);
+  },
+});
+
 export const update = mutation({
   args: {
     id: v.id("workspaces"),
