@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { authClient, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -30,24 +30,29 @@ export default function AccountPage() {
   const [newPassword, setNewPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  useEffect(() => {
-    const fetchAccounts = async () => {
-      try {
-        const accounts = await authClient.listAccounts();
-        if (accounts.data) {
-          setLinkedAccounts(accounts.data as LinkedAccount[]);
-        }
-      } catch {
-        console.error("Failed to fetch linked accounts");
-      } finally {
+  const fetchAccounts = useCallback(async (setLoading = false) => {
+    if (setLoading) {
+      setIsLoadingAccounts(true);
+    }
+    try {
+      const accounts = await authClient.listAccounts();
+      if (accounts.data) {
+        setLinkedAccounts(accounts.data as LinkedAccount[]);
+      }
+    } catch {
+      console.error("Failed to fetch linked accounts");
+    } finally {
+      if (setLoading) {
         setIsLoadingAccounts(false);
       }
-    };
-
-    if (session?.user) {
-      fetchAccounts();
     }
-  }, [session?.user]);
+  }, []);
+
+  useEffect(() => {
+    if (session?.user) {
+      fetchAccounts(true);
+    }
+  }, [fetchAccounts, session?.user]);
 
   if (isPending) {
     return (
@@ -105,20 +110,28 @@ export default function AccountPage() {
     setIsChangingPassword(true);
 
     try {
-      const result = await authClient.changePassword({
-        currentPassword,
-        newPassword,
-      });
+      const result = hasCredentialAccount
+        ? await authClient.changePassword({
+            currentPassword,
+            newPassword,
+          })
+        : await authClient.setPassword({
+            newPassword,
+          });
 
       if (result.error) {
-        setError(result.error.message ?? "Failed to change password");
+        setError(
+          result.error.message ??
+            (hasCredentialAccount ? "Failed to change password" : "Failed to set password")
+        );
       } else {
-        setSuccess("Password changed successfully");
+        setSuccess(hasCredentialAccount ? "Password changed successfully" : "Password set successfully");
         setCurrentPassword("");
         setNewPassword("");
+        await fetchAccounts();
       }
     } catch {
-      setError("Failed to change password");
+      setError(hasCredentialAccount ? "Failed to change password" : "Failed to set password");
     } finally {
       setIsChangingPassword(false);
     }
