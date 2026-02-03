@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
       status: t.status,
       ownerId: t.ownerId,
       ownerType: t.ownerType,
+      ownerDisplayName: t.ownerDisplayName,
       parentId: t.parentId ?? null,
       order: t.order,
       archived: t.archived ?? false,

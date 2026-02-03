@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus } from "lucide-react";
 import { IssueStatusBadge, IssueStatus } from "@/components/issue-status";
 import { TicketCard } from "@/components/ticket-card";
+import { useSession } from "@/lib/auth-client";
 
 type Ticket = Doc<"tickets">;
 
@@ -32,12 +33,22 @@ const STATUS_BORDER_CLASS: Record<Status, string> = {
 
 export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoardProps) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
+
+  const userProfile = useQuery(
+    api.userProfiles.getByAuthId,
+    userId ? { betterAuthUserId: userId } : "skip"
+  );
+
   const [showArchived, setShowArchived] = useState(false);
   const [dragOverTicketId, setDragOverTicketId] = useState<Id<"tickets"> | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<"above" | "below" | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<Status | null>(null);
+  const draggedTicketRef = useRef<{ id: Id<"tickets">; status: Status } | null>(null);
 
   const moveTicket = useMutation(api.tickets.move);
+  const assignTicket = useMutation(api.tickets.assign);
   const updateTicket = useMutation(api.tickets.update);
   const deleteTicket = useMutation(api.tickets.remove);
 
@@ -128,15 +139,25 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
   const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
     const columnTickets = ticketsByStatus[newStatus] ?? [];
     const lastTicket = columnTickets[columnTickets.length - 1];
-    const fallbackTicket = tickets.find((ticket) => ticket._id === ticketId);
+    const currentTicket = tickets.find((ticket) => ticket._id === ticketId);
     const newOrder = lastTicket
       ? getOrderValue(lastTicket) + 1000
-      : fallbackTicket
-      ? getOrderValue(fallbackTicket)
+      : currentTicket
+      ? getOrderValue(currentTicket)
       : 0;
     applyOptimisticMove(ticketId, newStatus, newOrder);
     try {
       await moveTicket({ id: ticketId, status: newStatus, order: newOrder });
+      // Auto-assign current user when moving from unclaimed to in_progress
+      if (currentTicket?.status === "unclaimed" && newStatus === "in_progress" && userId) {
+        const displayName = userProfile?.name || userProfile?.email || userId;
+        await assignTicket({
+          id: ticketId,
+          ownerId: userId,
+          ownerType: "user",
+          ownerDisplayName: displayName,
+        });
+      }
     } catch (error) {
       setOptimisticMoves((prev) => {
         const next = new Map(prev);
@@ -157,6 +178,10 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
     event: React.DragEvent<HTMLElement>,
     ticketId: Id<"tickets">
   ) => {
+    const ticket = tickets.find((t) => t._id === ticketId);
+    if (ticket) {
+      draggedTicketRef.current = { id: ticketId, status: ticket.status };
+    }
     event.dataTransfer.setData("application/x-ticket-id", ticketId);
     event.dataTransfer.setData("text/plain", ticketId);
     event.dataTransfer.effectAllowed = "move";
@@ -220,6 +245,13 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                 event.preventDefault();
                 const ticketId = event.dataTransfer.getData("application/x-ticket-id") as Id<"tickets">;
                 if (!ticketId) return;
+
+                const originalStatus = draggedTicketRef.current?.status;
+                const shouldAutoAssign =
+                  originalStatus === "unclaimed" &&
+                  status === "in_progress" &&
+                  userId;
+
                 if (dragOverTicketId && dragOverPosition && dragOverTicketId !== ticketId) {
                   const order = calculateDropOrder(
                     status,
@@ -230,6 +262,15 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                   if (!order) return;
                   applyOptimisticMove(ticketId, status, order);
                   await moveTicket({ id: ticketId, status, order });
+                  if (shouldAutoAssign) {
+                    const displayName = userProfile?.name || userProfile?.email || userId;
+                    await assignTicket({
+                      id: ticketId,
+                      ownerId: userId,
+                      ownerType: "user",
+                      ownerDisplayName: displayName,
+                    });
+                  }
                 } else {
                   const columnTickets = ticketsByStatus[status] ?? [];
                   const lastTicket = columnTickets[columnTickets.length - 1];
@@ -241,7 +282,17 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                     : 0;
                   applyOptimisticMove(ticketId, status, order);
                   await moveTicket({ id: ticketId, status, order });
+                  if (shouldAutoAssign) {
+                    const displayName = userProfile?.name || userProfile?.email || userId;
+                    await assignTicket({
+                      id: ticketId,
+                      ownerId: userId,
+                      ownerType: "user",
+                      ownerDisplayName: displayName,
+                    });
+                  }
                 }
+                draggedTicketRef.current = null;
                 setDragOverTicketId(null);
                 setDragOverPosition(null);
                 setDragOverStatus(null);

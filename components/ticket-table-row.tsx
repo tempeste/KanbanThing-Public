@@ -149,7 +149,7 @@ export function TicketTableRow({
         <IssueStatusBadge status={ticket.status} />
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground md:hidden">Owner</span>
+        <span className="text-xs text-muted-foreground md:hidden">Assignee</span>
         {ticket.ownerId ? (
           <span className="inline-flex items-center gap-1 text-sm">
             {ticket.ownerType === "agent" ? (
@@ -157,7 +157,7 @@ export function TicketTableRow({
             ) : (
               <User className="w-3 h-3 text-muted-foreground" />
             )}
-            {ticket.ownerId}
+            {ticket.ownerDisplayName || ticket.ownerId}
           </span>
         ) : (
           <span className="text-muted-foreground text-sm">—</span>

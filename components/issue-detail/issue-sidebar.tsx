@@ -5,7 +5,7 @@ import { Doc, Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { IssueStatusBadge, IssueStatus, STATUS_META } from "@/components/issue-status";
-import { Bot, User } from "lucide-react";
+import { AssigneePicker } from "@/components/assignee-picker";
 
 type Ticket = Doc<"tickets">;
 
@@ -45,19 +45,14 @@ export function IssueSidebar({
           </select>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground">Owner</div>
-          {ticket.ownerId ? (
-            <div className="mt-1 inline-flex items-center gap-1 text-sm">
-              {ticket.ownerType === "agent" ? (
-                <Bot className="w-3 h-3 text-muted-foreground" />
-              ) : (
-                <User className="w-3 h-3 text-muted-foreground" />
-              )}
-              {ticket.ownerId}
-            </div>
-          ) : (
-            <div className="mt-1 text-sm text-muted-foreground">Unassigned</div>
-          )}
+          <div className="text-xs text-muted-foreground mb-1">Assignee</div>
+          <AssigneePicker
+            workspaceId={workspaceId}
+            ticketId={ticket._id}
+            currentOwnerId={ticket.ownerId}
+            currentOwnerType={ticket.ownerType}
+            currentOwnerDisplayName={ticket.ownerDisplayName}
+          />
         </div>
         <div>
           <div className="text-xs text-muted-foreground">Created</div>

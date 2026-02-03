@@ -143,7 +143,7 @@ export function TicketCard({
             ) : (
               <User className="w-3 h-3" />
             )}
-            {ticket.ownerId}
+            {ticket.ownerDisplayName || ticket.ownerId}
           </Badge>
         )}
       </div>

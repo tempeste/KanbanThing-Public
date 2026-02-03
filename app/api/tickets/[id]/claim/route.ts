@@ -33,10 +33,11 @@ export async function POST(
   }
 
   try {
-    await convex.mutation(api.tickets.claim, {
+    await convex.mutation(api.tickets.assign, {
       id: id as Id<"tickets">,
       ownerId: auth.keyName,
       ownerType: "agent",
+      ownerDisplayName: auth.keyName,
     });
 
     const updatedTicket = await convex.query(api.tickets.get, {
@@ -56,6 +57,7 @@ export async function POST(
         status: updatedTicket!.status,
         ownerId: updatedTicket!.ownerId,
         ownerType: updatedTicket!.ownerType,
+        ownerDisplayName: updatedTicket!.ownerDisplayName,
         childCount: updatedTicket!.childCount ?? 0,
         childDoneCount: updatedTicket!.childDoneCount ?? 0,
         hasChildren: (updatedTicket!.childCount ?? 0) > 0,

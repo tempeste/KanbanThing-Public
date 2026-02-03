@@ -167,3 +167,67 @@ export const getMembership = query({
       .first();
   },
 });
+
+export const addByEmails = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    emails: v.array(v.string()),
+    role: v.optional(
+      v.union(v.literal("owner"), v.literal("admin"), v.literal("member"))
+    ),
+  },
+  handler: async (ctx, args) => {
+    const role = args.role ?? "member";
+    const results: {
+      added: string[];
+      alreadyMember: string[];
+      notFound: string[];
+    } = {
+      added: [],
+      alreadyMember: [],
+      notFound: [],
+    };
+
+    for (const email of args.emails) {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail) continue;
+
+      // Look up user profile by email
+      const profile = await ctx.db
+        .query("userProfiles")
+        .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
+        .first();
+
+      if (!profile) {
+        results.notFound.push(normalizedEmail);
+        continue;
+      }
+
+      // Check if already a member
+      const existing = await ctx.db
+        .query("workspaceMembers")
+        .withIndex("by_workspace_user", (q) =>
+          q
+            .eq("workspaceId", args.workspaceId)
+            .eq("betterAuthUserId", profile.betterAuthUserId)
+        )
+        .first();
+
+      if (existing) {
+        results.alreadyMember.push(normalizedEmail);
+        continue;
+      }
+
+      // Add as member
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId: args.workspaceId,
+        betterAuthUserId: profile.betterAuthUserId,
+        role,
+        createdAt: Date.now(),
+      });
+      results.added.push(normalizedEmail);
+    }
+
+    return results;
+  },
+});

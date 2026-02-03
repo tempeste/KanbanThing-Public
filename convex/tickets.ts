@@ -370,6 +370,60 @@ export const unclaim = mutation({
   },
 });
 
+export const assign = mutation({
+  args: {
+    id: v.id("tickets"),
+    ownerId: v.string(),
+    ownerType: v.union(v.literal("user"), v.literal("agent")),
+    ownerDisplayName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const ticket = await ctx.db.get(args.id);
+    if (!ticket) {
+      throw new Error("Ticket not found");
+    }
+
+    const updates: Record<string, unknown> = {
+      ownerId: args.ownerId,
+      ownerType: args.ownerType,
+      ownerDisplayName: args.ownerDisplayName,
+      updatedAt: Date.now(),
+    };
+
+    // If assigning to unclaimed ticket, set status to in_progress
+    if (ticket.status === "unclaimed") {
+      updates.status = "in_progress";
+    }
+
+    await ctx.db.patch(args.id, updates);
+  },
+});
+
+export const unassign = mutation({
+  args: { id: v.id("tickets") },
+  handler: async (ctx, args) => {
+    const ticket = await ctx.db.get(args.id);
+    if (!ticket) {
+      throw new Error("Ticket not found");
+    }
+
+    const updates: Record<string, unknown> = {
+      ownerId: undefined,
+      ownerType: undefined,
+      ownerDisplayName: undefined,
+      updatedAt: Date.now(),
+    };
+
+    // Only reset to unclaimed if currently in_progress
+    // Keep "done" status when unassigning completed tickets
+    if (ticket.status === "in_progress") {
+      updates.status = "unclaimed";
+    }
+
+    await ctx.db.patch(args.id, updates);
+  },
+});
+
 export const updateStatus = mutation({
   args: {
     id: v.id("tickets"),
