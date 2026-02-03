@@ -23,12 +23,14 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const prefix = generateWorkspacePrefix(args.name);
+    const now = Date.now();
     return await ctx.db.insert("workspaces", {
       name: args.name,
       docs: args.docs,
       prefix,
       ticketCounter: 0,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     });
   },
 });
@@ -41,13 +43,15 @@ export const createWithOwner = mutation({
   },
   handler: async (ctx, args) => {
     const prefix = generateWorkspacePrefix(args.name);
+    const now = Date.now();
     const workspaceId = await ctx.db.insert("workspaces", {
       name: args.name,
       docs: args.docs,
       prefix,
       ticketCounter: 0,
       createdBy: args.betterAuthUserId,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     });
 
     // Add the creator as owner
@@ -141,12 +145,17 @@ export const update = mutation({
     prefix: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { id, ...updates } = args;
-    const workspace = await ctx.db.get(id);
+    const workspace = await ctx.db.get(args.id);
     if (!workspace) {
       throw new Error("Workspace not found");
     }
-    await ctx.db.patch(id, updates);
+    const updates: Record<string, string | undefined | number> = {};
+    if (args.name !== undefined) updates.name = args.name;
+    if (args.docs !== undefined) updates.docs = args.docs;
+    if (args.prefix !== undefined) updates.prefix = args.prefix;
+    if (Object.keys(updates).length === 0) return;
+    updates.updatedAt = Date.now();
+    await ctx.db.patch(args.id, updates);
   },
 });
 
@@ -262,6 +271,7 @@ export const resetWorkspaceTickets = mutation({
 
     await ctx.db.patch(args.id, {
       ticketCounter: 0,
+      updatedAt: Date.now(),
     });
   },
 });
@@ -282,6 +292,7 @@ export const resetAllTickets = mutation({
 
       await ctx.db.patch(workspace._id, {
         ticketCounter: 0,
+        updatedAt: Date.now(),
       });
     }
   },
