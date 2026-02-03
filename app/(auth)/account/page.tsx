@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authClient, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Link as LinkIcon, Unlink, Check, X } from "lucide-react";
+import { ArrowLeft, Link as LinkIcon, Unlink, Check, X, Pencil } from "lucide-react";
 import Link from "next/link";
 
 type LinkedAccount = {
@@ -19,11 +19,15 @@ type LinkedAccount = {
 
 export default function AccountPage() {
   const router = useRouter();
-  const { data: session, isPending } = useSession();
+  const searchParams = useSearchParams();
+  const { data: session, isPending, refetch } = useSession();
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [isUpdatingName, setIsUpdatingName] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
 
   // Password change state
   const [currentPassword, setCurrentPassword] = useState("");
@@ -54,6 +58,10 @@ export default function AccountPage() {
     }
   }, [fetchAccounts, session?.user]);
 
+  useEffect(() => {
+    setName(session?.user?.name ?? "");
+  }, [session?.user?.name]);
+
   if (isPending) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -68,6 +76,16 @@ export default function AccountPage() {
   }
 
   const user = session.user;
+  const currentName = user.name ?? "";
+  const trimmedName = name.trim();
+  const isNameDirty = trimmedName !== currentName.trim();
+  const MAX_NAME_LENGTH = 64;
+  const nameError =
+    trimmedName.length === 0
+      ? "Name cannot be empty"
+      : trimmedName.length > MAX_NAME_LENGTH
+        ? `Name must be ${MAX_NAME_LENGTH} characters or fewer`
+        : null;
 
   const handleLinkAccount = async (provider: "google" | "github") => {
     setError(null);
@@ -137,16 +155,54 @@ export default function AccountPage() {
     }
   };
 
+  const handleUpdateName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (!isNameDirty) {
+      setIsEditingName(false);
+      return;
+    }
+    if (nameError) {
+      setError(nameError);
+      return;
+    }
+
+    setIsUpdatingName(true);
+    try {
+      const result = await authClient.updateUser({ name: trimmedName });
+      if (result.error) {
+        setError(result.error.message ?? "Failed to update name");
+      } else {
+        setSuccess("Name updated");
+        setName(trimmedName);
+        setIsEditingName(false);
+        await refetch();
+      }
+    } catch {
+      setError("Failed to update name");
+    } finally {
+      setIsUpdatingName(false);
+    }
+  };
+
   const hasCredentialAccount = linkedAccounts.some((a) => a.providerId === "credential");
   const googleAccount = linkedAccounts.find((a) => a.providerId === "google");
   const githubAccount = linkedAccounts.find((a) => a.providerId === "github");
+
+  const returnToParam = searchParams.get("returnTo");
+  const returnTo =
+    returnToParam && returnToParam.startsWith("/") && !returnToParam.startsWith("//")
+      ? returnToParam
+      : "/";
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center gap-4">
-            <Link href="/">
+            <Link href={returnTo}>
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="w-5 h-5" />
               </Button>
@@ -181,10 +237,62 @@ export default function AccountPage() {
             <CardDescription>Your account information</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <p className="text-sm">{user.name ?? "Not set"}</p>
-            </div>
+            <form onSubmit={handleUpdateName} className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="profile-name">Name</Label>
+                {isEditingName ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="min-w-[220px] flex-1 space-y-1">
+                      <Input
+                        id="profile-name"
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                        placeholder="Your name"
+                      className={nameError ? "border-destructive focus-visible:ring-destructive" : undefined}
+                        autoFocus
+                      />
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span className={nameError ? "text-destructive" : undefined}>
+                          {nameError ?? " "}
+                        </span>
+                        <span>
+                          {trimmedName.length}/{MAX_NAME_LENGTH}
+                        </span>
+                      </div>
+                    </div>
+                    {isNameDirty ? (
+                      <Button type="submit" disabled={isUpdatingName || !!nameError}>
+                        {isUpdatingName ? "Saving..." : "Save"}
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setName(currentName);
+                        setIsEditingName(false);
+                      }}
+                      disabled={isUpdatingName}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm">{currentName || "Not set"}</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Edit name"
+                      onClick={() => setIsEditingName(true)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </form>
             <div className="space-y-2">
               <Label>Email</Label>
               <p className="text-sm">{user.email}</p>
