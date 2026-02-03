@@ -21,6 +21,16 @@ export default defineSchema({
     .index("by_user", ["betterAuthUserId"])
     .index("by_workspace_user", ["workspaceId", "betterAuthUserId"]),
 
+  userProfiles: defineTable({
+    betterAuthUserId: v.string(),
+    email: v.string(),
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    lastSyncedAt: v.number(),
+  })
+    .index("by_betterAuthUserId", ["betterAuthUserId"])
+    .index("by_email", ["email"]),
+
   tickets: defineTable({
     workspaceId: v.id("workspaces"),
     title: v.string(),
@@ -38,6 +48,7 @@ export default defineSchema({
     childDoneCount: v.number(),
     ownerId: v.optional(v.string()),
     ownerType: v.optional(v.union(v.literal("user"), v.literal("agent"))),
+    ownerDisplayName: v.optional(v.string()), // Cached display name for UI
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_workspace", ["workspaceId"])

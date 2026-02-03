@@ -12,10 +12,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Markdown } from "@/components/markdown";
-import { ArrowLeft, Key, Plus, Trash2, Copy, Check, Hash, Users, Crown, Shield, User } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, Key, Plus, Trash2, Copy, Check, Hash, Users, Crown, Shield, User, AlertCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { generateWorkspacePrefix } from "@/lib/utils";
 import { useSession } from "@/lib/auth-client";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 function generateApiKey(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -47,14 +48,28 @@ export default function WorkspaceSettingsPage() {
     api.workspaceMembers.getMembership,
     userId ? { workspaceId, betterAuthUserId: userId } : "skip"
   );
+  const memberUserIds = useMemo(
+    () => members?.map((m) => m.betterAuthUserId) ?? [],
+    [members]
+  );
+  const userProfiles = useQuery(
+    api.userProfiles.getByAuthIds,
+    memberUserIds.length > 0 ? { betterAuthUserIds: memberUserIds } : "skip"
+  );
+  const profileMap = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof userProfiles>[number]>();
+    userProfiles?.forEach((p) => map.set(p.betterAuthUserId, p));
+    return map;
+  }, [userProfiles]);
 
   const updateWorkspace = useMutation(api.workspaces.update);
   const createApiKey = useMutation(api.apiKeys.create);
   const deleteApiKey = useMutation(api.apiKeys.remove);
   const resetWorkspaceTickets = useMutation(api.workspaces.resetWorkspaceTickets);
-  const addMember = useMutation(api.workspaceMembers.add);
+  const addMembersByEmails = useMutation(api.workspaceMembers.addByEmails);
   const removeMember = useMutation(api.workspaceMembers.remove);
   const updateMemberRole = useMutation(api.workspaceMembers.updateRole);
+  const syncProfiles = useMutation(api.userProfiles.syncFromAuthIds);
 
   const [docs, setDocs] = useState<string | null>(null);
   const [isSavingDocs, setIsSavingDocs] = useState(false);
@@ -64,10 +79,28 @@ export default function WorkspaceSettingsPage() {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
-  const [newMemberUserId, setNewMemberUserId] = useState("");
-  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [memberEmails, setMemberEmails] = useState("");
+  const [isAddingMembers, setIsAddingMembers] = useState(false);
+  const [addMemberResult, setAddMemberResult] = useState<{
+    added: string[];
+    alreadyMember: string[];
+    notFound: string[];
+  } | null>(null);
 
   const canManageMembers = currentMembership?.role === "owner" || currentMembership?.role === "admin";
+  const requestedProfileIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!members || !members.length) return;
+    const missing = members
+      .map((member) => member.betterAuthUserId)
+      .filter((id) => !profileMap.has(id) && !requestedProfileIds.current.has(id));
+
+    if (missing.length === 0) return;
+
+    missing.forEach((id) => requestedProfileIds.current.add(id));
+    syncProfiles({ betterAuthUserIds: missing }).catch(console.error);
+  }, [members, profileMap, syncProfiles]);
 
   const currentDocs = docs ?? workspace?.docs ?? "";
   const defaultPrefix = workspace ? generateWorkspacePrefix(workspace.name) : "";
@@ -119,20 +152,28 @@ export default function WorkspaceSettingsPage() {
     }
   };
 
-  const handleAddMember = async () => {
-    if (!newMemberUserId.trim()) return;
-    setIsAddingMember(true);
+  const handleAddMembers = async () => {
+    const emails = memberEmails
+      .split(/[,\n]/)
+      .map((e) => e.trim())
+      .filter(Boolean);
+    if (emails.length === 0) return;
+
+    setIsAddingMembers(true);
+    setAddMemberResult(null);
     try {
-      await addMember({
+      const result = await addMembersByEmails({
         workspaceId,
-        betterAuthUserId: newMemberUserId.trim(),
-        role: "member",
+        emails,
       });
-      setNewMemberUserId("");
+      setAddMemberResult(result);
+      if (result.added.length > 0) {
+        setMemberEmails("");
+      }
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to add member");
+      alert(error instanceof Error ? error.message : "Failed to add members");
     } finally {
-      setIsAddingMember(false);
+      setIsAddingMembers(false);
     }
   };
 
@@ -436,62 +477,113 @@ export default function WorkspaceSettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="User ID to add"
-                  value={newMemberUserId}
-                  onChange={(e) => setNewMemberUserId(e.target.value)}
+              <div className="space-y-2">
+                <Label htmlFor="member-emails">Add members by email</Label>
+                <Textarea
+                  id="member-emails"
+                  placeholder="Enter email addresses (comma or newline separated)"
+                  value={memberEmails}
+                  onChange={(e) => {
+                    setMemberEmails(e.target.value);
+                    setAddMemberResult(null);
+                  }}
+                  rows={3}
+                  className="font-mono text-sm"
                 />
-                <Button onClick={handleAddMember} disabled={!newMemberUserId.trim() || isAddingMember}>
+                <Button
+                  onClick={handleAddMembers}
+                  disabled={!memberEmails.trim() || isAddingMembers}
+                >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add Member
+                  {isAddingMembers ? "Adding..." : "Add Members"}
                 </Button>
               </div>
+
+              {addMemberResult && (
+                <div className="space-y-2 text-sm">
+                  {addMemberResult.added.length > 0 && (
+                    <div className="p-2 bg-green-500/10 border border-green-500/20 rounded-md text-green-700 dark:text-green-400">
+                      <strong>Added:</strong> {addMemberResult.added.join(", ")}
+                    </div>
+                  )}
+                  {addMemberResult.alreadyMember.length > 0 && (
+                    <div className="p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md text-yellow-700 dark:text-yellow-400">
+                      <strong>Already members:</strong> {addMemberResult.alreadyMember.join(", ")}
+                    </div>
+                  )}
+                  {addMemberResult.notFound.length > 0 && (
+                    <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-md text-red-700 dark:text-red-400 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <strong>Not found:</strong> {addMemberResult.notFound.join(", ")}
+                        <p className="text-xs mt-1 opacity-80">
+                          Users must log in at least once before they can be added.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {members && members.length > 0 && (
                 <>
                   <Separator />
                   <div className="space-y-3">
                     <Label>Current Members</Label>
-                    {members.map((member) => (
-                      <div
-                        key={member._id}
-                        className="flex items-center justify-between p-3 border rounded-lg"
-                      >
-                        <div className="flex items-center gap-3">
-                          {getRoleIcon(member.role)}
-                          <div>
-                            <p className="font-medium font-mono text-sm">{member.betterAuthUserId}</p>
-                            <p className="text-xs text-muted-foreground capitalize">
-                              {member.role}
-                            </p>
+                    {members.map((member) => {
+                      const profile = profileMap.get(member.betterAuthUserId);
+                      const displayName = profile?.name || profile?.email || member.betterAuthUserId;
+                      const initials = (profile?.name?.[0] || profile?.email?.[0] || "?").toUpperCase();
+
+                      return (
+                        <div
+                          key={member._id}
+                          className="flex items-center justify-between p-3 border rounded-lg"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={profile?.image} alt={displayName} />
+                              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex items-center gap-2">
+                              {getRoleIcon(member.role)}
+                              <div>
+                                <p className="font-medium text-sm">{displayName}</p>
+                                {profile?.name && profile?.email && (
+                                  <p className="text-xs text-muted-foreground">{profile.email}</p>
+                                )}
+                                <p className="text-xs text-muted-foreground capitalize">
+                                  {member.role}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {currentMembership?.role === "owner" && member.betterAuthUserId !== userId && (
+                              <select
+                                className="h-8 px-2 text-sm border rounded-md bg-background"
+                                value={member.role}
+                                onChange={(e) => handleChangeRole(member.betterAuthUserId, e.target.value as "owner" | "admin" | "member")}
+                              >
+                                <option value="member">Member</option>
+                                <option value="admin">Admin</option>
+                                <option value="owner">Owner</option>
+                              </select>
+                            )}
+                            {member.betterAuthUserId !== userId && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-muted-foreground hover:text-destructive"
+                                onClick={() => handleRemoveMember(member.betterAuthUserId)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {currentMembership?.role === "owner" && member.betterAuthUserId !== userId && (
-                            <select
-                              className="h-8 px-2 text-sm border rounded-md bg-background"
-                              value={member.role}
-                              onChange={(e) => handleChangeRole(member.betterAuthUserId, e.target.value as "owner" | "admin" | "member")}
-                            >
-                              <option value="member">Member</option>
-                              <option value="admin">Admin</option>
-                              <option value="owner">Owner</option>
-                            </select>
-                          )}
-                          {member.betterAuthUserId !== userId && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-muted-foreground hover:text-destructive"
-                              onClick={() => handleRemoveMember(member.betterAuthUserId)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}
