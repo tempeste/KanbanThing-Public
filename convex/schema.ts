@@ -9,6 +9,7 @@ export default defineSchema({
     ticketCounter: v.optional(v.number()),
     createdBy: v.optional(v.string()), // Better Auth user ID
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
   }),
 
   workspaceMembers: defineTable({
