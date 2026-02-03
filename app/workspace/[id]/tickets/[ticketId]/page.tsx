@@ -20,6 +20,7 @@ import { SubIssuesCard } from "@/components/issue-detail/sub-issues-card";
 import { IssueSidebar } from "@/components/issue-detail/issue-sidebar";
 import { ArchivedBadge } from "@/components/archived-badge";
 import { ArchivedBanner } from "@/components/archived-banner";
+import { UserMenu } from "@/components/user-menu";
 
 type Ticket = Doc<"tickets">;
 
@@ -220,6 +221,7 @@ export default function TicketDetailPage() {
               <Trash2 className="w-4 h-4 mr-2" />
               Delete
             </Button>
+            <UserMenu />
           </div>
         </div>
       </header>
