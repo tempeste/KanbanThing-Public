@@ -11,18 +11,27 @@ const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 function ProfileSyncer() {
   const { data: session } = useSession();
   const syncProfile = useMutation(api.userProfiles.syncFromAuth);
-  const lastSyncedId = useRef<string | null>(null);
+  const lastSyncedSignature = useRef<string | null>(null);
 
   useEffect(() => {
-    if (session?.user?.id && session.user.id !== lastSyncedId.current) {
-      lastSyncedId.current = session.user.id;
-      syncProfile({
-        betterAuthUserId: session.user.id,
-        email: session.user.email,
-        name: session.user.name ?? undefined,
-        image: session.user.image ?? undefined,
-      }).catch(console.error);
-    }
+    if (!session?.user?.id) return;
+
+    const signature = [
+      session.user.id,
+      session.user.email,
+      session.user.name ?? "",
+      session.user.image ?? "",
+    ].join("|");
+
+    if (signature === lastSyncedSignature.current) return;
+    lastSyncedSignature.current = signature;
+
+    syncProfile({
+      betterAuthUserId: session.user.id,
+      email: session.user.email,
+      name: session.user.name ?? undefined,
+      image: session.user.image ?? undefined,
+    }).catch(console.error);
   }, [session?.user?.id, session?.user?.email, session?.user?.name, session?.user?.image, syncProfile]);
 
   return null;
