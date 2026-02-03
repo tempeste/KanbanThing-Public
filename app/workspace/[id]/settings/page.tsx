@@ -587,6 +587,7 @@ export default function WorkspaceSettingsPage() {
                   </div>
                 </>
               )}
+
             </CardContent>
           </Card>
         )}
