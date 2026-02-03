@@ -11,6 +11,7 @@ import { ArrowLeft, Settings, LayoutGrid, List } from "lucide-react";
 import { KanbanBoard } from "@/components/kanban-board";
 import { TicketTable } from "@/components/ticket-table";
 import { generateWorkspacePrefix } from "@/lib/utils";
+import { UserMenu } from "@/components/user-menu";
 
 export default function WorkspacePage() {
   const params = useParams();
@@ -63,12 +64,15 @@ export default function WorkspacePage() {
                 </p>
               </div>
             </div>
-            <Link href={`/workspace/${workspaceId}/settings`}>
-              <Button variant="outline">
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </Button>
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href={`/workspace/${workspaceId}/settings`}>
+                <Button variant="outline">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Settings
+                </Button>
+              </Link>
+              <UserMenu />
+            </div>
           </div>
         </div>
       </header>
