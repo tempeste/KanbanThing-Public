@@ -35,6 +35,11 @@ export async function POST(
   try {
     await convex.mutation(api.tickets.complete, {
       id: id as Id<"tickets">,
+      actor: {
+        type: "agent",
+        id: auth.apiKeyId,
+        displayName: auth.keyName,
+      },
     });
 
     const updatedTicket = await convex.query(api.tickets.get, {

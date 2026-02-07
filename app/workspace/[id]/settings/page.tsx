@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { Doc, Id } from "@/convex/_generated/dataModel";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Markdown } from "@/components/markdown";
 import { ArrowLeft, Key, Plus, Trash2, Copy, Check, Hash, Users, Crown, Shield, User, AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -43,6 +44,7 @@ export default function WorkspaceSettingsPage() {
 
   const workspace = useQuery(api.workspaces.get, { id: workspaceId });
   const apiKeys = useQuery(api.apiKeys.list, { workspaceId });
+  const docsVersions = useQuery(api.workspaces.listDocsVersions, { workspaceId });
   const members = useQuery(api.workspaceMembers.listByWorkspace, { workspaceId });
   const currentMembership = useQuery(
     api.workspaceMembers.getMembership,
@@ -61,6 +63,17 @@ export default function WorkspaceSettingsPage() {
     userProfiles?.forEach((p) => map.set(p.betterAuthUserId, p));
     return map;
   }, [userProfiles]);
+  const formatActorName = (
+    actorType: string,
+    actorId: string,
+    actorDisplayName?: string | null
+  ) => {
+    if (actorType === "user") {
+      const profile = profileMap.get(actorId);
+      return profile?.name || profile?.email || actorId;
+    }
+    return actorDisplayName || actorId;
+  };
 
   const updateWorkspace = useMutation(api.workspaces.update);
   const createApiKey = useMutation(api.apiKeys.create);
@@ -86,6 +99,10 @@ export default function WorkspaceSettingsPage() {
     alreadyMember: string[];
     notFound: string[];
   } | null>(null);
+  const [selectedDocsVersion, setSelectedDocsVersion] = useState<
+    Doc<"workspaceDocsVersions"> | null
+  >(null);
+  const [isDocsDialogOpen, setIsDocsDialogOpen] = useState(false);
 
   const canManageMembers = currentMembership?.role === "owner" || currentMembership?.role === "admin";
   const requestedProfileIds = useRef(new Set<string>());
@@ -220,7 +237,7 @@ export default function WorkspaceSettingsPage() {
     }
   };
 
-  if (workspace === undefined || apiKeys === undefined) {
+  if (workspace === undefined || apiKeys === undefined || docsVersions === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
@@ -353,6 +370,52 @@ export default function WorkspaceSettingsPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Docs History</CardTitle>
+            <CardDescription>
+              Previous versions of your workspace documentation (view-only).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {docsVersions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No history yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {docsVersions.map((version) => (
+                  <div
+                    key={version._id}
+                    className="flex items-center justify-between gap-4 rounded-lg border p-3"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {new Date(version.createdAt).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatActorName(
+                          version.actorType,
+                          version.actorId,
+                          version.actorDisplayName
+                        )}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedDocsVersion(version);
+                        setIsDocsDialogOpen(true);
+                      }}
+                    >
+                      View
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Key className="w-5 h-5" />
               API Keys
@@ -448,6 +511,14 @@ export default function WorkspaceSettingsPage() {
                 <p className="text-foreground">
                   {"curl -H \"X-API-Key: sk_...\" /api/workspace/docs"}
                 </p>
+                <p className="mt-2"># Update workspace docs</p>
+                <p className="text-foreground">
+                  {"curl -X PATCH -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"docs\":\"...\"}' /api/workspace/docs"}
+                </p>
+                <p className="mt-2"># Docs history</p>
+                <p className="text-foreground">
+                  {"curl -H \"X-API-Key: sk_...\" /api/workspace/docs/history"}
+                </p>
                 <p className="mt-2"># List issues</p>
                 <p className="text-foreground">
                   {"curl -H \"X-API-Key: sk_...\" /api/tickets"}
@@ -456,9 +527,35 @@ export default function WorkspaceSettingsPage() {
                 <p className="text-foreground">
                   {"curl -H \"X-API-Key: sk_...\" /api/tickets?parentId=ISSUE_ID"}
                 </p>
+                <p className="mt-2"># Create issue</p>
+                <p className="text-foreground">
+                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"title\":\"New issue\",\"description\":\"...\"}' /api/tickets"}
+                </p>
+                <p className="mt-2"># Update issue</p>
+                <p className="text-foreground">
+                  {"curl -X PATCH -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"title\":\"Updated\"}' /api/tickets/ISSUE_ID"}
+                </p>
+                <p className="mt-2"># Change status</p>
+                <p className="text-foreground">
+                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"status\":\"done\"}' /api/tickets/ISSUE_ID/status"}
+                </p>
                 <p className="mt-2"># Claim an issue</p>
                 <p className="text-foreground">
                   {"curl -X POST -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/claim"}
+                </p>
+                <p className="mt-2"># Assign / unassign</p>
+                <p className="text-foreground">
+                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"ownerId\":\"...\",\"ownerType\":\"agent\"}' /api/tickets/ISSUE_ID/assign"}
+                </p>
+                <p className="text-foreground">
+                  {"curl -X POST -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/unassign"}
+                </p>
+                <p className="mt-2"># Comment + activity</p>
+                <p className="text-foreground">
+                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"body\":\"Update...\"}' /api/tickets/ISSUE_ID/comments"}
+                </p>
+                <p className="text-foreground">
+                  {"curl -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/activity"}
                 </p>
               </div>
             </div>
@@ -612,6 +709,31 @@ export default function WorkspaceSettingsPage() {
           </CardContent>
         </Card>
       </main>
+
+      <Dialog
+        open={isDocsDialogOpen}
+        onOpenChange={(open) => {
+          setIsDocsDialogOpen(open);
+          if (!open) setSelectedDocsVersion(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Docs Version</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto rounded-md border bg-background/60 p-4">
+            {selectedDocsVersion ? (
+              selectedDocsVersion.docs.trim() ? (
+                <Markdown content={selectedDocsVersion.docs} className="prose-lg" />
+              ) : (
+                <p className="text-sm text-muted-foreground">No content.</p>
+              )
+            ) : (
+              <p className="text-sm text-muted-foreground">No version selected.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

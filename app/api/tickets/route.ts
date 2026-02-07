@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { validateApiKey, getConvexClient } from "@/lib/api-auth";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { serializeTicket } from "@/lib/api-serializers";
 
 export async function GET(request: NextRequest) {
   const auth = await validateApiKey(request);
@@ -38,23 +39,44 @@ export async function GET(request: NextRequest) {
   }
 
   return Response.json({
-    tickets: tickets.map((t) => ({
-      id: t._id,
-      title: t.title,
-      description: t.description,
-      number: t.number ?? null,
-      status: t.status,
-      ownerId: t.ownerId,
-      ownerType: t.ownerType,
-      ownerDisplayName: t.ownerDisplayName,
-      parentId: t.parentId ?? null,
-      order: t.order,
-      archived: t.archived ?? false,
-      childCount: t.childCount ?? 0,
-      childDoneCount: t.childDoneCount ?? 0,
-      hasChildren: (t.childCount ?? 0) > 0,
-      createdAt: t.createdAt,
-      updatedAt: t.updatedAt,
-    })),
+    tickets: tickets.map(serializeTicket),
   });
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await validateApiKey(request);
+  if (auth instanceof Response) return auth;
+
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body.title !== "string" || !body.title.trim()) {
+    return Response.json({ error: "Title is required" }, { status: 400 });
+  }
+
+  const title = body.title.trim();
+  const description = typeof body.description === "string" ? body.description : "";
+  const parentIdRaw = body.parentId;
+  const parentId =
+    parentIdRaw === undefined || parentIdRaw === null || parentIdRaw === ""
+      ? null
+      : String(parentIdRaw);
+
+  const convex = getConvexClient();
+  const id = await convex.mutation(api.tickets.create, {
+    workspaceId: auth.workspaceId,
+    title,
+    description,
+    parentId: parentId as Id<"tickets"> | null,
+    actor: {
+      type: "agent",
+      id: auth.apiKeyId,
+      displayName: auth.keyName,
+    },
+  });
+
+  const ticket = await convex.query(api.tickets.get, { id });
+  if (!ticket) {
+    return Response.json({ error: "Ticket not found" }, { status: 404 });
+  }
+
+  return Response.json({ ticket: serializeTicket(ticket) });
 }

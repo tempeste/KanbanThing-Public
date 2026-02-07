@@ -3,6 +3,7 @@ import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { generateWorkspacePrefix } from "./prefix";
+import { actorValidator, logTicketActivity } from "./activityHelpers";
 
 const Status = v.union(
   v.literal("unclaimed"),
@@ -189,6 +190,7 @@ export const create = mutation({
     title: v.string(),
     description: v.string(),
     parentId: v.optional(v.union(v.id("tickets"), v.null())),
+    actor: v.optional(actorValidator),
   },
   handler: async (ctx, args) => {
     const workspace = await ctx.db.get(args.workspaceId);
@@ -227,6 +229,14 @@ export const create = mutation({
       await applyCountsDelta(ctx, parentId, { count: 1, done: 0 });
     }
 
+    await logTicketActivity(ctx, {
+      workspaceId: args.workspaceId,
+      ticketId: id,
+      type: "ticket_created",
+      data: { title: args.title, parentId },
+      actor: args.actor,
+    });
+
     return id;
   },
 });
@@ -239,9 +249,10 @@ export const update = mutation({
     parentId: v.optional(v.union(v.id("tickets"), v.null())),
     order: v.optional(v.number()),
     archived: v.optional(v.boolean()),
+    actor: v.optional(actorValidator),
   },
   handler: async (ctx, args) => {
-    const { id, parentId, archived, ...updates } = args;
+    const { id, parentId, archived, actor, ...updates } = args;
     const ticket = await ctx.db.get(id);
     if (!ticket) {
       throw new Error("Ticket not found");
@@ -250,6 +261,23 @@ export const update = mutation({
     const nextParentId = parentId !== undefined ? parentId : ticket.parentId;
     const nextArchived = archived !== undefined ? archived : ticket.archived ?? false;
     const archiveChanged = archived !== undefined && nextArchived !== (ticket.archived ?? false);
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+
+    if (args.title !== undefined && args.title !== ticket.title) {
+      changes.title = { from: ticket.title, to: args.title };
+    }
+    if (args.description !== undefined && args.description !== ticket.description) {
+      changes.description = { from: ticket.description, to: args.description };
+    }
+    if (parentId !== undefined && (ticket.parentId ?? null) !== (nextParentId ?? null)) {
+      changes.parentId = { from: ticket.parentId ?? null, to: nextParentId ?? null };
+    }
+    if (archived !== undefined && (ticket.archived ?? false) !== nextArchived) {
+      changes.archived = { from: ticket.archived ?? false, to: nextArchived };
+    }
+    if (args.order !== undefined && args.order !== ticket.order) {
+      changes.order = { from: ticket.order ?? null, to: args.order };
+    }
 
     await ensureValidParent(ctx, ticket.workspaceId, id, nextParentId ?? null);
 
@@ -285,6 +313,16 @@ export const update = mutation({
 
     if (archiveChanged) {
       await cascadeArchive(ctx, ticket.workspaceId, id, nextArchived);
+    }
+
+    if (Object.keys(changes).length > 0) {
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: ticket._id,
+        type: "ticket_updated",
+        data: { changes },
+        actor,
+      });
     }
   },
 });
@@ -327,6 +365,7 @@ export const claim = mutation({
     id: v.id("tickets"),
     ownerId: v.string(),
     ownerType: v.union(v.literal("user"), v.literal("agent")),
+    actor: v.optional(actorValidator),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
@@ -336,17 +375,41 @@ export const claim = mutation({
     if (ticket.status !== "unclaimed") {
       throw new Error("Ticket is not available to claim");
     }
+    const prevOwner = {
+      ownerId: ticket.ownerId ?? null,
+      ownerType: ticket.ownerType ?? null,
+      ownerDisplayName: ticket.ownerDisplayName ?? null,
+    };
     await ctx.db.patch(args.id, {
       status: "in_progress",
       ownerId: args.ownerId,
       ownerType: args.ownerType,
       updatedAt: Date.now(),
     });
+
+    await logTicketActivity(ctx, {
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket._id,
+      type: "ticket_assignment_changed",
+      data: {
+        from: prevOwner,
+        to: { ownerId: args.ownerId, ownerType: args.ownerType, ownerDisplayName: null },
+      },
+      actor: args.actor,
+    });
+
+    await logTicketActivity(ctx, {
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket._id,
+      type: "ticket_status_changed",
+      data: { from: ticket.status, to: "in_progress" },
+      actor: args.actor,
+    });
   },
 });
 
 export const complete = mutation({
-  args: { id: v.id("tickets") },
+  args: { id: v.id("tickets"), actor: v.optional(actorValidator) },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
@@ -356,17 +419,51 @@ export const complete = mutation({
       throw new Error("Ticket must be in progress to complete");
     }
     await applyStatusChange(ctx, ticket, "done");
+
+    await logTicketActivity(ctx, {
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket._id,
+      type: "ticket_status_changed",
+      data: { from: ticket.status, to: "done" },
+      actor: args.actor,
+    });
   },
 });
 
 export const unclaim = mutation({
-  args: { id: v.id("tickets") },
+  args: { id: v.id("tickets"), actor: v.optional(actorValidator) },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    const prevOwner = {
+      ownerId: ticket.ownerId ?? null,
+      ownerType: ticket.ownerType ?? null,
+      ownerDisplayName: ticket.ownerDisplayName ?? null,
+    };
     await applyStatusChange(ctx, ticket, "unclaimed");
+
+    await logTicketActivity(ctx, {
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket._id,
+      type: "ticket_status_changed",
+      data: { from: ticket.status, to: "unclaimed" },
+      actor: args.actor,
+    });
+
+    if (prevOwner.ownerId || prevOwner.ownerType || prevOwner.ownerDisplayName) {
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: ticket._id,
+        type: "ticket_assignment_changed",
+        data: {
+          from: prevOwner,
+          to: { ownerId: null, ownerType: null, ownerDisplayName: null },
+        },
+        actor: args.actor,
+      });
+    }
   },
 });
 
@@ -376,12 +473,20 @@ export const assign = mutation({
     ownerId: v.string(),
     ownerType: v.union(v.literal("user"), v.literal("agent")),
     ownerDisplayName: v.optional(v.string()),
+    actor: v.optional(actorValidator),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+
+    const prevOwner = {
+      ownerId: ticket.ownerId ?? null,
+      ownerType: ticket.ownerType ?? null,
+      ownerDisplayName: ticket.ownerDisplayName ?? null,
+    };
+    const prevStatus = ticket.status;
 
     const updates: Record<string, unknown> = {
       ownerId: args.ownerId,
@@ -396,16 +501,48 @@ export const assign = mutation({
     }
 
     await ctx.db.patch(args.id, updates);
+
+    await logTicketActivity(ctx, {
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket._id,
+      type: "ticket_assignment_changed",
+      data: {
+        from: prevOwner,
+        to: {
+          ownerId: args.ownerId,
+          ownerType: args.ownerType,
+          ownerDisplayName: args.ownerDisplayName ?? null,
+        },
+      },
+      actor: args.actor,
+    });
+
+    if (prevStatus === "unclaimed") {
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: ticket._id,
+        type: "ticket_status_changed",
+        data: { from: "unclaimed", to: "in_progress" },
+        actor: args.actor,
+      });
+    }
   },
 });
 
 export const unassign = mutation({
-  args: { id: v.id("tickets") },
+  args: { id: v.id("tickets"), actor: v.optional(actorValidator) },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+
+    const prevOwner = {
+      ownerId: ticket.ownerId ?? null,
+      ownerType: ticket.ownerType ?? null,
+      ownerDisplayName: ticket.ownerDisplayName ?? null,
+    };
+    const prevStatus = ticket.status;
 
     const updates: Record<string, unknown> = {
       ownerId: undefined,
@@ -421,6 +558,27 @@ export const unassign = mutation({
     }
 
     await ctx.db.patch(args.id, updates);
+
+    await logTicketActivity(ctx, {
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket._id,
+      type: "ticket_assignment_changed",
+      data: {
+        from: prevOwner,
+        to: { ownerId: null, ownerType: null, ownerDisplayName: null },
+      },
+      actor: args.actor,
+    });
+
+    if (prevStatus === "in_progress") {
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: ticket._id,
+        type: "ticket_status_changed",
+        data: { from: "in_progress", to: "unclaimed" },
+        actor: args.actor,
+      });
+    }
   },
 });
 
@@ -428,13 +586,41 @@ export const updateStatus = mutation({
   args: {
     id: v.id("tickets"),
     status: Status,
+    actor: v.optional(actorValidator),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    const prevStatus = ticket.status;
+    const prevOwner = {
+      ownerId: ticket.ownerId ?? null,
+      ownerType: ticket.ownerType ?? null,
+      ownerDisplayName: ticket.ownerDisplayName ?? null,
+    };
     await applyStatusChange(ctx, ticket, args.status);
+    if (prevStatus !== args.status) {
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: ticket._id,
+        type: "ticket_status_changed",
+        data: { from: prevStatus, to: args.status },
+        actor: args.actor,
+      });
+    }
+    if (args.status === "unclaimed" && (prevOwner.ownerId || prevOwner.ownerType)) {
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: ticket._id,
+        type: "ticket_assignment_changed",
+        data: {
+          from: prevOwner,
+          to: { ownerId: null, ownerType: null, ownerDisplayName: null },
+        },
+        actor: args.actor,
+      });
+    }
   },
 });
 
@@ -443,17 +629,45 @@ export const move = mutation({
     id: v.id("tickets"),
     status: Status,
     order: v.number(),
+    actor: v.optional(actorValidator),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    const prevStatus = ticket.status;
+    const prevOwner = {
+      ownerId: ticket.ownerId ?? null,
+      ownerType: ticket.ownerType ?? null,
+      ownerDisplayName: ticket.ownerDisplayName ?? null,
+    };
     await applyStatusChange(ctx, ticket, args.status);
     await ctx.db.patch(args.id, {
       order: args.order,
       updatedAt: Date.now(),
     });
+    if (prevStatus !== args.status) {
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: ticket._id,
+        type: "ticket_status_changed",
+        data: { from: prevStatus, to: args.status },
+        actor: args.actor,
+      });
+    }
+    if (args.status === "unclaimed" && (prevOwner.ownerId || prevOwner.ownerType)) {
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: ticket._id,
+        type: "ticket_assignment_changed",
+        data: {
+          from: prevOwner,
+          to: { ownerId: null, ownerType: null, ownerDisplayName: null },
+        },
+        actor: args.actor,
+      });
+    }
   },
 });
 
@@ -480,10 +694,18 @@ const deleteSubtree = async (
 };
 
 export const remove = mutation({
-  args: { id: v.id("tickets") },
+  args: { id: v.id("tickets"), actor: v.optional(actorValidator) },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) return;
+
+    await logTicketActivity(ctx, {
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket._id,
+      type: "ticket_deleted",
+      data: { title: ticket.title },
+      actor: args.actor,
+    });
 
     if (ticket.parentId && !(ticket.archived ?? false)) {
       await applyCountsDelta(ctx, ticket.parentId, {
