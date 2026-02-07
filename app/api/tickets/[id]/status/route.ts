@@ -18,6 +18,7 @@ export async function POST(
 
   const ticket = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!ticket || ticket.workspaceId !== auth.workspaceId) {
@@ -44,6 +45,7 @@ export async function POST(
         id: auth.apiKeyId,
         displayName: auth.keyName,
       },
+      agentApiKeyId: auth.apiKeyId,
     });
   } else {
     await convex.mutation(api.tickets.updateStatus, {
@@ -54,11 +56,13 @@ export async function POST(
         id: auth.apiKeyId,
         displayName: auth.keyName,
       },
+      agentApiKeyId: auth.apiKeyId,
     });
   }
 
   const updated = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!updated) {

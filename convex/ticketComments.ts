@@ -1,13 +1,18 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { actorValidator, logTicketActivity, resolveActor } from "./activityHelpers";
+import { requireWorkspaceAccess } from "./access";
 
 export const listByTicket = query({
   args: {
     ticketId: v.id("tickets"),
     limit: v.optional(v.number()),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
+    const ticket = await ctx.db.get(args.ticketId);
+    if (!ticket) return [];
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
     const limit = args.limit ?? 50;
     return await ctx.db
       .query("ticketComments")
@@ -22,12 +27,14 @@ export const add = mutation({
     ticketId: v.id("tickets"),
     body: v.string(),
     actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.ticketId);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
     if (!args.body.trim()) {
       throw new Error("Comment body is required");
     }
