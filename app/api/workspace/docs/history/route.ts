@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   const versions = await convex.query(api.workspaces.listDocsVersions, {
     workspaceId: auth.workspaceId,
     limit: Number.isFinite(limit) ? limit : undefined,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   return Response.json({

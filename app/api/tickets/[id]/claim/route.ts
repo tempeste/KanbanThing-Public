@@ -15,6 +15,7 @@ export async function POST(
 
   const ticket = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!ticket) {
@@ -43,10 +44,12 @@ export async function POST(
         id: auth.apiKeyId,
         displayName: auth.keyName,
       },
+      agentApiKeyId: auth.apiKeyId,
     });
 
     const updatedTicket = await convex.query(api.tickets.get, {
       id: id as Id<"tickets">,
+      agentApiKeyId: auth.apiKeyId,
     });
 
     return Response.json({

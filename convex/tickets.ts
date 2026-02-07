@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { generateWorkspacePrefix } from "./prefix";
 import { actorValidator, logTicketActivity } from "./activityHelpers";
+import { requireWorkspaceAccess } from "./access";
 
 const Status = v.union(
   v.literal("unclaimed"),
@@ -106,8 +107,12 @@ const cascadeArchive = async (
 };
 
 export const list = query({
-  args: { workspaceId: v.id("workspaces") },
+  args: {
+    workspaceId: v.id("workspaces"),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
   handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
     return await ctx.db
       .query("tickets")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
@@ -119,8 +124,10 @@ export const listByStatus = query({
   args: {
     workspaceId: v.id("workspaces"),
     status: Status,
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
     return await ctx.db
       .query("tickets")
       .withIndex("by_workspace_status", (q) =>
@@ -134,8 +141,10 @@ export const listByParent = query({
   args: {
     workspaceId: v.id("workspaces"),
     parentId: v.union(v.id("tickets"), v.null()),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
     return await ctx.db
       .query("tickets")
       .withIndex("by_workspace_parent", (q) =>
@@ -146,17 +155,27 @@ export const listByParent = query({
 });
 
 export const get = query({
-  args: { id: v.id("tickets") },
+  args: {
+    id: v.id("tickets"),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const ticket = await ctx.db.get(args.id);
+    if (!ticket) return null;
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
+    return ticket;
   },
 });
 
 export const getHierarchy = query({
-  args: { id: v.id("tickets") },
+  args: {
+    id: v.id("tickets"),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) return null;
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
 
     const ancestors = [] as typeof ticket[];
     let currentParentId = ticket.parentId ?? null;
@@ -191,12 +210,14 @@ export const create = mutation({
     description: v.string(),
     parentId: v.optional(v.union(v.id("tickets"), v.null())),
     actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     const workspace = await ctx.db.get(args.workspaceId);
     if (!workspace) {
       throw new Error("Workspace not found");
     }
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
 
     const parentId = args.parentId ?? null;
     await ensureValidParent(ctx, args.workspaceId, null, parentId);
@@ -250,13 +271,15 @@ export const update = mutation({
     order: v.optional(v.number()),
     archived: v.optional(v.boolean()),
     actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
-    const { id, parentId, archived, actor, ...updates } = args;
+    const { id, parentId, archived, actor, agentApiKeyId, ...updates } = args;
     const ticket = await ctx.db.get(id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, agentApiKeyId);
 
     const nextParentId = parentId !== undefined ? parentId : ticket.parentId;
     const nextArchived = archived !== undefined ? archived : ticket.archived ?? false;
@@ -366,12 +389,14 @@ export const claim = mutation({
     ownerId: v.string(),
     ownerType: v.union(v.literal("user"), v.literal("agent")),
     actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
     if (ticket.status !== "unclaimed") {
       throw new Error("Ticket is not available to claim");
     }
@@ -409,12 +434,17 @@ export const claim = mutation({
 });
 
 export const complete = mutation({
-  args: { id: v.id("tickets"), actor: v.optional(actorValidator) },
+  args: {
+    id: v.id("tickets"),
+    actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
     if (ticket.status !== "in_progress") {
       throw new Error("Ticket must be in progress to complete");
     }
@@ -431,12 +461,17 @@ export const complete = mutation({
 });
 
 export const unclaim = mutation({
-  args: { id: v.id("tickets"), actor: v.optional(actorValidator) },
+  args: {
+    id: v.id("tickets"),
+    actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
     const prevOwner = {
       ownerId: ticket.ownerId ?? null,
       ownerType: ticket.ownerType ?? null,
@@ -474,12 +509,14 @@ export const assign = mutation({
     ownerType: v.union(v.literal("user"), v.literal("agent")),
     ownerDisplayName: v.optional(v.string()),
     actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
 
     const prevOwner = {
       ownerId: ticket.ownerId ?? null,
@@ -530,12 +567,17 @@ export const assign = mutation({
 });
 
 export const unassign = mutation({
-  args: { id: v.id("tickets"), actor: v.optional(actorValidator) },
+  args: {
+    id: v.id("tickets"),
+    actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
 
     const prevOwner = {
       ownerId: ticket.ownerId ?? null,
@@ -587,12 +629,14 @@ export const updateStatus = mutation({
     id: v.id("tickets"),
     status: Status,
     actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
     const prevStatus = ticket.status;
     const prevOwner = {
       ownerId: ticket.ownerId ?? null,
@@ -630,12 +674,14 @@ export const move = mutation({
     status: Status,
     order: v.number(),
     actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) {
       throw new Error("Ticket not found");
     }
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
     const prevStatus = ticket.status;
     const prevOwner = {
       ownerId: ticket.ownerId ?? null,
@@ -694,10 +740,15 @@ const deleteSubtree = async (
 };
 
 export const remove = mutation({
-  args: { id: v.id("tickets"), actor: v.optional(actorValidator) },
+  args: {
+    id: v.id("tickets"),
+    actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.id);
     if (!ticket) return;
+    await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
 
     await logTicketActivity(ctx, {
       workspaceId: ticket.workspaceId,

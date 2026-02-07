@@ -2,6 +2,8 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { generateWorkspacePrefix } from "./prefix";
 import { actorValidator, resolveActor } from "./activityHelpers";
+import { authComponent } from "./auth";
+import { requireWorkspaceAccess } from "./access";
 
 export const list = query({
   args: {},
@@ -11,9 +13,15 @@ export const list = query({
 });
 
 export const get = query({
-  args: { id: v.id("workspaces") },
+  args: {
+    id: v.id("workspaces"),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const workspace = await ctx.db.get(args.id);
+    if (!workspace) return null;
+    await requireWorkspaceAccess(ctx, workspace._id, args.agentApiKeyId);
+    return workspace;
   },
 });
 
@@ -40,9 +48,12 @@ export const createWithOwner = mutation({
   args: {
     name: v.string(),
     docs: v.optional(v.string()),
-    betterAuthUserId: v.string(),
   },
   handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error("Unauthorized");
+    }
     const prefix = generateWorkspacePrefix(args.name);
     const now = Date.now();
     const workspaceId = await ctx.db.insert("workspaces", {
@@ -50,7 +61,7 @@ export const createWithOwner = mutation({
       docs: args.docs,
       prefix,
       ticketCounter: 0,
-      createdBy: args.betterAuthUserId,
+      createdBy: authUser._id,
       createdAt: now,
       updatedAt: now,
     });
@@ -58,7 +69,7 @@ export const createWithOwner = mutation({
     // Add the creator as owner
     await ctx.db.insert("workspaceMembers", {
       workspaceId,
-      betterAuthUserId: args.betterAuthUserId,
+      betterAuthUserId: authUser._id,
       role: "owner",
       createdAt: Date.now(),
     });
@@ -68,12 +79,15 @@ export const createWithOwner = mutation({
 });
 
 export const listForUser = query({
-  args: { betterAuthUserId: v.string() },
-  handler: async (ctx, args) => {
+  args: {},
+  handler: async (ctx) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) return [];
+
     // Get all memberships for this user
     const memberships = await ctx.db
       .query("workspaceMembers")
-      .withIndex("by_user", (q) => q.eq("betterAuthUserId", args.betterAuthUserId))
+      .withIndex("by_user", (q) => q.eq("betterAuthUserId", authUser._id))
       .collect();
 
     // Fetch the workspaces
@@ -89,16 +103,18 @@ export const listForUser = query({
 });
 
 export const removeWithCleanup = mutation({
-  args: {
-    id: v.id("workspaces"),
-    betterAuthUserId: v.string(),
-  },
+  args: { id: v.id("workspaces") },
   handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error("Unauthorized");
+    }
+
     // Check if user is owner
     const membership = await ctx.db
       .query("workspaceMembers")
       .withIndex("by_workspace_user", (q) =>
-        q.eq("workspaceId", args.id).eq("betterAuthUserId", args.betterAuthUserId)
+        q.eq("workspaceId", args.id).eq("betterAuthUserId", authUser._id)
       )
       .first();
 
@@ -145,12 +161,14 @@ export const update = mutation({
     docs: v.optional(v.string()),
     prefix: v.optional(v.string()),
     actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     const workspace = await ctx.db.get(args.id);
     if (!workspace) {
       throw new Error("Workspace not found");
     }
+    await requireWorkspaceAccess(ctx, workspace._id, args.agentApiKeyId);
     const updates: Record<string, string | undefined | number> = {};
     if (args.name !== undefined) updates.name = args.name;
     if (args.docs !== undefined) updates.docs = args.docs;
@@ -177,8 +195,10 @@ export const listDocsVersions = query({
   args: {
     workspaceId: v.id("workspaces"),
     limit: v.optional(v.number()),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
     const limit = args.limit ?? 50;
     return await ctx.db
       .query("workspaceDocsVersions")

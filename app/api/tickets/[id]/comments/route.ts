@@ -15,6 +15,7 @@ export async function GET(
 
   const ticket = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!ticket || ticket.workspaceId !== auth.workspaceId) {
@@ -28,6 +29,7 @@ export async function GET(
   const comments = await convex.query(api.ticketComments.listByTicket, {
     ticketId: id as Id<"tickets">,
     limit: Number.isFinite(limit) ? limit : undefined,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   return Response.json({
@@ -55,6 +57,7 @@ export async function POST(
 
   const ticket = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!ticket || ticket.workspaceId !== auth.workspaceId) {
@@ -74,11 +77,13 @@ export async function POST(
       id: auth.apiKeyId,
       displayName: auth.keyName,
     },
+    agentApiKeyId: auth.apiKeyId,
   });
 
   const comment = await convex.query(api.ticketComments.listByTicket, {
     ticketId: id as Id<"tickets">,
     limit: 1,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   const created = comment.find((c) => c._id === commentId) ?? comment[0];

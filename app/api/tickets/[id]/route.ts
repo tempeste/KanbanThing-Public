@@ -16,6 +16,7 @@ export async function GET(
 
   const ticket = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!ticket) {
@@ -41,6 +42,7 @@ export async function PATCH(
 
   const ticket = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!ticket || ticket.workspaceId !== auth.workspaceId) {
@@ -110,10 +112,12 @@ export async function PATCH(
       id: auth.apiKeyId,
       displayName: auth.keyName,
     },
+    agentApiKeyId: auth.apiKeyId,
   });
 
   const updated = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!updated) {
@@ -135,6 +139,7 @@ export async function DELETE(
 
   const ticket = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!ticket || ticket.workspaceId !== auth.workspaceId) {
@@ -148,6 +153,7 @@ export async function DELETE(
       id: auth.apiKeyId,
       displayName: auth.keyName,
     },
+    agentApiKeyId: auth.apiKeyId,
   });
 
   return Response.json({ success: true });

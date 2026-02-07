@@ -19,10 +19,7 @@ export default function Home() {
   const userId = session?.user?.id;
 
   // Query workspaces based on auth state
-  const workspaces = useQuery(
-    api.workspaces.listForUser,
-    userId ? { betterAuthUserId: userId } : "skip"
-  );
+  const workspaces = useQuery(api.workspaces.listForUser, userId ? {} : "skip");
 
   const createWorkspace = useMutation(api.workspaces.createWithOwner);
   const deleteWorkspace = useMutation(api.workspaces.removeWithCleanup);
@@ -57,7 +54,6 @@ export default function Home() {
     if (!newWorkspaceName.trim() || !userId) return;
     await createWorkspace({
       name: newWorkspaceName.trim(),
-      betterAuthUserId: userId,
     });
     setNewWorkspaceName("");
     setIsCreating(false);
@@ -66,7 +62,7 @@ export default function Home() {
   const handleDelete = async (id: Id<"workspaces">) => {
     if (!userId) return;
     if (confirm("Delete this workspace and all its issues?")) {
-      await deleteWorkspace({ id, betterAuthUserId: userId });
+      await deleteWorkspace({ id });
     }
   };
 

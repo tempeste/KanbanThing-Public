@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     tickets = await convex.query(api.tickets.listByParent, {
       workspaceId: auth.workspaceId,
       parentId: parentId as Id<"tickets"> | null,
+      agentApiKeyId: auth.apiKeyId,
     });
     if (status && ["unclaimed", "in_progress", "done"].includes(status)) {
       tickets = tickets.filter((ticket) => ticket.status === status);
@@ -31,10 +32,12 @@ export async function GET(request: NextRequest) {
     tickets = await convex.query(api.tickets.listByStatus, {
       workspaceId: auth.workspaceId,
       status: status as "unclaimed" | "in_progress" | "done",
+      agentApiKeyId: auth.apiKeyId,
     });
   } else {
     tickets = await convex.query(api.tickets.list, {
       workspaceId: auth.workspaceId,
+      agentApiKeyId: auth.apiKeyId,
     });
   }
 
@@ -71,9 +74,13 @@ export async function POST(request: NextRequest) {
       id: auth.apiKeyId,
       displayName: auth.keyName,
     },
+    agentApiKeyId: auth.apiKeyId,
   });
 
-  const ticket = await convex.query(api.tickets.get, { id });
+  const ticket = await convex.query(api.tickets.get, {
+    id,
+    agentApiKeyId: auth.apiKeyId,
+  });
   if (!ticket) {
     return Response.json({ error: "Ticket not found" }, { status: 404 });
   }

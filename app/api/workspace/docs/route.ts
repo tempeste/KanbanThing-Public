@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
 
   const workspace = await convex.query(api.workspaces.get, {
     id: auth.workspaceId,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!workspace) {
@@ -42,10 +43,12 @@ export async function PATCH(request: NextRequest) {
       id: auth.apiKeyId,
       displayName: auth.keyName,
     },
+    agentApiKeyId: auth.apiKeyId,
   });
 
   const workspace = await convex.query(api.workspaces.get, {
     id: auth.workspaceId,
+    agentApiKeyId: auth.apiKeyId,
   });
 
   if (!workspace) {
