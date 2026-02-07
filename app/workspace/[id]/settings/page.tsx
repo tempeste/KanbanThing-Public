@@ -105,6 +105,8 @@ export default function WorkspaceSettingsPage() {
   const [isDocsDialogOpen, setIsDocsDialogOpen] = useState(false);
 
   const canManageMembers = currentMembership?.role === "owner" || currentMembership?.role === "admin";
+  const canManageApiKeys =
+    currentMembership?.role === "owner" || currentMembership?.role === "admin";
   const requestedProfileIds = useRef(new Set<string>());
 
   useEffect(() => {
@@ -136,6 +138,10 @@ export default function WorkspaceSettingsPage() {
   };
 
   const handleCreateKey = async () => {
+    if (!canManageApiKeys) {
+      alert("Only workspace owners and admins can generate API keys.");
+      return;
+    }
     if (!newKeyName.trim()) return;
 
     const key = generateApiKey();
@@ -164,6 +170,10 @@ export default function WorkspaceSettingsPage() {
   };
 
   const handleDeleteKey = async (id: Id<"apiKeys">) => {
+    if (!canManageApiKeys) {
+      alert("Only workspace owners and admins can delete API keys.");
+      return;
+    }
     if (confirm("Delete this API key? Any agents using it will lose access.")) {
       await deleteApiKey({ id });
     }
@@ -465,12 +475,21 @@ export default function WorkspaceSettingsPage() {
                 placeholder="Key name (e.g., 'Claude Agent')"
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
+                disabled={!canManageApiKeys}
               />
-              <Button onClick={handleCreateKey} disabled={!newKeyName.trim()}>
+              <Button
+                onClick={handleCreateKey}
+                disabled={!canManageApiKeys || !newKeyName.trim()}
+              >
                 <Plus className="w-4 h-4 mr-2" />
                 Generate Key
               </Button>
             </div>
+            {!canManageApiKeys && (
+              <p className="text-sm text-muted-foreground">
+                You have read-only access to API keys. Ask an owner or admin to manage keys.
+              </p>
+            )}
 
             {apiKeys.length > 0 && (
               <>
@@ -488,14 +507,16 @@ export default function WorkspaceSettingsPage() {
                           Created {new Date(key.createdAt).toLocaleDateString()}
                         </p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDeleteKey(key._id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {canManageApiKeys && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeleteKey(key._id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
