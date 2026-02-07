@@ -38,6 +38,11 @@ export async function POST(
       ownerId: auth.keyName,
       ownerType: "agent",
       ownerDisplayName: auth.keyName,
+      actor: {
+        type: "agent",
+        id: auth.apiKeyId,
+        displayName: auth.keyName,
+      },
     });
 
     const updatedTicket = await convex.query(api.tickets.get, {

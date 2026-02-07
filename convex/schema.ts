@@ -63,4 +63,34 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_workspace", ["workspaceId"])
     .index("by_keyHash", ["keyHash"]),
+
+  ticketComments: defineTable({
+    workspaceId: v.id("workspaces"),
+    ticketId: v.id("tickets"),
+    body: v.string(),
+    authorType: v.union(v.literal("user"), v.literal("agent"), v.literal("system")),
+    authorId: v.string(),
+    authorDisplayName: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_ticket_createdAt", ["ticketId", "createdAt"]),
+
+  ticketActivities: defineTable({
+    workspaceId: v.id("workspaces"),
+    ticketId: v.id("tickets"),
+    type: v.string(),
+    actorType: v.union(v.literal("user"), v.literal("agent"), v.literal("system")),
+    actorId: v.string(),
+    actorDisplayName: v.optional(v.string()),
+    data: v.optional(v.any()),
+    createdAt: v.number(),
+  }).index("by_ticket_createdAt", ["ticketId", "createdAt"]),
+
+  workspaceDocsVersions: defineTable({
+    workspaceId: v.id("workspaces"),
+    docs: v.string(),
+    actorType: v.union(v.literal("user"), v.literal("agent"), v.literal("system")),
+    actorId: v.string(),
+    actorDisplayName: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_workspace_createdAt", ["workspaceId", "createdAt"]),
 });

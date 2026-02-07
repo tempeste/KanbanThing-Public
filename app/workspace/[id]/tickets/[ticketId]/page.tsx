@@ -12,10 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Markdown } from "@/components/markdown";
 import { ArrowLeft, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { formatTicketNumber, generateWorkspacePrefix } from "@/lib/utils";
-import { IssueStatusBadge } from "@/components/issue-status";
+import { IssueStatusBadge, STATUS_META } from "@/components/issue-status";
 import { SubIssuesCard } from "@/components/issue-detail/sub-issues-card";
 import { IssueSidebar } from "@/components/issue-detail/issue-sidebar";
 import { ArchivedBadge } from "@/components/archived-badge";
@@ -36,16 +37,21 @@ export default function TicketDetailPage() {
   const workspace = useQuery(api.workspaces.get, { id: workspaceId });
   const hierarchy = useQuery(api.tickets.getHierarchy, { id: ticketId });
   const allTickets = useQuery(api.tickets.list, { workspaceId });
+  const comments = useQuery(api.ticketComments.listByTicket, { ticketId });
+  const activities = useQuery(api.ticketActivities.listByTicket, { ticketId });
 
   const updateTicket = useMutation(api.tickets.update);
   const updateStatus = useMutation(api.tickets.updateStatus);
   const deleteTicket = useMutation(api.tickets.remove);
+  const addComment = useMutation(api.ticketComments.add);
 
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [parentId, setParentId] = useState<Id<"tickets"> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [isAddingComment, setIsAddingComment] = useState(false);
   const [existingChildId, setExistingChildId] = useState<Id<"tickets"> | "">("");
   const [isAddingExisting, setIsAddingExisting] = useState(false);
 
@@ -104,6 +110,30 @@ export default function TicketDetailPage() {
       .filter((candidate) => candidate.parentId !== activeTicketId);
   }, [ticketsList, descendantIds, activeTicketId]);
 
+  const actorUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    comments?.forEach((comment) => {
+      if (comment.authorType === "user") ids.add(comment.authorId);
+    });
+    activities?.forEach((event) => {
+      if (event.actorType === "user") ids.add(event.actorId);
+    });
+    return Array.from(ids);
+  }, [comments, activities]);
+
+  const actorProfiles = useQuery(
+    api.userProfiles.getByAuthIds,
+    actorUserIds.length > 0 ? { betterAuthUserIds: actorUserIds } : "skip"
+  );
+
+  const actorProfileMap = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof actorProfiles>[number]>();
+    actorProfiles?.forEach((profile) => {
+      map.set(profile.betterAuthUserId, profile);
+    });
+    return map;
+  }, [actorProfiles]);
+
   useEffect(() => {
     if (!ticket || isEditing) return;
     setTitle(ticket.title);
@@ -111,7 +141,13 @@ export default function TicketDetailPage() {
     setParentId(ticket.parentId ?? null);
   }, [ticket, isEditing]);
 
-  if (workspace === undefined || hierarchy === undefined || allTickets === undefined) {
+  if (
+    workspace === undefined ||
+    hierarchy === undefined ||
+    allTickets === undefined ||
+    comments === undefined ||
+    activities === undefined
+  ) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
@@ -137,6 +173,60 @@ export default function TicketDetailPage() {
   const progressTotal = ticket.childCount ?? 0;
   const progressDone = ticket.childDoneCount ?? 0;
   const progressPct = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : 0;
+
+  const formatActorName = (
+    actorType: string,
+    actorId: string,
+    actorDisplayName?: string | null
+  ) => {
+    if (actorType === "user") {
+      const profile = actorProfileMap.get(actorId);
+      return profile?.name || profile?.email || actorId;
+    }
+    return actorDisplayName || actorId;
+  };
+
+  const formatStatusLabel = (status: string) =>
+    STATUS_META[status as keyof typeof STATUS_META]?.label ?? status;
+
+  const formatActivity = (event: any) => {
+    switch (event.type) {
+      case "ticket_created":
+        return "Issue created";
+      case "ticket_deleted":
+        return "Issue deleted";
+      case "ticket_comment_added":
+        return "Comment added";
+      case "ticket_status_changed": {
+        const next = event.data?.to;
+        return `Status changed to ${formatStatusLabel(String(next ?? ""))}`;
+      }
+      case "ticket_assignment_changed": {
+        const to = event.data?.to;
+        if (!to || !to.ownerId) return "Assignee cleared";
+        const assignee = to.ownerDisplayName || to.ownerId;
+        return `Assigned to ${assignee}`;
+      }
+      case "ticket_updated": {
+        const changes = event.data?.changes;
+        const fields = changes ? Object.keys(changes) : [];
+        if (!fields.length) return "Issue updated";
+        const labels = fields.map((field) => {
+          switch (field) {
+            case "parentId":
+              return "parent";
+            case "archived":
+              return "archive status";
+            default:
+              return field;
+          }
+        });
+        return `Updated ${labels.join(", ")}`;
+      }
+      default:
+        return event.type ?? "Activity";
+    }
+  };
 
 
   const handleSave = async () => {
@@ -177,6 +267,20 @@ export default function TicketDetailPage() {
       setExistingChildId("");
     } finally {
       setIsAddingExisting(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return;
+    setIsAddingComment(true);
+    try {
+      await addComment({
+        ticketId: ticket._id,
+        body: newComment.trim(),
+      });
+      setNewComment("");
+    } finally {
+      setIsAddingComment(false);
     }
   };
 
@@ -380,6 +484,88 @@ export default function TicketDetailPage() {
               onAddExisting={handleAddExistingChild}
               isAddingExisting={isAddingExisting}
             />
+
+            <Card className="p-6 space-y-4 bg-card/40">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Comments</h3>
+              </div>
+              {comments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No comments yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {comments.map((comment) => (
+                    <div key={comment._id} className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="text-foreground font-medium">
+                          {formatActorName(
+                            comment.authorType,
+                            comment.authorId,
+                            comment.authorDisplayName
+                          )}
+                        </span>
+                        <span>•</span>
+                        <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                      </div>
+                      <div className="rounded-md border bg-background/60 p-3">
+                        <Markdown content={comment.body} className="prose-sm" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Separator />
+              <div className="space-y-2">
+                <Label htmlFor="new-comment">Add a comment</Label>
+                <Textarea
+                  id="new-comment"
+                  value={newComment}
+                  onChange={(event) => setNewComment(event.target.value)}
+                  rows={4}
+                  className="font-mono"
+                  placeholder="Share updates, blockers, or context..."
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleAddComment}
+                    disabled={!newComment.trim() || isAddingComment}
+                  >
+                    {isAddingComment ? "Posting..." : "Post Comment"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setNewComment("")}
+                    disabled={!newComment.trim() || isAddingComment}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6 space-y-4 bg-card/40">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Activity</h3>
+              </div>
+              {activities.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No recent activity.</p>
+              ) : (
+                <div className="space-y-3">
+                  {activities.map((event) => (
+                    <div key={event._id} className="flex flex-col gap-1">
+                      <div className="text-sm">{formatActivity(event)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatActorName(
+                          event.actorType,
+                          event.actorId,
+                          event.actorDisplayName
+                        )}{" "}
+                        • {new Date(event.createdAt).toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
 
           <IssueSidebar

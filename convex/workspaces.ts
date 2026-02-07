@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { generateWorkspacePrefix } from "./prefix";
+import { actorValidator, resolveActor } from "./activityHelpers";
 
 export const list = query({
   args: {},
@@ -143,6 +144,7 @@ export const update = mutation({
     name: v.optional(v.string()),
     docs: v.optional(v.string()),
     prefix: v.optional(v.string()),
+    actor: v.optional(actorValidator),
   },
   handler: async (ctx, args) => {
     const workspace = await ctx.db.get(args.id);
@@ -156,6 +158,35 @@ export const update = mutation({
     if (Object.keys(updates).length === 0) return;
     updates.updatedAt = Date.now();
     await ctx.db.patch(args.id, updates);
+
+    if (args.docs !== undefined && args.docs !== workspace.docs) {
+      const resolved = await resolveActor(ctx, args.actor);
+      await ctx.db.insert("workspaceDocsVersions", {
+        workspaceId: args.id,
+        docs: args.docs,
+        actorType: resolved.actorType,
+        actorId: resolved.actorId,
+        actorDisplayName: resolved.actorDisplayName,
+        createdAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const listDocsVersions = query({
+  args: {
+    workspaceId: v.id("workspaces"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 50;
+    return await ctx.db
+      .query("workspaceDocsVersions")
+      .withIndex("by_workspace_createdAt", (q) =>
+        q.eq("workspaceId", args.workspaceId)
+      )
+      .order("desc")
+      .take(limit);
   },
 });
 

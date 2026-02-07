@@ -72,11 +72,32 @@ curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID
 # List child issues
 curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets?parentId=PARENT_ISSUE_ID
 
+# Create issue
+curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"title":"New issue","description":"..."}' http://localhost:3000/api/tickets
+
+# Update issue
+curl -X PATCH -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"title":"Updated"}' http://localhost:3000/api/tickets/ISSUE_ID
+
 # Claim an issue (marks as in_progress)
 curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/claim
 
 # Complete an issue (marks as done)
 curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/complete
+
+# Change status
+curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"status":"done"}' http://localhost:3000/api/tickets/ISSUE_ID/status
+
+# Assign / unassign
+curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"ownerId":"...","ownerType":"agent"}' http://localhost:3000/api/tickets/ISSUE_ID/assign
+curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/unassign
+
+# Comments + activity
+curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"body":"Update..."}' http://localhost:3000/api/tickets/ISSUE_ID/comments
+curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/activity
+
+# Update workspace docs + history
+curl -X PATCH -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"docs":"..."}' http://localhost:3000/api/workspace/docs
+curl -H "X-API-Key: sk_..." http://localhost:3000/api/workspace/docs/history
 ```
 
 ### Typical Agent Workflow

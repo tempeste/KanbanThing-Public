@@ -133,8 +133,9 @@ export default function AccountPage() {
             currentPassword,
             newPassword,
           })
-        : await authClient.setPassword({
-            newPassword,
+        : await authClient.$fetch("/set-password", {
+            method: "POST",
+            body: { newPassword },
           });
 
       if (result.error) {

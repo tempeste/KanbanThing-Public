@@ -15,6 +15,7 @@ async function hashKey(key: string): Promise<string> {
 export interface AuthResult {
   workspaceId: Id<"workspaces">;
   keyName: string;
+  apiKeyId: Id<"apiKeys">;
 }
 
 export async function validateApiKey(
@@ -49,6 +50,7 @@ export async function validateApiKey(
   return {
     workspaceId: apiKeyDoc.workspaceId,
     keyName: apiKeyDoc.name,
+    apiKeyId: apiKeyDoc._id,
   };
 }
 
