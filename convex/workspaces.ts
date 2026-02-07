@@ -71,7 +71,7 @@ export const createWithOwner = mutation({
       workspaceId,
       betterAuthUserId: authUser._id,
       role: "owner",
-      createdAt: Date.now(),
+      createdAt: now,
     });
 
     return workspaceId;

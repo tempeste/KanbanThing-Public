@@ -3,7 +3,7 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -49,6 +49,7 @@ export function AssigneePicker({
   const unassignTicket = useMutation(api.tickets.unassign);
   const syncProfiles = useMutation(api.userProfiles.syncFromAuthIds);
   const requestedProfileIds = useRef(new Set<string>());
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!members || !members.length) return;
@@ -63,18 +64,30 @@ export function AssigneePicker({
   }, [members, profileMap, syncProfiles]);
 
   const handleAssign = async (memberId: string) => {
+    setMutationError(null);
     const profile = profileMap.get(memberId);
     const displayName = profile?.name || profile?.email || memberId;
-    await assignTicket({
-      id: ticketId,
-      ownerId: memberId,
-      ownerType: "user",
-      ownerDisplayName: displayName,
-    });
+    try {
+      await assignTicket({
+        id: ticketId,
+        ownerId: memberId,
+        ownerType: "user",
+        ownerDisplayName: displayName,
+      });
+    } catch (error) {
+      console.error("Failed to assign ticket:", error);
+      setMutationError("Could not assign issue");
+    }
   };
 
   const handleUnassign = async () => {
-    await unassignTicket({ id: ticketId });
+    setMutationError(null);
+    try {
+      await unassignTicket({ id: ticketId });
+    } catch (error) {
+      console.error("Failed to unassign ticket:", error);
+      setMutationError("Could not unassign issue");
+    }
   };
 
   const displayLabel = currentOwnerId
@@ -82,73 +95,80 @@ export function AssigneePicker({
     : "Unassigned";
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full justify-between gap-2 h-auto py-1.5"
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            {currentOwnerId ? (
-              <>
-                {currentOwnerType === "agent" ? (
-                  <Bot className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                ) : (
-                  <User className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                )}
-                <span className="truncate text-sm">{displayLabel}</span>
-              </>
-            ) : (
-              <span className="text-muted-foreground text-sm">Unassigned</span>
-            )}
-          </div>
-          <ChevronDown className="w-3 h-3 flex-shrink-0 text-muted-foreground" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuItem
-          onClick={handleUnassign}
-          className="gap-2"
-          disabled={!currentOwnerId}
-        >
-          <UserX className="w-4 h-4" />
-          Unassign
-        </DropdownMenuItem>
-        {members && members.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            {members.map((member) => {
-              const profile = profileMap.get(member.betterAuthUserId);
-              const displayName = profile?.name || profile?.email || member.betterAuthUserId;
-              const initials = (profile?.name?.[0] || profile?.email?.[0] || "?").toUpperCase();
-              const isSelected = currentOwnerId === member.betterAuthUserId;
+    <div className="space-y-1">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-between gap-2 h-auto py-1.5"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {currentOwnerId ? (
+                <>
+                  {currentOwnerType === "agent" ? (
+                    <Bot className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                  ) : (
+                    <User className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="truncate text-sm">{displayLabel}</span>
+                </>
+              ) : (
+                <span className="text-muted-foreground text-sm">Unassigned</span>
+              )}
+            </div>
+            <ChevronDown className="w-3 h-3 flex-shrink-0 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuItem
+            onClick={handleUnassign}
+            className="gap-2"
+            disabled={!currentOwnerId}
+          >
+            <UserX className="w-4 h-4" />
+            Unassign
+          </DropdownMenuItem>
+          {members && members.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              {members.map((member) => {
+                const profile = profileMap.get(member.betterAuthUserId);
+                const displayName = profile?.name || profile?.email || member.betterAuthUserId;
+                const initials = (profile?.name?.[0] || profile?.email?.[0] || "?").toUpperCase();
+                const isSelected = currentOwnerId === member.betterAuthUserId;
 
-              return (
-                <DropdownMenuItem
-                  key={member._id}
-                  onClick={() => handleAssign(member.betterAuthUserId)}
-                  className="gap-2"
-                  disabled={isSelected}
-                >
-                  <Avatar className="h-5 w-5">
-                    <AvatarImage src={profile?.image} alt={displayName} />
-                    <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col min-w-0">
-                    <span className="truncate text-sm">{displayName}</span>
-                    {profile?.name && profile?.email && (
-                      <span className="truncate text-xs text-muted-foreground">
-                        {profile.email}
-                      </span>
-                    )}
-                  </div>
-                </DropdownMenuItem>
-              );
-            })}
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+                return (
+                  <DropdownMenuItem
+                    key={member._id}
+                    onClick={() => handleAssign(member.betterAuthUserId)}
+                    className="gap-2"
+                    disabled={isSelected}
+                  >
+                    <Avatar className="h-5 w-5">
+                      <AvatarImage src={profile?.image} alt={displayName} />
+                      <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col min-w-0">
+                      <span className="truncate text-sm">{displayName}</span>
+                      {profile?.name && profile?.email && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {profile.email}
+                        </span>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })}
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {mutationError && (
+        <p className="text-xs text-destructive" role="alert">
+          {mutationError}
+        </p>
+      )}
+    </div>
   );
 }

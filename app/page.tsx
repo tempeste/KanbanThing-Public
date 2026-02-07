@@ -377,8 +377,16 @@ export default function Home() {
                 {filteredWorkspaces.map((workspace) => (
                   <tr
                     key={workspace._id}
-                    className="cursor-pointer border-b transition-colors hover:bg-muted/40"
+                    role="button"
+                    tabIndex={0}
+                    className="cursor-pointer border-b transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                     onClick={() => router.push(`/workspace/${workspace._id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/workspace/${workspace._id}`);
+                      }
+                    }}
                   >
                     <td className="px-4 py-3 font-medium">{workspace.name}</td>
                     <td className="px-4 py-3 text-muted-foreground">
