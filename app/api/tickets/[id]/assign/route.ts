@@ -1,5 +1,9 @@
 import { NextRequest } from "next/server";
-import { validateApiKey, getConvexClient } from "@/lib/api-auth";
+import {
+  validateApiKey,
+  getConvexClient,
+  resolveAgentPrincipal,
+} from "@/lib/api-auth";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { serializeTicket } from "@/lib/api-serializers";
@@ -13,6 +17,8 @@ export async function POST(
 
   const { id } = await params;
   const convex = getConvexClient();
+  const principal = resolveAgentPrincipal(request, auth);
+  if (principal instanceof Response) return principal;
 
   const ticket = await convex.query(api.tickets.get, {
     id: id as Id<"tickets">,
@@ -23,24 +29,48 @@ export async function POST(
     return Response.json({ error: "Issue not found" }, { status: 404 });
   }
 
-  const body = await request.json().catch(() => null);
-  if (!body || typeof body.ownerId !== "string" || body.ownerId.trim() === "") {
-    return Response.json({ error: "Invalid ownerId" }, { status: 400 });
-  }
-  if (body.ownerType !== "user" && body.ownerType !== "agent") {
+  const body = (await request.json().catch(() => ({}))) as {
+    ownerId?: unknown;
+    ownerType?: unknown;
+    ownerDisplayName?: unknown;
+  };
+
+  if (
+    body.ownerType !== undefined &&
+    (typeof body.ownerType !== "string" || body.ownerType !== "agent")
+  ) {
     return Response.json({ error: "Invalid ownerType" }, { status: 400 });
   }
 
-  const ownerDisplayName =
-    body.ownerDisplayName && typeof body.ownerDisplayName === "string"
-      ? body.ownerDisplayName
-      : undefined;
+  if (body.ownerId !== undefined) {
+    if (typeof body.ownerId !== "string" || body.ownerId.trim() === "") {
+      return Response.json({ error: "Invalid ownerId" }, { status: 400 });
+    }
+    if (body.ownerId.trim() !== principal.ownerId) {
+      return Response.json({ error: "ownerId must match server identity" }, { status: 400 });
+    }
+  }
+
+  if (body.ownerDisplayName !== undefined) {
+    if (
+      typeof body.ownerDisplayName !== "string" ||
+      body.ownerDisplayName.trim() === ""
+    ) {
+      return Response.json({ error: "Invalid ownerDisplayName" }, { status: 400 });
+    }
+    if (body.ownerDisplayName.trim() !== principal.ownerDisplayName) {
+      return Response.json(
+        { error: "ownerDisplayName must match server identity" },
+        { status: 400 }
+      );
+    }
+  }
 
   await convex.mutation(api.tickets.assign, {
     id: id as Id<"tickets">,
-    ownerId: body.ownerId,
-    ownerType: body.ownerType,
-    ownerDisplayName,
+    ownerId: principal.ownerId,
+    ownerType: principal.ownerType,
+    ownerDisplayName: principal.ownerDisplayName,
     actor: {
       type: "agent",
       id: auth.apiKeyId,

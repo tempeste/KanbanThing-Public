@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { validateApiKey, getConvexClient } from "@/lib/api-auth";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { serializeTicket } from "@/lib/api-serializers";
 
 export async function POST(
   request: NextRequest,
@@ -51,11 +52,7 @@ export async function POST(
 
     return Response.json({
       success: true,
-      ticket: {
-        id: updatedTicket!._id,
-        title: updatedTicket!.title,
-        status: updatedTicket!.status,
-      },
+      ticket: serializeTicket(updatedTicket!),
     });
   } catch (error) {
     return Response.json(
