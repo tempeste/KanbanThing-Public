@@ -80,13 +80,10 @@ export async function POST(
     agentApiKeyId: auth.apiKeyId,
   });
 
-  const comment = await convex.query(api.ticketComments.listByTicket, {
-    ticketId: id as Id<"tickets">,
-    limit: 1,
+  const created = await convex.query(api.ticketComments.get, {
+    id: commentId,
     agentApiKeyId: auth.apiKeyId,
   });
-
-  const created = comment.find((c) => c._id === commentId) ?? comment[0];
 
   if (!created) {
     return Response.json({ error: "Comment not found" }, { status: 404 });

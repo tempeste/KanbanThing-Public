@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { authComponent } from "./auth";
 
 export const add = mutation({
   args: {
@@ -177,6 +178,26 @@ export const addByEmails = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    if (args.emails.length > 100) {
+      throw new Error("Cannot add more than 100 members at once");
+    }
+
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error("Unauthorized");
+    }
+
+    const membership = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_workspace_user", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("betterAuthUserId", authUser._id)
+      )
+      .first();
+
+    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+      throw new Error("Not authorized to add members to this workspace");
+    }
+
     const role = args.role ?? "member";
     const results: {
       added: string[];

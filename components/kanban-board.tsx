@@ -259,7 +259,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                     dragOverPosition,
                     ticketId
                   );
-                  if (!order) return;
+                  if (order === null) return;
                   applyOptimisticMove(ticketId, status, order);
                   await moveTicket({ id: ticketId, status, order });
                   if (shouldAutoAssign) {

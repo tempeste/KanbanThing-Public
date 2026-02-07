@@ -411,6 +411,7 @@ export const claim = mutation({
       status: "in_progress",
       ownerId: args.ownerId,
       ownerType: args.ownerType,
+      ownerDisplayName: undefined,
       updatedAt: Date.now(),
     });
 

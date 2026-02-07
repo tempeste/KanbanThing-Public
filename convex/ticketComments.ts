@@ -22,6 +22,19 @@ export const listByTicket = query({
   },
 });
 
+export const get = query({
+  args: {
+    id: v.id("ticketComments"),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
+  handler: async (ctx, args) => {
+    const comment = await ctx.db.get(args.id);
+    if (!comment) return null;
+    await requireWorkspaceAccess(ctx, comment.workspaceId, args.agentApiKeyId);
+    return comment;
+  },
+});
+
 export const add = mutation({
   args: {
     ticketId: v.id("tickets"),

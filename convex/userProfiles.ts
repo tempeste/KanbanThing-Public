@@ -137,6 +137,8 @@ export const getByEmails = query({
           .first()
       )
     );
-    return profiles;
+    return profiles.filter(
+      (p): p is NonNullable<typeof p> => p !== null
+    );
   },
 });
