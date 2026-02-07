@@ -539,13 +539,16 @@ export default function WorkspaceSettingsPage() {
                 <p className="text-foreground">
                   {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"status\":\"done\"}' /api/tickets/ISSUE_ID/status"}
                 </p>
+                <p className="text-foreground">
+                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"status\":\"unclaimed\",\"reason\":\"duplicate ticket\"}' /api/tickets/ISSUE_ID/status"}
+                </p>
                 <p className="mt-2"># Claim an issue</p>
                 <p className="text-foreground">
                   {"curl -X POST -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/claim"}
                 </p>
                 <p className="mt-2"># Assign / unassign</p>
                 <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"ownerId\":\"...\",\"ownerType\":\"agent\"}' /api/tickets/ISSUE_ID/assign"}
+                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"X-Agent-Session-Id: agent-A\" -H \"Content-Type: application/json\" -d '{}' /api/tickets/ISSUE_ID/assign"}
                 </p>
                 <p className="text-foreground">
                   {"curl -X POST -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/unassign"}
@@ -556,6 +559,16 @@ export default function WorkspaceSettingsPage() {
                 </p>
                 <p className="text-foreground">
                   {"curl -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/activity"}
+                </p>
+                <p className="mt-2"># API key lifecycle (admin key only)</p>
+                <p className="text-foreground">
+                  {"curl -H \"X-API-Key: sk_admin...\" /api/api-keys"}
+                </p>
+                <p className="text-foreground">
+                  {"curl -X POST -H \"X-API-Key: sk_admin...\" -H \"Content-Type: application/json\" -d '{\"name\":\"Harness B\",\"role\":\"agent\"}' /api/api-keys"}
+                </p>
+                <p className="text-foreground">
+                  {"curl -X DELETE -H \"X-API-Key: sk_admin...\" /api/api-keys/API_KEY_ID"}
                 </p>
               </div>
             </div>

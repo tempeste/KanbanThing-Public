@@ -52,13 +52,26 @@ Open http://localhost:3000
 
 ### Authentication
 
-All API requests require an `X-API-Key` header. Generate keys from the workspace settings page.
+All API requests require an `X-API-Key` header.
+
+- Workspace settings can create/revoke keys for humans.
+- API key lifecycle endpoints (`/api/api-keys`) require an **admin** API key.
+- New keys created by API default to role `agent` unless `role: "admin"` is explicitly requested.
 
 ### Endpoints
 
 ```bash
 # Get workspace docs (project context)
 curl -H "X-API-Key: sk_..." http://localhost:3000/api/workspace/docs
+
+# List API keys (admin key only)
+curl -H "X-API-Key: sk_admin..." http://localhost:3000/api/api-keys
+
+# Create API key (admin key only; secret is returned once)
+curl -X POST -H "X-API-Key: sk_admin..." -H "Content-Type: application/json" -d '{"name":"Harness A","role":"agent"}' http://localhost:3000/api/api-keys
+
+# Delete API key (admin key only)
+curl -X DELETE -H "X-API-Key: sk_admin..." http://localhost:3000/api/api-keys/API_KEY_ID
 
 # List all issues
 curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets

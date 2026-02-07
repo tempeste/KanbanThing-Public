@@ -16,6 +16,7 @@ export interface AuthResult {
   workspaceId: Id<"workspaces">;
   keyName: string;
   apiKeyId: Id<"apiKeys">;
+  keyRole: "admin" | "agent";
 }
 
 export interface AgentPrincipal {
@@ -60,6 +61,7 @@ export async function validateApiKey(
     workspaceId: apiKeyDoc.workspaceId,
     keyName: apiKeyDoc.name,
     apiKeyId: apiKeyDoc._id,
+    keyRole: apiKeyDoc.role ?? "admin",
   };
 }
 
@@ -96,4 +98,14 @@ export function resolveAgentPrincipal(
     ownerType: "agent",
     ownerDisplayName: auth.keyName,
   };
+}
+
+export function requireAdminApiKey(auth: AuthResult): Response | null {
+  if (auth.keyRole !== "admin") {
+    return new Response(
+      JSON.stringify({ error: "Admin API key required" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  return null;
 }

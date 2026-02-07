@@ -60,6 +60,7 @@ export default defineSchema({
     workspaceId: v.id("workspaces"),
     keyHash: v.string(),
     name: v.string(),
+    role: v.optional(v.union(v.literal("admin"), v.literal("agent"))),
     createdAt: v.number(),
   }).index("by_workspace", ["workspaceId"])
     .index("by_keyHash", ["keyHash"]),
