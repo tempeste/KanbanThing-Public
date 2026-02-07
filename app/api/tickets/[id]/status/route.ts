@@ -34,30 +34,52 @@ export async function POST(
   if (order !== undefined && (typeof order !== "number" || Number.isNaN(order))) {
     return Response.json({ error: "Invalid order" }, { status: 400 });
   }
+  const reason =
+    body.reason === undefined
+      ? undefined
+      : typeof body.reason === "string"
+        ? body.reason.trim()
+        : null;
+  if (reason === null || reason === "") {
+    return Response.json({ error: "Invalid reason" }, { status: 400 });
+  }
 
-  if (typeof order === "number") {
-    await convex.mutation(api.tickets.move, {
-      id: id as Id<"tickets">,
-      status: body.status,
-      order,
-      actor: {
-        type: "agent",
-        id: auth.apiKeyId,
-        displayName: auth.keyName,
-      },
-      agentApiKeyId: auth.apiKeyId,
-    });
-  } else {
-    await convex.mutation(api.tickets.updateStatus, {
-      id: id as Id<"tickets">,
-      status: body.status,
-      actor: {
-        type: "agent",
-        id: auth.apiKeyId,
-        displayName: auth.keyName,
-      },
-      agentApiKeyId: auth.apiKeyId,
-    });
+  try {
+    if (typeof order === "number") {
+      await convex.mutation(api.tickets.move, {
+        id: id as Id<"tickets">,
+        status: body.status,
+        order,
+        reason,
+        actor: {
+          type: "agent",
+          id: auth.apiKeyId,
+          displayName: auth.keyName,
+        },
+        agentApiKeyId: auth.apiKeyId,
+      });
+    } else {
+      await convex.mutation(api.tickets.updateStatus, {
+        id: id as Id<"tickets">,
+        status: body.status,
+        reason,
+        actor: {
+          type: "agent",
+          id: auth.apiKeyId,
+          displayName: auth.keyName,
+        },
+        agentApiKeyId: auth.apiKeyId,
+      });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to update issue status";
+    if (message.includes("Reason is required")) {
+      return Response.json({ error: message }, { status: 400 });
+    }
+    if (message.includes("Transition not allowed")) {
+      return Response.json({ error: message }, { status: 409 });
+    }
+    return Response.json({ error: message }, { status: 500 });
   }
 
   const updated = await convex.query(api.tickets.get, {

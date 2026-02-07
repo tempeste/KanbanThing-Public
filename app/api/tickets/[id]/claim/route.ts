@@ -1,7 +1,12 @@
 import { NextRequest } from "next/server";
-import { validateApiKey, getConvexClient } from "@/lib/api-auth";
+import {
+  validateApiKey,
+  getConvexClient,
+  resolveAgentPrincipal,
+} from "@/lib/api-auth";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { serializeTicket } from "@/lib/api-serializers";
 
 export async function POST(
   request: NextRequest,
@@ -9,6 +14,8 @@ export async function POST(
 ) {
   const auth = await validateApiKey(request);
   if (auth instanceof Response) return auth;
+  const principal = resolveAgentPrincipal(request, auth);
+  if (principal instanceof Response) return principal;
 
   const { id } = await params;
   const convex = getConvexClient();
@@ -36,9 +43,9 @@ export async function POST(
   try {
     await convex.mutation(api.tickets.assign, {
       id: id as Id<"tickets">,
-      ownerId: auth.keyName,
-      ownerType: "agent",
-      ownerDisplayName: auth.keyName,
+      ownerId: principal.ownerId,
+      ownerType: principal.ownerType,
+      ownerDisplayName: principal.ownerDisplayName,
       actor: {
         type: "agent",
         id: auth.apiKeyId,
@@ -54,22 +61,7 @@ export async function POST(
 
     return Response.json({
       success: true,
-      ticket: {
-        id: updatedTicket!._id,
-        title: updatedTicket!.title,
-        description: updatedTicket!.description,
-        number: updatedTicket!.number ?? null,
-        parentId: updatedTicket!.parentId ?? null,
-        order: updatedTicket!.order,
-        archived: updatedTicket!.archived ?? false,
-        status: updatedTicket!.status,
-        ownerId: updatedTicket!.ownerId,
-        ownerType: updatedTicket!.ownerType,
-        ownerDisplayName: updatedTicket!.ownerDisplayName,
-        childCount: updatedTicket!.childCount ?? 0,
-        childDoneCount: updatedTicket!.childDoneCount ?? 0,
-        hasChildren: (updatedTicket!.childCount ?? 0) > 0,
-      },
+      ticket: serializeTicket(updatedTicket!),
     });
   } catch (error) {
     return Response.json(

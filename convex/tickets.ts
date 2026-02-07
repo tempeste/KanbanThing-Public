@@ -13,6 +13,7 @@ const Status = v.union(
 );
 
 type StatusType = "unclaimed" | "in_progress" | "done";
+type TransitionClass = "standard" | "non_standard";
 
 type CountsDelta = {
   count: number;
@@ -26,6 +27,48 @@ const getCountedState = (archived: boolean | undefined, status: StatusType) => {
   const counted = !archived;
   const done = counted && status === "done";
   return { counted, done };
+};
+
+const getTransitionClass = (
+  from: StatusType,
+  to: StatusType
+): TransitionClass => {
+  if (from === to) {
+    return "standard";
+  }
+  if (
+    (from === "unclaimed" && to === "in_progress") ||
+    (from === "in_progress" && to === "done")
+  ) {
+    return "standard";
+  }
+  return "non_standard";
+};
+
+const normalizeReason = (reason: string | undefined) => {
+  const trimmed = reason?.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const validateAgentStatusTransition = (
+  from: StatusType,
+  to: StatusType,
+  agentApiKeyId: Id<"apiKeys"> | undefined,
+  reason: string | undefined
+) => {
+  const normalizedReason = normalizeReason(reason);
+  if (!agentApiKeyId || from === to) {
+    return {
+      transitionClass: getTransitionClass(from, to),
+      reason: normalizedReason,
+    };
+  }
+
+  const transitionClass = getTransitionClass(from, to);
+  if (transitionClass === "non_standard" && !normalizedReason) {
+    throw new Error("Reason is required for non-standard status transitions");
+  }
+  return { transitionClass, reason: normalizedReason };
 };
 
 const applyCountsDelta = async (
@@ -517,6 +560,9 @@ export const assign = mutation({
       throw new Error("Ticket not found");
     }
     await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
+    if (args.agentApiKeyId && args.ownerType !== "agent") {
+      throw new Error("Agent API assignments must use ownerType \"agent\"");
+    }
 
     const prevOwner = {
       ownerId: ticket.ownerId ?? null,
@@ -628,6 +674,7 @@ export const updateStatus = mutation({
   args: {
     id: v.id("tickets"),
     status: Status,
+    reason: v.optional(v.string()),
     actor: v.optional(actorValidator),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
@@ -643,13 +690,24 @@ export const updateStatus = mutation({
       ownerType: ticket.ownerType ?? null,
       ownerDisplayName: ticket.ownerDisplayName ?? null,
     };
+    const { transitionClass, reason } = validateAgentStatusTransition(
+      prevStatus,
+      args.status,
+      args.agentApiKeyId,
+      args.reason
+    );
     await applyStatusChange(ctx, ticket, args.status);
     if (prevStatus !== args.status) {
       await logTicketActivity(ctx, {
         workspaceId: ticket.workspaceId,
         ticketId: ticket._id,
         type: "ticket_status_changed",
-        data: { from: prevStatus, to: args.status },
+        data: {
+          from: prevStatus,
+          to: args.status,
+          transitionClass,
+          ...(reason ? { reason } : {}),
+        },
         actor: args.actor,
       });
     }
@@ -673,6 +731,7 @@ export const move = mutation({
     id: v.id("tickets"),
     status: Status,
     order: v.number(),
+    reason: v.optional(v.string()),
     actor: v.optional(actorValidator),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
@@ -688,6 +747,12 @@ export const move = mutation({
       ownerType: ticket.ownerType ?? null,
       ownerDisplayName: ticket.ownerDisplayName ?? null,
     };
+    const { transitionClass, reason } = validateAgentStatusTransition(
+      prevStatus,
+      args.status,
+      args.agentApiKeyId,
+      args.reason
+    );
     await applyStatusChange(ctx, ticket, args.status);
     await ctx.db.patch(args.id, {
       order: args.order,
@@ -698,7 +763,12 @@ export const move = mutation({
         workspaceId: ticket.workspaceId,
         ticketId: ticket._id,
         type: "ticket_status_changed",
-        data: { from: prevStatus, to: args.status },
+        data: {
+          from: prevStatus,
+          to: args.status,
+          transitionClass,
+          ...(reason ? { reason } : {}),
+        },
         actor: args.actor,
       });
     }

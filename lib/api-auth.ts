@@ -18,6 +18,15 @@ export interface AuthResult {
   apiKeyId: Id<"apiKeys">;
 }
 
+export interface AgentPrincipal {
+  ownerId: string;
+  ownerType: "agent";
+  ownerDisplayName: string;
+}
+
+const AGENT_SESSION_ID_MAX_LENGTH = 128;
+const AGENT_SESSION_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
+
 export async function validateApiKey(
   request: Request
 ): Promise<AuthResult | Response> {
@@ -56,4 +65,35 @@ export async function validateApiKey(
 
 export function getConvexClient() {
   return convex;
+}
+
+export function resolveAgentPrincipal(
+  request: Request,
+  auth: AuthResult
+): AgentPrincipal | Response {
+  const rawSessionId = request.headers.get("X-Agent-Session-Id");
+  const sessionId = rawSessionId?.trim();
+
+  if (sessionId) {
+    if (
+      sessionId.length > AGENT_SESSION_ID_MAX_LENGTH ||
+      !AGENT_SESSION_ID_PATTERN.test(sessionId)
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Invalid X-Agent-Session-Id" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return {
+      ownerId: `session:${sessionId}`,
+      ownerType: "agent",
+      ownerDisplayName: sessionId,
+    };
+  }
+
+  return {
+    ownerId: `apikey:${auth.apiKeyId}`,
+    ownerType: "agent",
+    ownerDisplayName: auth.keyName,
+  };
 }
