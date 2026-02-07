@@ -5,15 +5,16 @@ import { v } from "convex/values";
 import { generateWorkspacePrefix } from "./prefix";
 import { actorValidator, logTicketActivity } from "./activityHelpers";
 import { requireWorkspaceAccess } from "./access";
+import {
+  validateStatusTransitionForActor,
+  type TicketStatus,
+} from "./statusPolicy";
 
 const Status = v.union(
   v.literal("unclaimed"),
   v.literal("in_progress"),
   v.literal("done")
 );
-
-type StatusType = "unclaimed" | "in_progress" | "done";
-type TransitionClass = "standard" | "non_standard";
 
 type CountsDelta = {
   count: number;
@@ -23,52 +24,10 @@ type CountsDelta = {
 const getOrderValue = (ticket: { order?: number; createdAt: number }) =>
   ticket.order ?? ticket.createdAt;
 
-const getCountedState = (archived: boolean | undefined, status: StatusType) => {
+const getCountedState = (archived: boolean | undefined, status: TicketStatus) => {
   const counted = !archived;
   const done = counted && status === "done";
   return { counted, done };
-};
-
-const getTransitionClass = (
-  from: StatusType,
-  to: StatusType
-): TransitionClass => {
-  if (from === to) {
-    return "standard";
-  }
-  if (
-    (from === "unclaimed" && to === "in_progress") ||
-    (from === "in_progress" && to === "done")
-  ) {
-    return "standard";
-  }
-  return "non_standard";
-};
-
-const normalizeReason = (reason: string | undefined) => {
-  const trimmed = reason?.trim();
-  return trimmed ? trimmed : undefined;
-};
-
-const validateAgentStatusTransition = (
-  from: StatusType,
-  to: StatusType,
-  agentApiKeyId: Id<"apiKeys"> | undefined,
-  reason: string | undefined
-) => {
-  const normalizedReason = normalizeReason(reason);
-  if (!agentApiKeyId || from === to) {
-    return {
-      transitionClass: getTransitionClass(from, to),
-      reason: normalizedReason,
-    };
-  }
-
-  const transitionClass = getTransitionClass(from, to);
-  if (transitionClass === "non_standard" && !normalizedReason) {
-    throw new Error("Reason is required for non-standard status transitions");
-  }
-  return { transitionClass, reason: normalizedReason };
 };
 
 const applyCountsDelta = async (
@@ -398,10 +357,10 @@ const applyStatusChange = async (
   ticket: {
     parentId: Id<"tickets"> | null;
     archived?: boolean;
-    status: StatusType;
+    status: TicketStatus;
     _id: Id<"tickets">;
   },
-  status: StatusType
+  status: TicketStatus
 ) => {
   if (ticket.status === status) return;
   if (ticket.parentId && !(ticket.archived ?? false)) {
@@ -690,12 +649,12 @@ export const updateStatus = mutation({
       ownerType: ticket.ownerType ?? null,
       ownerDisplayName: ticket.ownerDisplayName ?? null,
     };
-    const { transitionClass, reason } = validateAgentStatusTransition(
-      prevStatus,
-      args.status,
-      args.agentApiKeyId,
-      args.reason
-    );
+    const { transitionClass, reason } = validateStatusTransitionForActor({
+      from: prevStatus,
+      to: args.status,
+      isAgentCaller: Boolean(args.agentApiKeyId),
+      reason: args.reason,
+    });
     await applyStatusChange(ctx, ticket, args.status);
     if (prevStatus !== args.status) {
       await logTicketActivity(ctx, {
@@ -747,12 +706,12 @@ export const move = mutation({
       ownerType: ticket.ownerType ?? null,
       ownerDisplayName: ticket.ownerDisplayName ?? null,
     };
-    const { transitionClass, reason } = validateAgentStatusTransition(
-      prevStatus,
-      args.status,
-      args.agentApiKeyId,
-      args.reason
-    );
+    const { transitionClass, reason } = validateStatusTransitionForActor({
+      from: prevStatus,
+      to: args.status,
+      isAgentCaller: Boolean(args.agentApiKeyId),
+      reason: args.reason,
+    });
     await applyStatusChange(ctx, ticket, args.status);
     await ctx.db.patch(args.id, {
       order: args.order,

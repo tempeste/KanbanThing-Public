@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ type LinkedAccount = {
   accountId?: string;
 };
 
-export default function AccountPage() {
+function AccountPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, isPending, refetch } = useSession();
@@ -459,5 +459,19 @@ export default function AccountPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AccountPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-muted-foreground">Loading...</div>
+        </div>
+      }
+    >
+      <AccountPageContent />
+    </Suspense>
   );
 }
