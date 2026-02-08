@@ -65,33 +65,28 @@ export default function NewTicketPage() {
 
   if (workspace === undefined || tickets === undefined) {
     return (
-      <main className="min-h-screen p-4 md:p-6">
-        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
-          <div className="kb-label">Loading ticket form...</div>
-        </div>
-      </main>
+      <div className="flex h-full flex-1 items-center justify-center">
+        <div className="kb-label">Loading ticket form...</div>
+      </div>
     );
   }
 
   if (workspace === null) {
     return (
-      <main className="min-h-screen p-4 md:p-6">
-        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 text-center md:min-h-[calc(100vh-3rem)]">
-          <div>
-            <h1 className="text-2xl font-bold mb-4">Workspace not found</h1>
-            <Link href="/">
-              <Button>Go Home</Button>
-            </Link>
-          </div>
+      <div className="flex h-full flex-1 items-center justify-center text-center">
+        <div>
+          <h1 className="text-2xl font-bold mb-4">Workspace not found</h1>
+          <Link href="/">
+            <Button>Go Home</Button>
+          </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen p-4 md:p-6">
-      <div className="kb-shell min-h-[calc(100vh-2rem)] overflow-hidden md:min-h-[calc(100vh-3rem)]">
-        <header className="kb-header border-b-2 border-primary/45 sticky top-0 z-10">
+    <div className="min-h-full">
+      <header className="kb-header border-b-2 border-primary/45 sticky top-0 z-10">
           <div className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="icon" asChild>
@@ -162,7 +157,7 @@ export default function NewTicketPage() {
                 />
                 <div className="border border-border/75 bg-background/70 p-4">
                   {description.trim() ? (
-                    <Markdown content={description} className="prose prose-invert max-w-none" />
+                    <Markdown content={description} className="prose max-w-none dark:prose-invert" />
                   ) : (
                     <p className="text-sm text-muted-foreground">Live markdown preview</p>
                   )}
@@ -180,7 +175,6 @@ export default function NewTicketPage() {
             </div>
           </Card>
         </div>
-      </div>
-    </main>
+    </div>
   );
 }

@@ -286,57 +286,48 @@ export default function WorkspaceSettingsPage() {
 
   if (isSessionPending) {
     return (
-      <main className="min-h-screen p-4 md:p-6">
-        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
-          <div className="kb-label">Loading workspace settings...</div>
-        </div>
-      </main>
+      <div className="flex h-full flex-1 items-center justify-center">
+        <div className="kb-label">Loading workspace settings...</div>
+      </div>
     );
   }
 
   if (!session?.user) {
     return (
-      <main className="min-h-screen p-4 md:p-6">
-        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 text-center md:min-h-[calc(100vh-3rem)]">
-          <div>
-            <h1 className="text-2xl font-bold mb-4">Access required</h1>
-            <Link href="/login">
-              <Button>Sign In</Button>
-            </Link>
-          </div>
+      <div className="flex h-full flex-1 items-center justify-center text-center">
+        <div>
+          <h1 className="text-2xl font-bold mb-4">Access required</h1>
+          <Link href="/login">
+            <Button>Sign In</Button>
+          </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (workspace === undefined || apiKeys === undefined || docsVersions === undefined) {
     return (
-      <main className="min-h-screen p-4 md:p-6">
-        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
-          <div className="kb-label">Loading workspace settings...</div>
-        </div>
-      </main>
+      <div className="flex h-full flex-1 items-center justify-center">
+        <div className="kb-label">Loading workspace settings...</div>
+      </div>
     );
   }
 
   if (workspace === null) {
     return (
-      <main className="min-h-screen p-4 md:p-6">
-        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 text-center md:min-h-[calc(100vh-3rem)]">
+      <div className="flex h-full flex-1 items-center justify-center text-center">
         <div>
           <h1 className="text-2xl font-bold mb-4">Workspace not found</h1>
           <Link href="/">
             <Button>Go Home</Button>
           </Link>
         </div>
-        </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen p-4 md:p-6">
-      <div className="kb-shell min-h-[calc(100vh-2rem)] overflow-hidden md:min-h-[calc(100vh-3rem)]">
+    <div className="min-h-full">
       <header className="kb-header border-b-2 border-primary/45 sticky top-0 z-10">
         <div className="px-4 py-4 md:px-6">
           <div className="flex items-center gap-4">
@@ -347,7 +338,12 @@ export default function WorkspaceSettingsPage() {
             </Link>
             <div>
               <div className="kb-label">Workspace Administration</div>
-              <h1 className="text-2xl font-semibold tracking-[0.04em]">{workspace.name} Settings</h1>
+              <h1 className="text-2xl font-semibold tracking-[0.04em]">
+                <Link href={`/workspace/${workspaceId}`} className="hover:text-primary transition-colors">
+                  {workspace.name}
+                </Link>
+                {" "}Settings
+              </h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Configure prefix, project docs, and API keys
               </p>
@@ -869,7 +865,6 @@ export default function WorkspaceSettingsPage() {
           </div>
         </DialogContent>
       </Dialog>
-      </div>
-    </main>
+    </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -28,7 +27,6 @@ interface TicketTableProps {
   tickets: TicketSummary[];
   workspacePrefix: string;
   showArchived: boolean;
-  onToggleShowArchived: () => void;
   compact?: boolean;
 }
 
@@ -39,7 +37,6 @@ export function TicketTable({
   tickets,
   workspacePrefix,
   showArchived,
-  onToggleShowArchived,
 }: TicketTableProps) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -154,7 +151,7 @@ export function TicketTable({
   const rowVirtualizer = useVirtualizer({
     count: treeRows.length,
     getScrollElement: () => listRef.current,
-    estimateSize: () => 64,
+    estimateSize: () => 48,
     overscan: 12,
   });
 
@@ -370,11 +367,11 @@ export function TicketTable({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="hidden border-b-2 border-[#222] bg-[#0d0d0d] px-7 py-2 md:grid md:grid-cols-[90px_minmax(0,1fr)_170px_120px_110px] md:items-center">
+      <div className="hidden border-b-2 border-border bg-card px-7 py-2 md:grid md:grid-cols-[90px_minmax(0,1fr)_170px_120px_110px] md:items-center">
         {["ID", "TITLE", "ASSIGNEE", "STATUS", "ACTIONS"].map((header) => (
           <span
             key={header}
-            className={`font-mono text-[9px] font-extrabold tracking-[0.2em] text-[#444] ${
+            className={`font-mono text-[9px] font-extrabold tracking-[0.2em] text-muted-foreground/60 ${
               header === "ACTIONS" ? "text-right" : ""
             }`}
           >
@@ -385,14 +382,14 @@ export function TicketTable({
 
       <div ref={listRef} className="kb-scroll min-h-0 flex-1 overflow-auto">
         {treeRows.length === 0 && (
-          <div className="px-7 py-10 font-mono text-xs uppercase tracking-[0.12em] text-[#666]">
+          <div className="px-7 py-10 font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
             No issues yet.
           </div>
         )}
 
         {treeRows.length > 0 && (
           <div
-            className="relative divide-y divide-[#1a1a1a]"
+            className="relative divide-y divide-border/50"
             style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -405,10 +402,10 @@ export function TicketTable({
               const dragClass =
                 dragOverId === ticket._id
                   ? dragOverPosition === "inside"
-                    ? "bg-[#171717]"
+                    ? "bg-accent"
                     : dragOverPosition === "above"
-                      ? "border-t-2 border-t-[#FF3B00]"
-                      : "border-b-2 border-b-[#FF3B00]"
+                      ? "border-t-2 border-t-primary"
+                      : "border-b-2 border-b-primary"
                   : "";
 
               return (
@@ -458,21 +455,6 @@ export function TicketTable({
         )}
       </div>
 
-      <div className="border-t border-[#1a1a1a] px-7 py-3">
-        <Link
-          href={`/workspace/${workspaceId}/tickets/new?tab=list`}
-          className="inline-flex border border-[#333] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#666] transition hover:border-[#555] hover:text-[#bbb]"
-        >
-          New Issue
-        </Link>
-        <button
-          type="button"
-          onClick={onToggleShowArchived}
-          className="ml-2 inline-flex border border-[#333] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#666] transition hover:border-[#555] hover:text-[#bbb]"
-        >
-          {showArchived ? "Hide Archived" : "Show Archived"}
-        </button>
-      </div>
     </div>
   );
 }
