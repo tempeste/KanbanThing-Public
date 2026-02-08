@@ -1,5 +1,9 @@
 import { NextRequest } from "next/server";
-import { validateApiKey, getConvexClient } from "@/lib/api-auth";
+import {
+  validateApiKey,
+  getConvexClient,
+  requireAdminApiKey,
+} from "@/lib/api-auth";
 import { api } from "@/convex/_generated/api";
 
 export async function GET(request: NextRequest) {
@@ -27,6 +31,8 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const auth = await validateApiKey(request);
   if (auth instanceof Response) return auth;
+  const adminGuard = requireAdminApiKey(auth);
+  if (adminGuard) return adminGuard;
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.docs !== "string") {

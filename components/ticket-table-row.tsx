@@ -108,7 +108,7 @@ export function TicketTableRow({
       <div className="min-w-0">
         <Link
           href={`/workspace/${workspaceId}/tickets/${ticket._id}?tab=list`}
-          className="line-clamp-1 text-sm font-semibold text-[#d7d7d7] hover:text-white"
+          className="line-clamp-1 break-all text-sm font-semibold text-[#d7d7d7] hover:text-white"
         >
           {ticket.title}
         </Link>

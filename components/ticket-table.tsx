@@ -107,7 +107,22 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
 
   const visibleTickets = useMemo(() => {
     if (showArchived) return mergedTickets;
-    return mergedTickets.filter((ticket) => !(ticket.archived ?? false));
+
+    const ticketById = new Map(mergedTickets.map((ticket) => [ticket._id, ticket]));
+    const hasArchivedAncestor = (ticket: Ticket) => {
+      let currentParentId = ticket.parentId ?? null;
+      while (currentParentId) {
+        const parent = ticketById.get(currentParentId);
+        if (!parent) return false;
+        if (parent.archived ?? false) return true;
+        currentParentId = parent.parentId ?? null;
+      }
+      return false;
+    };
+
+    return mergedTickets.filter(
+      (ticket) => !(ticket.archived ?? false) && !hasArchivedAncestor(ticket)
+    );
   }, [mergedTickets, showArchived]);
 
   const ticketsById = useMemo(() => new Map(visibleTickets.map((ticket) => [ticket._id, ticket])), [visibleTickets]);

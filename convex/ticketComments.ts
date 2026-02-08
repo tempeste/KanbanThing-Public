@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { actorValidator, logTicketActivity, resolveActor } from "./activityHelpers";
 import { requireWorkspaceAccess } from "./access";
 
+const MAX_COMMENT_LENGTH = 10_000;
+
 export const listByTicket = query({
   args: {
     ticketId: v.id("tickets"),
@@ -50,6 +52,9 @@ export const add = mutation({
     await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
     if (!args.body.trim()) {
       throw new Error("Comment body is required");
+    }
+    if (args.body.length > MAX_COMMENT_LENGTH) {
+      throw new Error(`Comment body cannot exceed ${MAX_COMMENT_LENGTH} characters`);
     }
 
     const resolved = await resolveActor(ctx, args.actor);

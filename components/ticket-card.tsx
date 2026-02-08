@@ -94,7 +94,7 @@ export function TicketCard({
 
             <Link
               href={`/workspace/${workspaceId}/tickets/${ticket._id}`}
-              className="line-clamp-2 text-[14px] font-semibold leading-[1.35] text-[#e6e6e6] hover:text-white"
+              className="line-clamp-2 break-words text-[14px] font-semibold leading-[1.35] text-[#e6e6e6] hover:text-white"
             >
               {ticket.title}
             </Link>

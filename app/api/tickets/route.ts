@@ -33,6 +33,15 @@ export async function GET(request: NextRequest) {
       parentParam === "null"
         ? null
         : parentParam;
+    const limitParam = searchParams.get("limit");
+    let limit: number | undefined;
+    if (limitParam !== null) {
+      const parsedLimit = Number(limitParam);
+      if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+        return jsonError("Invalid limit", 400);
+      }
+      limit = Math.min(Math.floor(parsedLimit), 500);
+    }
 
     let tickets;
     if (parentParam !== null) {
@@ -46,6 +55,7 @@ export async function GET(request: NextRequest) {
       tickets = await convex.query(api.tickets.listByParent, {
         workspaceId: auth.workspaceId,
         parentId: parentId as Id<"tickets"> | null,
+        limit,
         agentApiKeyId: auth.apiKeyId,
       });
       if (status) {
@@ -55,11 +65,13 @@ export async function GET(request: NextRequest) {
       tickets = await convex.query(api.tickets.listByStatus, {
         workspaceId: auth.workspaceId,
         status: status as "unclaimed" | "in_progress" | "done",
+        limit,
         agentApiKeyId: auth.apiKeyId,
       });
     } else {
       tickets = await convex.query(api.tickets.list, {
         workspaceId: auth.workspaceId,
+        limit,
         agentApiKeyId: auth.apiKeyId,
       });
     }
@@ -119,6 +131,13 @@ export async function POST(request: NextRequest) {
       const message = error instanceof Error ? error.message : "";
       if (message.includes("Invalid parent ticket") || isInvalidConvexIdError(error)) {
         return jsonError("Invalid parentId", 400);
+      }
+      if (
+        message.includes("Title is required") ||
+        message.includes("Title cannot exceed") ||
+        message.includes("Description cannot exceed")
+      ) {
+        return jsonError(message, 400);
       }
       return jsonError(sanitizeServerError(error, "Failed to create ticket"), 500);
     }

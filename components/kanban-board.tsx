@@ -104,7 +104,23 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
   }, [optimisticOwners, tickets]);
 
   const visibleTickets = useMemo(() => {
-    const base = showArchived ? tickets : tickets.filter((ticket) => !(ticket.archived ?? false));
+    const ticketById = new Map(tickets.map((ticket) => [ticket._id, ticket]));
+    const hasArchivedAncestor = (ticket: Ticket) => {
+      let currentParentId = ticket.parentId ?? null;
+      while (currentParentId) {
+        const parent = ticketById.get(currentParentId);
+        if (!parent) return false;
+        if (parent.archived ?? false) return true;
+        currentParentId = parent.parentId ?? null;
+      }
+      return false;
+    };
+
+    const base = showArchived
+      ? tickets
+      : tickets.filter(
+          (ticket) => !(ticket.archived ?? false) && !hasArchivedAncestor(ticket)
+        );
     if (!resolvedOptimisticMoves.size && !resolvedOptimisticOwners.size) return base;
 
     return base.map((ticket) => {

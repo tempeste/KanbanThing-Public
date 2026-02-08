@@ -121,9 +121,35 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 
             // Check GitHub username whitelist for GitHub OAuth
             if (account.providerId === "github" && account.accountId) {
-              // accountId for GitHub is the username
-              const githubUsername = account.accountId.toLowerCase();
-              if (allowedGithubUsers.includes(githubUsername)) {
+              const githubAccountId = account.accountId.toLowerCase();
+              const githubUsername =
+                (
+                  account as {
+                    username?: string;
+                    userName?: string;
+                    login?: string;
+                  }
+                ).username ??
+                (
+                  account as {
+                    username?: string;
+                    userName?: string;
+                    login?: string;
+                  }
+                ).userName ??
+                (
+                  account as {
+                    username?: string;
+                    userName?: string;
+                    login?: string;
+                  }
+                ).login;
+
+              if (
+                allowedGithubUsers.includes(githubAccountId) ||
+                (githubUsername &&
+                  allowedGithubUsers.includes(githubUsername.toLowerCase()))
+              ) {
                 return { data: account };
               }
             }
