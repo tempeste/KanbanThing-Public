@@ -27,6 +27,40 @@ type CountsDelta = {
 const getOrderValue = (ticket: { order?: number; createdAt: number }) =>
   ticket.order ?? ticket.createdAt;
 
+const toTicketSummary = (ticket: {
+  _id: Id<"tickets">;
+  workspaceId: Id<"workspaces">;
+  title: string;
+  number?: number;
+  parentId: Id<"tickets"> | null;
+  order?: number;
+  archived?: boolean;
+  status: TicketStatus;
+  childCount: number;
+  childDoneCount: number;
+  ownerId?: string;
+  ownerType?: "user" | "agent";
+  ownerDisplayName?: string;
+  createdAt: number;
+  updatedAt: number;
+}) => ({
+  _id: ticket._id,
+  workspaceId: ticket.workspaceId,
+  title: ticket.title,
+  number: ticket.number,
+  parentId: ticket.parentId,
+  order: ticket.order,
+  archived: ticket.archived,
+  status: ticket.status,
+  childCount: ticket.childCount,
+  childDoneCount: ticket.childDoneCount,
+  ownerId: ticket.ownerId,
+  ownerType: ticket.ownerType,
+  ownerDisplayName: ticket.ownerDisplayName,
+  createdAt: ticket.createdAt,
+  updatedAt: ticket.updatedAt,
+});
+
 const normalizeLimit = (limit?: number) => {
   if (typeof limit !== "number" || !Number.isFinite(limit)) return undefined;
   const parsed = Math.floor(limit);
@@ -134,6 +168,26 @@ export const list = query({
   },
 });
 
+export const listSummaries = query({
+  args: {
+    workspaceId: v.id("workspaces"),
+    limit: v.optional(v.number()),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
+    const ticketsQuery = ctx.db
+      .query("tickets")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId));
+    const limit = normalizeLimit(args.limit);
+    const tickets =
+      limit === undefined
+        ? await ticketsQuery.collect()
+        : await ticketsQuery.take(limit);
+    return tickets.map(toTicketSummary);
+  },
+});
+
 export const listByStatus = query({
   args: {
     workspaceId: v.id("workspaces"),
@@ -153,6 +207,29 @@ export const listByStatus = query({
   },
 });
 
+export const listSummariesByStatus = query({
+  args: {
+    workspaceId: v.id("workspaces"),
+    status: Status,
+    limit: v.optional(v.number()),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
+    const ticketsQuery = ctx.db
+      .query("tickets")
+      .withIndex("by_workspace_status", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("status", args.status)
+      );
+    const limit = normalizeLimit(args.limit);
+    const tickets =
+      limit === undefined
+        ? await ticketsQuery.collect()
+        : await ticketsQuery.take(limit);
+    return tickets.map(toTicketSummary);
+  },
+});
+
 export const listByParent = query({
   args: {
     workspaceId: v.id("workspaces"),
@@ -169,6 +246,81 @@ export const listByParent = query({
       );
     const limit = normalizeLimit(args.limit);
     return limit === undefined ? await query.collect() : await query.take(limit);
+  },
+});
+
+export const listSummariesByParent = query({
+  args: {
+    workspaceId: v.id("workspaces"),
+    parentId: v.union(v.id("tickets"), v.null()),
+    limit: v.optional(v.number()),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
+    const ticketsQuery = ctx.db
+      .query("tickets")
+      .withIndex("by_workspace_parent", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("parentId", args.parentId)
+      );
+    const limit = normalizeLimit(args.limit);
+    const tickets =
+      limit === undefined
+        ? await ticketsQuery.collect()
+        : await ticketsQuery.take(limit);
+    return tickets.map(toTicketSummary);
+  },
+});
+
+export const listByParentAndStatus = query({
+  args: {
+    workspaceId: v.id("workspaces"),
+    parentId: v.union(v.id("tickets"), v.null()),
+    status: Status,
+    limit: v.optional(v.number()),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
+    const ticketsQuery = ctx.db
+      .query("tickets")
+      .withIndex("by_workspace_parent_status", (q) =>
+        q
+          .eq("workspaceId", args.workspaceId)
+          .eq("parentId", args.parentId)
+          .eq("status", args.status)
+      );
+    const limit = normalizeLimit(args.limit);
+    return limit === undefined
+      ? await ticketsQuery.collect()
+      : await ticketsQuery.take(limit);
+  },
+});
+
+export const listSummariesByParentAndStatus = query({
+  args: {
+    workspaceId: v.id("workspaces"),
+    parentId: v.union(v.id("tickets"), v.null()),
+    status: Status,
+    limit: v.optional(v.number()),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
+    const ticketsQuery = ctx.db
+      .query("tickets")
+      .withIndex("by_workspace_parent_status", (q) =>
+        q
+          .eq("workspaceId", args.workspaceId)
+          .eq("parentId", args.parentId)
+          .eq("status", args.status)
+      );
+    const limit = normalizeLimit(args.limit);
+    const tickets =
+      limit === undefined
+        ? await ticketsQuery.collect()
+        : await ticketsQuery.take(limit);
+    return tickets.map(toTicketSummary);
   },
 });
 

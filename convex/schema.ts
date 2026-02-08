@@ -54,7 +54,8 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_workspace", ["workspaceId"])
     .index("by_workspace_status", ["workspaceId", "status"])
-    .index("by_workspace_parent", ["workspaceId", "parentId"]),
+    .index("by_workspace_parent", ["workspaceId", "parentId"])
+    .index("by_workspace_parent_status", ["workspaceId", "parentId", "status"]),
 
   apiKeys: defineTable({
     workspaceId: v.id("workspaces"),
