@@ -87,7 +87,7 @@ export default function NewTicketPage() {
   return (
     <div className="min-h-full">
       <header className="kb-header border-b-2 border-primary/45 sticky top-0 z-10">
-          <div className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+          <div className="flex flex-col gap-4 pl-12 pr-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="icon" asChild>
                 <Link href={`/workspace/${workspaceId}`}>
@@ -131,7 +131,7 @@ export default function NewTicketPage() {
                 onChange={(event) =>
                   setParentId(event.target.value ? (event.target.value as Id<"tickets">) : null)
                 }
-                className="flex h-10 w-full border border-input bg-background/70 px-3 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="flex h-10 w-full border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_option]:bg-background [&_option]:text-foreground"
               >
                 <option value="">No parent (top-level)</option>
                 {tickets.map((ticket) => (

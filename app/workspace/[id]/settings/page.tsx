@@ -329,9 +329,9 @@ export default function WorkspaceSettingsPage() {
   return (
     <div className="min-h-full">
       <header className="kb-header border-b-2 border-primary/45 sticky top-0 z-10">
-        <div className="px-4 py-4 md:px-6">
+        <div className="pl-12 pr-4 py-4 md:px-6">
           <div className="flex items-center gap-4">
-            <Link href={`/workspace/${workspaceId}`}>
+            <Link href={`/workspace/${workspaceId}`} className="hidden md:inline-flex">
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="w-5 h-5" />
               </Button>
