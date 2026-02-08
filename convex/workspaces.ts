@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { generateWorkspacePrefix } from "./prefix";
 import { actorValidator, resolveActor } from "./activityHelpers";
@@ -8,7 +8,22 @@ import { requireWorkspaceAccess } from "./access";
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("workspaces").collect();
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) return [];
+
+    const memberships = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_user", (q) => q.eq("betterAuthUserId", authUser._id))
+      .collect();
+
+    const workspaces = await Promise.all(
+      memberships.map(async (membership) => {
+        const workspace = await ctx.db.get(membership.workspaceId);
+        return workspace ? { ...workspace, role: membership.role } : null;
+      })
+    );
+
+    return workspaces.filter((workspace) => workspace !== null);
   },
 });
 
@@ -31,16 +46,30 @@ export const create = mutation({
     docs: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error("Unauthorized");
+    }
     const prefix = generateWorkspacePrefix(args.name);
     const now = Date.now();
-    return await ctx.db.insert("workspaces", {
+    const workspaceId = await ctx.db.insert("workspaces", {
       name: args.name,
       docs: args.docs,
       prefix,
       ticketCounter: 0,
+      createdBy: authUser._id,
       createdAt: now,
       updatedAt: now,
     });
+
+    await ctx.db.insert("workspaceMembers", {
+      workspaceId,
+      betterAuthUserId: authUser._id,
+      role: "owner",
+      createdAt: now,
+    });
+
+    return workspaceId;
   },
 });
 
@@ -213,6 +242,22 @@ export const listDocsVersions = query({
 export const remove = mutation({
   args: { id: v.id("workspaces") },
   handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error("Unauthorized");
+    }
+
+    const membership = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_workspace_user", (q) =>
+        q.eq("workspaceId", args.id).eq("betterAuthUserId", authUser._id)
+      )
+      .first();
+
+    if (!membership || membership.role !== "owner") {
+      throw new Error("Only workspace owners can delete workspaces");
+    }
+
     // Delete all tickets in workspace
     const tickets = await ctx.db
       .query("tickets")
@@ -239,6 +284,22 @@ export const remove = mutation({
 export const backfillIdentifiers = mutation({
   args: { id: v.id("workspaces") },
   handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error("Unauthorized");
+    }
+
+    const membership = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_workspace_user", (q) =>
+        q.eq("workspaceId", args.id).eq("betterAuthUserId", authUser._id)
+      )
+      .first();
+
+    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+      throw new Error("Not authorized to backfill workspace identifiers");
+    }
+
     const workspace = await ctx.db.get(args.id);
     if (!workspace) {
       throw new Error("Workspace not found");
@@ -306,6 +367,22 @@ export const backfillIdentifiers = mutation({
 export const resetWorkspaceTickets = mutation({
   args: { id: v.id("workspaces") },
   handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error("Unauthorized");
+    }
+
+    const membership = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_workspace_user", (q) =>
+        q.eq("workspaceId", args.id).eq("betterAuthUserId", authUser._id)
+      )
+      .first();
+
+    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+      throw new Error("Not authorized to reset workspace tickets");
+    }
+
     const workspace = await ctx.db.get(args.id);
     if (!workspace) {
       throw new Error("Workspace not found");
@@ -327,7 +404,7 @@ export const resetWorkspaceTickets = mutation({
   },
 });
 
-export const resetAllTickets = mutation({
+export const resetAllTickets = internalMutation({
   args: {},
   handler: async (ctx) => {
     const workspaces = await ctx.db.query("workspaces").collect();

@@ -3,38 +3,36 @@ import { validateApiKey, getConvexClient } from "@/lib/api-auth";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { serializeTicket } from "@/lib/api-serializers";
+import {
+  getTicketSafe,
+  isInvalidConvexIdError,
+  jsonError,
+  sanitizeServerError,
+} from "@/lib/api-route-helpers";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await validateApiKey(request);
-  if (auth instanceof Response) return auth;
-
-  const { id } = await params;
-  const convex = getConvexClient();
-
-  const ticket = await convex.query(api.tickets.get, {
-    id: id as Id<"tickets">,
-    agentApiKeyId: auth.apiKeyId,
-  });
-
-  if (!ticket) {
-    return Response.json({ error: "Issue not found" }, { status: 404 });
-  }
-
-  if (ticket.workspaceId !== auth.workspaceId) {
-    return Response.json({ error: "Issue not found" }, { status: 404 });
-  }
-
-  if (ticket.status !== "in_progress") {
-    return Response.json(
-      { error: "Issue must be in progress to complete", currentStatus: ticket.status },
-      { status: 409 }
-    );
-  }
-
   try {
+    const auth = await validateApiKey(request);
+    if (auth instanceof Response) return auth;
+
+    const { id } = await params;
+    const convex = getConvexClient();
+
+    const ticket = await getTicketSafe(convex, id, auth.apiKeyId);
+
+    if (!ticket || ticket.workspaceId !== auth.workspaceId) {
+      return jsonError("Issue not found", 404);
+    }
+
+    if (ticket.status !== "in_progress") {
+      return jsonError("Issue must be in progress to complete", 409, {
+        currentStatus: ticket.status,
+      });
+    }
+
     await convex.mutation(api.tickets.complete, {
       id: id as Id<"tickets">,
       actor: {
@@ -45,19 +43,19 @@ export async function POST(
       agentApiKeyId: auth.apiKeyId,
     });
 
-    const updatedTicket = await convex.query(api.tickets.get, {
-      id: id as Id<"tickets">,
-      agentApiKeyId: auth.apiKeyId,
-    });
+    const updatedTicket = await getTicketSafe(convex, id, auth.apiKeyId);
+    if (!updatedTicket) {
+      return jsonError("Issue not found", 404);
+    }
 
     return Response.json({
       success: true,
-      ticket: serializeTicket(updatedTicket!),
+      ticket: serializeTicket(updatedTicket),
     });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to complete issue" },
-      { status: 500 }
-    );
+    if (isInvalidConvexIdError(error)) {
+      return jsonError("Issue not found", 404);
+    }
+    return jsonError(sanitizeServerError(error, "Failed to complete issue"), 500);
   }
 }

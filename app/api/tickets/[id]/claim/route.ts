@@ -7,40 +7,38 @@ import {
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { serializeTicket } from "@/lib/api-serializers";
+import {
+  getTicketSafe,
+  isInvalidConvexIdError,
+  jsonError,
+  sanitizeServerError,
+} from "@/lib/api-route-helpers";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await validateApiKey(request);
-  if (auth instanceof Response) return auth;
-  const principal = resolveAgentPrincipal(request, auth);
-  if (principal instanceof Response) return principal;
-
-  const { id } = await params;
-  const convex = getConvexClient();
-
-  const ticket = await convex.query(api.tickets.get, {
-    id: id as Id<"tickets">,
-    agentApiKeyId: auth.apiKeyId,
-  });
-
-  if (!ticket) {
-    return Response.json({ error: "Issue not found" }, { status: 404 });
-  }
-
-  if (ticket.workspaceId !== auth.workspaceId) {
-    return Response.json({ error: "Issue not found" }, { status: 404 });
-  }
-
-  if (ticket.status !== "unclaimed") {
-    return Response.json(
-      { error: "Issue is not available to claim", currentStatus: ticket.status },
-      { status: 409 }
-    );
-  }
-
   try {
+    const auth = await validateApiKey(request);
+    if (auth instanceof Response) return auth;
+    const principal = resolveAgentPrincipal(request, auth);
+    if (principal instanceof Response) return principal;
+
+    const { id } = await params;
+    const convex = getConvexClient();
+
+    const ticket = await getTicketSafe(convex, id, auth.apiKeyId);
+
+    if (!ticket || ticket.workspaceId !== auth.workspaceId) {
+      return jsonError("Issue not found", 404);
+    }
+
+    if (ticket.status !== "unclaimed") {
+      return jsonError("Issue is not available to claim", 409, {
+        currentStatus: ticket.status,
+      });
+    }
+
     await convex.mutation(api.tickets.assign, {
       id: id as Id<"tickets">,
       ownerId: principal.ownerId,
@@ -54,19 +52,19 @@ export async function POST(
       agentApiKeyId: auth.apiKeyId,
     });
 
-    const updatedTicket = await convex.query(api.tickets.get, {
-      id: id as Id<"tickets">,
-      agentApiKeyId: auth.apiKeyId,
-    });
+    const updatedTicket = await getTicketSafe(convex, id, auth.apiKeyId);
+    if (!updatedTicket) {
+      return jsonError("Issue not found", 404);
+    }
 
     return Response.json({
       success: true,
-      ticket: serializeTicket(updatedTicket!),
+      ticket: serializeTicket(updatedTicket),
     });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to claim issue" },
-      { status: 500 }
-    );
+    if (isInvalidConvexIdError(error)) {
+      return jsonError("Issue not found", 404);
+    }
+    return jsonError(sanitizeServerError(error, "Failed to claim issue"), 500);
   }
 }
