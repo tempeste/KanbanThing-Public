@@ -102,6 +102,7 @@ export default function WorkspaceSettingsPage() {
   const [prefix, setPrefix] = useState<string | null>(null);
   const [isSavingPrefix, setIsSavingPrefix] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyRole, setNewKeyRole] = useState<"agent" | "admin">("agent");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
@@ -164,10 +165,12 @@ export default function WorkspaceSettingsPage() {
       workspaceId,
       keyHash,
       name: newKeyName.trim(),
+      role: newKeyRole,
     });
 
     setGeneratedKey(key);
     setNewKeyName("");
+    setNewKeyRole("agent");
   };
 
   const handleResetTickets = async () => {
@@ -514,13 +517,22 @@ export default function WorkspaceSettingsPage() {
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 placeholder="Key name (e.g., 'Claude Agent')"
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
                 disabled={!canManageApiKeys}
               />
+              <select
+                className="h-10 min-w-[140px] rounded-md border border-input bg-background px-3 text-sm"
+                value={newKeyRole}
+                onChange={(e) => setNewKeyRole(e.target.value as "agent" | "admin")}
+                disabled={!canManageApiKeys}
+              >
+                <option value="agent">Agent key</option>
+                <option value="admin">Admin key</option>
+              </select>
               <Button
                 onClick={handleCreateKey}
                 disabled={!canManageApiKeys || !newKeyName.trim()}
@@ -549,6 +561,9 @@ export default function WorkspaceSettingsPage() {
                         <p className="font-medium">{key.name}</p>
                         <p className="text-xs text-muted-foreground">
                           Created {new Date(key.createdAt).toLocaleDateString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          Role: {key.role ?? "admin"}
                         </p>
                       </div>
                       {canManageApiKeys && (
