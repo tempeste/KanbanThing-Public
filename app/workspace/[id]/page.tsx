@@ -11,6 +11,8 @@ import { TicketTable } from "@/components/ticket-table";
 import { generateWorkspacePrefix } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { useSession } from "@/lib/auth-client";
+import { deriveVisibleTickets } from "@/lib/ticket-derivations";
+import { useState } from "react";
 
 const STATUS_ACCENTS = {
   unclaimed: "#FF3B00",
@@ -32,12 +34,13 @@ export default function WorkspacePage() {
     canQueryWorkspace ? { id: workspaceId } : "skip"
   );
   const tickets = useQuery(
-    api.tickets.list,
+    api.tickets.listSummaries,
     canQueryWorkspace ? { workspaceId } : "skip"
   );
-  const userWorkspaces = useQuery(api.workspaces.listForUser, userId ? {} : "skip") ?? [];
+  const userWorkspaces = useQuery(api.workspaces.listSidebar, userId ? {} : "skip") ?? [];
   const tabParam = searchParams.get("tab");
   const activeTab = tabParam === "list" || tabParam === "board" ? tabParam : "board";
+  const [showArchived, setShowArchived] = useState(false);
 
   if (isSessionPending) {
     return (
@@ -198,20 +201,26 @@ export default function WorkspacePage() {
   }
 
   const workspacePrefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
-  const activeTickets = tickets.filter((ticket) => !(ticket.archived ?? false));
-  const doneCount = activeTickets.filter((ticket) => ticket.status === "done").length;
-  const inProgressCount = activeTickets.filter((ticket) => ticket.status === "in_progress").length;
-  const unclaimedCount = activeTickets.filter((ticket) => ticket.status === "unclaimed").length;
+  const visibleTickets = deriveVisibleTickets(tickets, showArchived);
+  const doneCount = visibleTickets.filter((ticket) => ticket.status === "done").length;
+  const inProgressCount = visibleTickets.filter(
+    (ticket) => ticket.status === "in_progress"
+  ).length;
+  const unclaimedCount = visibleTickets.filter(
+    (ticket) => ticket.status === "unclaimed"
+  ).length;
   const completionPct =
-    activeTickets.length === 0 ? 0 : Math.round((doneCount / activeTickets.length) * 100);
+    visibleTickets.length === 0 ? 0 : Math.round((doneCount / visibleTickets.length) * 100);
   const completionDoneWidth =
-    activeTickets.length === 0 ? 0 : Math.round((doneCount / activeTickets.length) * 100);
-  const completionInProgressWidth =
-    activeTickets.length === 0
+    visibleTickets.length === 0
       ? 0
-      : Math.round((inProgressCount / activeTickets.length) * 100);
+      : Math.round((doneCount / visibleTickets.length) * 100);
+  const completionInProgressWidth =
+    visibleTickets.length === 0
+      ? 0
+      : Math.round((inProgressCount / visibleTickets.length) * 100);
   const onlineAgents = new Set(
-    tickets
+    visibleTickets
       .filter((ticket) => ticket.ownerType === "agent")
       .map((ticket) => ticket.ownerDisplayName ?? ticket.ownerId ?? "agent")
   ).size;
@@ -256,7 +265,7 @@ export default function WorkspacePage() {
         <div className="kb-scroll mt-2 flex-1 overflow-y-auto">
           {sidebarWorkspaces.map((ws) => {
             const active = ws._id === workspaceId;
-            const count = ws._id === workspaceId ? activeTickets.length : "--";
+            const count = ws._id === workspaceId ? visibleTickets.length : "--";
             return (
               <Link
                 key={ws._id}
@@ -298,7 +307,7 @@ export default function WorkspacePage() {
               {workspace.name.toUpperCase()}
             </h1>
             <span className="hidden font-mono text-[11px] text-[#555] md:inline">
-              {activeTickets.length} ISSUES
+              {visibleTickets.length} ISSUES
             </span>
             <span className="hidden h-4 w-px bg-[#333] md:inline" />
             <span className="hidden font-mono text-[10px] uppercase tracking-[0.1em] text-[#333] md:inline">
@@ -383,9 +392,23 @@ export default function WorkspacePage() {
 
         <div className="min-h-0 flex-1 overflow-hidden border-t-2 border-t-[#FF3B00]">
           {activeTab === "board" ? (
-            <KanbanBoard workspaceId={workspaceId} tickets={tickets} workspacePrefix={workspacePrefix} compact />
+            <KanbanBoard
+              workspaceId={workspaceId}
+              tickets={tickets}
+              workspacePrefix={workspacePrefix}
+              showArchived={showArchived}
+              onToggleShowArchived={() => setShowArchived((prev) => !prev)}
+              compact
+            />
           ) : (
-            <TicketTable workspaceId={workspaceId} tickets={tickets} workspacePrefix={workspacePrefix} compact />
+            <TicketTable
+              workspaceId={workspaceId}
+              tickets={tickets}
+              workspacePrefix={workspacePrefix}
+              showArchived={showArchived}
+              onToggleShowArchived={() => setShowArchived((prev) => !prev)}
+              compact
+            />
           )}
         </div>
 
