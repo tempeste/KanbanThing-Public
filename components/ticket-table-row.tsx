@@ -2,13 +2,10 @@
 
 import Link from "next/link";
 import { Doc, Id } from "@/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Bot, ChevronDown, ChevronRight, GripVertical, Plus, User } from "lucide-react";
 import { formatTicketNumber } from "@/lib/utils";
-import { IssueStatusBadge, IssueStatus } from "@/components/issue-status";
+import { IssueStatus } from "@/components/issue-status";
 import { TicketActionsMenu } from "@/components/ticket-actions-menu";
-import { ArchivedBadge } from "@/components/archived-badge";
 
 type Ticket = Doc<"tickets">;
 
@@ -57,13 +54,18 @@ export function TicketTableRow({
   const progressTotal = ticket.childCount ?? 0;
   const progressDone = ticket.childDoneCount ?? 0;
   const isArchived = ticket.archived ?? false;
+  const statusAccent =
+    ticket.status === "done" ? "#00FF94" : ticket.status === "in_progress" ? "#FFB800" : "#FF3B00";
+  const statusLabel =
+    ticket.status === "done" ? "DONE" : ticket.status === "in_progress" ? "IN PROGRESS" : "UNCLAIMED";
+  const ownerLabel = ticket.ownerDisplayName || ticket.ownerId || "\u2014";
 
   return (
     <div
-      className={`flex flex-col gap-3 px-4 py-3 transition-colors md:grid md:grid-cols-[minmax(0,1fr)_150px_180px_140px] md:items-center ${
+      className={`cursor-pointer px-4 py-3 transition-colors md:grid md:grid-cols-[90px_minmax(0,1fr)_170px_120px_110px] md:items-center md:px-7 ${
         isArchived
-          ? "bg-muted/25 opacity-65 grayscale-[35%] hover:opacity-95 hover:grayscale-0"
-          : "hover:bg-accent/30"
+          ? "opacity-65 grayscale-[35%] hover:bg-[#141414] hover:opacity-95 hover:grayscale-0"
+          : "hover:bg-[#141414]"
       } ${dragClass}`}
       role="button"
       tabIndex={0}
@@ -75,103 +77,82 @@ export function TicketTableRow({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="relative flex items-start gap-2" style={{ paddingLeft: `${depth * 16}px` }}>
-        {depth > 0 && (
-          <>
-            <span
-              className="absolute bottom-2 top-2 w-px bg-border/60"
-              style={{ left: `${Math.max(depth * 16 - 8, 0)}px` }}
-            />
-            <span
-              className="absolute top-1/2 h-px w-3 bg-border/60"
-              style={{ left: `${Math.max(depth * 16 - 8, 0)}px` }}
-            />
-          </>
-        )}
-
+      <div
+        className="relative flex min-w-0 items-center gap-2"
+        style={{ paddingLeft: `${depth * 14}px` }}
+      >
         <button
           type="button"
-          className="mt-0.5 border border-border/70 bg-background/70 p-1 text-muted-foreground hover:text-foreground"
+          className="hidden border border-[#2f2f2f] bg-[#0f0f0f] p-1 text-[#666] hover:text-[#bdbdbd] md:inline-flex"
           draggable
           onDragStart={onDragStart}
         >
-          <GripVertical className="h-3.5 w-3.5" />
+          <GripVertical className="h-3 w-3" />
         </button>
 
         {hasChildren ? (
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="mt-0.5 border border-border/70 bg-background/70 p-1 text-muted-foreground hover:text-foreground"
+            className="hidden border border-[#2f2f2f] bg-[#0f0f0f] p-1 text-[#666] hover:text-[#bdbdbd] md:inline-flex"
           >
-            {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
-        ) : (
-          <span className="mt-0.5 h-6 w-6 border border-transparent" />
-        )}
+        ) : null}
 
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
-              {ticketNumber ?? "--"}
-            </span>
-            <Link
-              href={`/workspace/${workspaceId}/tickets/${ticket._id}?tab=list`}
-              className="line-clamp-1 font-semibold hover:text-primary"
-            >
-              {ticket.title}
-            </Link>
-          </div>
+        <span className="font-mono text-[12px] font-bold tracking-[0.05em]" style={{ color: statusAccent }}>
+          {ticketNumber ?? "--"}
+        </span>
+      </div>
 
-          {parentTicket && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              Sub-issue of{" "}
-              <span className="font-mono">
-                {formatTicketNumber(workspacePrefix, parentTicket.number) ?? "--"}
-              </span>{" "}
-              · {parentTicket.title}
-            </div>
-          )}
-
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+      <div className="min-w-0">
+        <Link
+          href={`/workspace/${workspaceId}/tickets/${ticket._id}?tab=list`}
+          className="line-clamp-1 text-sm font-semibold text-[#d7d7d7] hover:text-white"
+        >
+          {ticket.title}
+        </Link>
+        {(parentTicket || progressTotal > 0 || isArchived) && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-[#666]">
+            {parentTicket && (
+              <span className="truncate">
+                Parent {formatTicketNumber(workspacePrefix, parentTicket.number) ?? "--"}
+              </span>
+            )}
             {progressTotal > 0 && (
-              <Badge variant="outline" className="font-mono text-[10px] tracking-[0.08em]">
+              <span>
                 {progressDone}/{progressTotal}
-              </Badge>
+              </span>
             )}
-            {isArchived && <ArchivedBadge />}
+            {isArchived && <span>Archived</span>}
           </div>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <span className="kb-label md:hidden">Status</span>
-        <IssueStatusBadge status={ticket.status} />
-      </div>
-
-      <div className="flex items-center gap-2">
-        <span className="kb-label md:hidden">Assignee</span>
-        {ticket.ownerId ? (
-          <span className="inline-flex items-center gap-1 font-mono text-xs uppercase tracking-[0.08em]">
-            {ticket.ownerType === "agent" ? (
-              <Bot className="h-3 w-3 text-primary" />
-            ) : (
-              <User className="h-3 w-3 text-muted-foreground" />
-            )}
-            {ticket.ownerDisplayName || ticket.ownerId}
-          </span>
-        ) : (
-          <span className="font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">--</span>
         )}
       </div>
 
-      <div className="flex items-center justify-end gap-2 md:justify-end">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href={`/workspace/${workspaceId}/tickets/new?parentId=${ticket._id}`}>
-            <Plus className="mr-1 h-3 w-3" />
-            Sub-issue
-          </Link>
-        </Button>
+      <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[#777]">
+        {ticket.ownerId ? (
+          <>
+            {ticket.ownerType === "agent" ? <Bot className="h-3 w-3 text-[#FF3B00]" /> : <User className="h-3 w-3" />}
+            <span className="truncate" style={{ color: ticket.ownerType === "agent" ? "#FF3B00" : "#888" }}>
+              {ownerLabel}
+            </span>
+          </>
+        ) : (
+          <span>{ownerLabel}</span>
+        )}
+      </div>
+
+      <div className="font-mono text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: statusAccent }}>
+        {statusLabel}
+      </div>
+
+      <div className="flex items-center justify-end gap-1.5">
+        <Link
+          href={`/workspace/${workspaceId}/tickets/new?parentId=${ticket._id}`}
+          className="hidden border border-[#2f2f2f] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[#666] transition hover:border-[#555] hover:text-[#bbb] md:inline-flex"
+        >
+          <Plus className="h-3 w-3" />
+        </Link>
         <TicketActionsMenu
           isArchived={isArchived}
           onStatusChange={onStatusChange}
