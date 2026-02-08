@@ -14,8 +14,13 @@ import { TicketCard } from "@/components/ticket-card";
 import { useSession } from "@/lib/auth-client";
 
 type Ticket = Doc<"tickets">;
-
 type Status = IssueStatus;
+
+type OptimisticOwner = {
+  ownerId?: string;
+  ownerType?: "user" | "agent";
+  ownerDisplayName?: string;
+};
 
 interface KanbanBoardProps {
   workspaceId: Id<"workspaces">;
@@ -26,9 +31,15 @@ interface KanbanBoardProps {
 const getOrderValue = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
 const STATUS_COLUMNS: Status[] = ["unclaimed", "in_progress", "done"];
 const STATUS_BORDER_CLASS: Record<Status, string> = {
-  unclaimed: "border-unclaimed/30",
-  in_progress: "border-in-progress/30",
-  done: "border-done/30",
+  unclaimed: "border-unclaimed/45",
+  in_progress: "border-in-progress/45",
+  done: "border-done/45",
+};
+
+const STATUS_COLUMN_RING: Record<Status, string> = {
+  unclaimed: "ring-unclaimed/35",
+  in_progress: "ring-in-progress/35",
+  done: "ring-done/35",
 };
 
 export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoardProps) {
@@ -55,6 +66,9 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
   const [optimisticMoves, setOptimisticMoves] = useState<
     Map<string, { status: Status; order: number }>
   >(new Map());
+  const [optimisticOwners, setOptimisticOwners] = useState<Map<string, OptimisticOwner | null>>(
+    new Map()
+  );
 
   const resolvedOptimisticMoves = useMemo(() => {
     if (!optimisticMoves.size) return optimisticMoves;
@@ -70,19 +84,62 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
     return next;
   }, [optimisticMoves, tickets]);
 
+  const resolvedOptimisticOwners = useMemo(() => {
+    if (!optimisticOwners.size) return optimisticOwners;
+    const next = new Map(optimisticOwners);
+    for (const ticket of tickets) {
+      const override = next.get(ticket._id);
+      if (override === undefined) continue;
+
+      if (override === null) {
+        const ownerCleared = !ticket.ownerId && !ticket.ownerType;
+        const statusUnclaimed = ticket.status === "unclaimed";
+        if (ownerCleared || statusUnclaimed) {
+          next.delete(ticket._id);
+        }
+        continue;
+      }
+
+      const matchesOwner =
+        ticket.ownerId === override.ownerId &&
+        ticket.ownerType === override.ownerType &&
+        (ticket.ownerDisplayName ?? undefined) === override.ownerDisplayName;
+      if (matchesOwner) {
+        next.delete(ticket._id);
+      }
+    }
+    return next;
+  }, [optimisticOwners, tickets]);
+
   const visibleTickets = useMemo(() => {
     const base = showArchived ? tickets : tickets.filter((ticket) => !(ticket.archived ?? false));
-    if (!resolvedOptimisticMoves.size) return base;
+    if (!resolvedOptimisticMoves.size && !resolvedOptimisticOwners.size) return base;
+
     return base.map((ticket) => {
-      const override = resolvedOptimisticMoves.get(ticket._id);
-      if (!override) return ticket;
-      return {
+      const moveOverride = resolvedOptimisticMoves.get(ticket._id);
+      const ownerOverride = resolvedOptimisticOwners.get(ticket._id);
+      const next = {
         ...ticket,
-        status: override.status,
-        order: override.order,
       };
+
+      if (moveOverride) {
+        next.status = moveOverride.status;
+        next.order = moveOverride.order;
+      }
+
+      if (ownerOverride === null) {
+        next.ownerId = undefined;
+        next.ownerType = undefined;
+        next.ownerDisplayName = undefined;
+      } else if (ownerOverride) {
+        next.ownerId = ownerOverride.ownerId;
+        next.ownerType = ownerOverride.ownerType;
+        next.ownerDisplayName = ownerOverride.ownerDisplayName;
+      }
+
+      return next;
     });
-  }, [tickets, showArchived, resolvedOptimisticMoves]);
+  }, [tickets, showArchived, resolvedOptimisticMoves, resolvedOptimisticOwners]);
 
   const ticketsById = useMemo(
     () => new Map(tickets.map((ticket) => [ticket._id, ticket])),
@@ -110,15 +167,37 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
     });
   };
 
+  const clearOptimisticMove = (ticketId: Id<"tickets">) => {
+    setOptimisticMoves((prev) => {
+      const next = new Map(prev);
+      next.delete(ticketId);
+      return next;
+    });
+  };
+
+  const applyOptimisticOwner = (ticketId: Id<"tickets">, patch: OptimisticOwner | null) => {
+    setOptimisticOwners((prev) => {
+      const next = new Map(prev);
+      next.set(ticketId, patch);
+      return next;
+    });
+  };
+
+  const clearOptimisticOwner = (ticketId: Id<"tickets">) => {
+    setOptimisticOwners((prev) => {
+      const next = new Map(prev);
+      next.delete(ticketId);
+      return next;
+    });
+  };
+
   const calculateDropOrder = (
     status: Status,
     targetId: Id<"tickets">,
     position: "above" | "below",
     draggingId?: Id<"tickets"> | null
   ) => {
-    const columnTickets = (ticketsByStatus[status] ?? []).filter(
-      (ticket) => ticket._id !== draggingId
-    );
+    const columnTickets = (ticketsByStatus[status] ?? []).filter((ticket) => ticket._id !== draggingId);
     const targetIndex = columnTickets.findIndex((ticket) => ticket._id === targetId);
     if (targetIndex === -1) return null;
     const prevTicket = position === "above" ? columnTickets[targetIndex - 1] : columnTickets[targetIndex];
@@ -136,6 +215,36 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
     return 0;
   };
 
+  const applyStatusSideEffects = async (
+    ticketId: Id<"tickets">,
+    previousStatus: Status,
+    nextStatus: Status
+  ) => {
+    if (previousStatus === "unclaimed" && nextStatus === "in_progress" && userId) {
+      const displayName = userProfile?.name || userProfile?.email || userId;
+      applyOptimisticOwner(ticketId, {
+        ownerId: userId,
+        ownerType: "user",
+        ownerDisplayName: displayName,
+      });
+      try {
+        await assignTicket({
+          id: ticketId,
+          ownerId: userId,
+          ownerType: "user",
+          ownerDisplayName: displayName,
+        });
+      } catch (error) {
+        clearOptimisticOwner(ticketId);
+        console.error(error);
+      }
+    }
+
+    if (nextStatus === "unclaimed") {
+      applyOptimisticOwner(ticketId, null);
+    }
+  };
+
   const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
     const columnTickets = ticketsByStatus[newStatus] ?? [];
     const lastTicket = columnTickets[columnTickets.length - 1];
@@ -145,25 +254,28 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
       : currentTicket
       ? getOrderValue(currentTicket)
       : 0;
+
     applyOptimisticMove(ticketId, newStatus, newOrder);
+    if (newStatus === "unclaimed") {
+      applyOptimisticOwner(ticketId, null);
+    }
+    if (currentTicket?.status === "unclaimed" && newStatus === "in_progress" && userId) {
+      const displayName = userProfile?.name || userProfile?.email || userId;
+      applyOptimisticOwner(ticketId, {
+        ownerId: userId,
+        ownerType: "user",
+        ownerDisplayName: displayName,
+      });
+    }
+
     try {
       await moveTicket({ id: ticketId, status: newStatus, order: newOrder });
-      // Auto-assign current user when moving from unclaimed to in_progress
-      if (currentTicket?.status === "unclaimed" && newStatus === "in_progress" && userId) {
-        const displayName = userProfile?.name || userProfile?.email || userId;
-        await assignTicket({
-          id: ticketId,
-          ownerId: userId,
-          ownerType: "user",
-          ownerDisplayName: displayName,
-        });
+      if (currentTicket) {
+        await applyStatusSideEffects(ticketId, currentTicket.status, newStatus);
       }
     } catch (error) {
-      setOptimisticMoves((prev) => {
-        const next = new Map(prev);
-        next.delete(ticketId);
-        return next;
-      });
+      clearOptimisticMove(ticketId);
+      clearOptimisticOwner(ticketId);
       console.error(error);
     }
   };
@@ -174,10 +286,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
     }
   };
 
-  const handleDragStart = (
-    event: React.DragEvent<HTMLElement>,
-    ticketId: Id<"tickets">
-  ) => {
+  const handleDragStart = (event: React.DragEvent<HTMLElement>, ticketId: Id<"tickets">) => {
     const ticket = tickets.find((t) => t._id === ticketId);
     if (ticket) {
       draggedTicketRef.current = { id: ticketId, status: ticket.status };
@@ -208,17 +317,15 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Board</h2>
-          <p className="text-sm text-muted-foreground">
-            All issues, including sub-issues. Use list view to reparent.
-          </p>
+          <h2 className="kb-title text-xl">Board</h2>
+          <p className="text-sm text-muted-foreground">Drag issues across status lanes. Changes sync live.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button asChild>
             <Link href={`/workspace/${workspaceId}/tickets/new`}>
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="mr-1.5 h-4 w-4" />
               New Issue
             </Link>
           </Button>
@@ -228,13 +335,13 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3">
         {STATUS_COLUMNS.map((status) => {
           return (
-            <div
+            <section
               key={status}
-              className={`rounded-xl border bg-card/40 ${
-                dragOverStatus === status ? "ring-2 ring-primary/40" : ""
+              className={`kb-panel flex min-h-[540px] flex-col ${
+                dragOverStatus === status ? `ring-2 ${STATUS_COLUMN_RING[status]}` : ""
               }`}
               onDragOver={(event) => {
                 event.preventDefault();
@@ -250,72 +357,68 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                 const shouldAutoAssign =
                   originalStatus === "unclaimed" &&
                   status === "in_progress" &&
-                  userId;
-
-                if (dragOverTicketId && dragOverPosition && dragOverTicketId !== ticketId) {
-                  const order = calculateDropOrder(
-                    status,
-                    dragOverTicketId,
-                    dragOverPosition,
-                    ticketId
-                  );
-                  if (order === null) return;
-                  applyOptimisticMove(ticketId, status, order);
-                  await moveTicket({ id: ticketId, status, order });
-                  if (shouldAutoAssign) {
-                    const displayName = userProfile?.name || userProfile?.email || userId;
-                    await assignTicket({
-                      id: ticketId,
-                      ownerId: userId,
-                      ownerType: "user",
-                      ownerDisplayName: displayName,
-                    });
-                  }
-                } else {
-                  const columnTickets = ticketsByStatus[status] ?? [];
-                  const lastTicket = columnTickets[columnTickets.length - 1];
-                  const draggedTicket = tickets.find((ticket) => ticket._id === ticketId);
-                  const order = lastTicket
-                    ? getOrderValue(lastTicket) + 1000
-                    : draggedTicket
-                    ? getOrderValue(draggedTicket)
-                    : 0;
-                  applyOptimisticMove(ticketId, status, order);
-                  await moveTicket({ id: ticketId, status, order });
-                  if (shouldAutoAssign) {
-                    const displayName = userProfile?.name || userProfile?.email || userId;
-                    await assignTicket({
-                      id: ticketId,
-                      ownerId: userId,
-                      ownerType: "user",
-                      ownerDisplayName: displayName,
-                    });
-                  }
+                  Boolean(userId);
+                const shouldClearOwner = status === "unclaimed";
+                if (shouldAutoAssign && userId) {
+                  const displayName = userProfile?.name || userProfile?.email || userId;
+                  applyOptimisticOwner(ticketId, {
+                    ownerId: userId,
+                    ownerType: "user",
+                    ownerDisplayName: displayName,
+                  });
                 }
-                draggedTicketRef.current = null;
-                setDragOverTicketId(null);
-                setDragOverPosition(null);
-                setDragOverStatus(null);
+
+                try {
+                  if (dragOverTicketId && dragOverPosition && dragOverTicketId !== ticketId) {
+                    const order = calculateDropOrder(status, dragOverTicketId, dragOverPosition, ticketId);
+                    if (order === null) return;
+                    applyOptimisticMove(ticketId, status, order);
+                    if (shouldClearOwner) {
+                      applyOptimisticOwner(ticketId, null);
+                    }
+                    await moveTicket({ id: ticketId, status, order });
+                  } else {
+                    const columnTickets = ticketsByStatus[status] ?? [];
+                    const lastTicket = columnTickets[columnTickets.length - 1];
+                    const draggedTicket = tickets.find((ticket) => ticket._id === ticketId);
+                    const order = lastTicket
+                      ? getOrderValue(lastTicket) + 1000
+                      : draggedTicket
+                      ? getOrderValue(draggedTicket)
+                      : 0;
+                    applyOptimisticMove(ticketId, status, order);
+                    if (shouldClearOwner) {
+                      applyOptimisticOwner(ticketId, null);
+                    }
+                    await moveTicket({ id: ticketId, status, order });
+                  }
+
+                  if (originalStatus) {
+                    await applyStatusSideEffects(ticketId, originalStatus, status);
+                  }
+                } catch (error) {
+                  clearOptimisticMove(ticketId);
+                  clearOptimisticOwner(ticketId);
+                  console.error(error);
+                } finally {
+                  draggedTicketRef.current = null;
+                  setDragOverTicketId(null);
+                  setDragOverPosition(null);
+                  setDragOverStatus(null);
+                }
               }}
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 bg-background/30">
-                <div className="flex items-center gap-2">
-                  <IssueStatusBadge
-                    status={status}
-                    size="md"
-                    className={STATUS_BORDER_CLASS[status]}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {ticketsByStatus[status]?.length ?? 0}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between border-b border-border/75 bg-card/70 px-4 py-3">
+                <IssueStatusBadge status={status} size="md" className={STATUS_BORDER_CLASS[status]} />
+                <span className="font-mono text-xs text-muted-foreground">
+                  {(ticketsByStatus[status]?.length ?? 0).toString().padStart(2, "0")}
+                </span>
               </div>
-              <ScrollArea className="h-[calc(100vh-240px)] px-3 py-3">
+
+              <ScrollArea className="kb-scroll h-[calc(100vh-350px)] px-3 py-3">
                 <div className="space-y-3">
                   {(ticketsByStatus[status] ?? []).map((ticket) => {
-                    const parentTicket = ticket.parentId
-                      ? ticketsById.get(ticket.parentId)
-                      : null;
+                    const parentTicket = ticket.parentId ? ticketsById.get(ticket.parentId) : null;
 
                     return (
                       <TicketCard
@@ -343,10 +446,39 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                           const draggedId = event.dataTransfer.getData("application/x-ticket-id") as Id<"tickets">;
                           if (!draggedId || draggedId === ticket._id) return;
                           if (!dragOverPosition) return;
+                          const originalStatus =
+                            draggedTicketRef.current?.id === draggedId
+                              ? draggedTicketRef.current.status
+                              : tickets.find((entry) => entry._id === draggedId)?.status;
+                          const shouldAutoAssign =
+                            originalStatus === "unclaimed" &&
+                            status === "in_progress" &&
+                            Boolean(userId);
+                          if (shouldAutoAssign && userId) {
+                            const displayName = userProfile?.name || userProfile?.email || userId;
+                            applyOptimisticOwner(draggedId, {
+                              ownerId: userId,
+                              ownerType: "user",
+                              ownerDisplayName: displayName,
+                            });
+                          }
+                          if (status === "unclaimed") {
+                            applyOptimisticOwner(draggedId, null);
+                          }
                           const order = calculateDropOrder(status, ticket._id, dragOverPosition, draggedId);
-                          if (!order) return;
+                          if (order === null) return;
                           applyOptimisticMove(draggedId, status, order);
-                          moveTicket({ id: draggedId, status, order });
+                          moveTicket({ id: draggedId, status, order })
+                            .then(async () => {
+                              if (originalStatus) {
+                                await applyStatusSideEffects(draggedId, originalStatus, status);
+                              }
+                            })
+                            .catch((error) => {
+                              clearOptimisticMove(draggedId);
+                              clearOptimisticOwner(draggedId);
+                              console.error(error);
+                            });
                           setDragOverTicketId(null);
                           setDragOverPosition(null);
                         }}
@@ -370,7 +502,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
                   })}
                 </div>
               </ScrollArea>
-            </div>
+            </section>
           );
         })}
       </div>

@@ -64,9 +64,11 @@ function AccountPageContent() {
 
   if (isPending) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
+          <div className="kb-label">Loading account settings...</div>
+        </div>
+      </main>
     );
   }
 
@@ -199,9 +201,10 @@ function AccountPageContent() {
       : "/";
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-6 py-4">
+    <main className="min-h-screen p-4 md:p-6">
+      <div className="kb-shell min-h-[calc(100vh-2rem)] overflow-hidden md:min-h-[calc(100vh-3rem)]">
+      <header className="kb-header border-b-2 border-primary/45 sticky top-0 z-10">
+        <div className="px-4 py-4 md:px-6">
           <div className="flex items-center gap-4">
             <Link href={returnTo}>
               <Button variant="ghost" size="icon">
@@ -209,8 +212,9 @@ function AccountPageContent() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold">Account Settings</h1>
-              <p className="text-sm text-muted-foreground">
+              <div className="kb-label">Profile Management</div>
+              <h1 className="text-2xl font-semibold tracking-[0.04em]">Account Settings</h1>
+              <p className="text-sm text-muted-foreground mt-1">
                 Manage your profile and linked accounts
               </p>
             </div>
@@ -218,15 +222,15 @@ function AccountPageContent() {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8 max-w-2xl space-y-8">
+      <div className="mx-auto max-w-2xl space-y-8 p-4 md:p-6">
         {error && (
-          <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm flex items-center gap-2">
+          <div className="flex items-center gap-2 border border-destructive/45 bg-destructive/15 p-3 text-sm text-destructive">
             <X className="w-4 h-4" />
             {error}
           </div>
         )}
         {success && (
-          <div className="p-3 rounded-md bg-green-500/10 text-green-500 text-sm flex items-center gap-2">
+          <div className="flex items-center gap-2 border border-done/45 bg-done/10 p-3 text-sm text-done">
             <Check className="w-4 h-4" />
             {success}
           </div>
@@ -249,7 +253,7 @@ function AccountPageContent() {
                         value={name}
                         onChange={(event) => setName(event.target.value)}
                         placeholder="Your name"
-                      className={nameError ? "border-destructive focus-visible:ring-destructive" : undefined}
+                        className={nameError ? "border-destructive focus-visible:ring-destructive" : undefined}
                         autoFocus
                       />
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -457,8 +461,9 @@ function AccountPageContent() {
             Back to workspaces
           </Link>
         </div>
-      </main>
-    </div>
+      </div>
+      </div>
+    </main>
   );
 }
 
@@ -466,9 +471,11 @@ export default function AccountPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-muted-foreground">Loading...</div>
-        </div>
+        <main className="min-h-screen p-4 md:p-6">
+          <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
+            <div className="kb-label">Loading account settings...</div>
+          </div>
+        </main>
       }
     >
       <AccountPageContent />

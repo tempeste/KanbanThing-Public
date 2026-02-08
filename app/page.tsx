@@ -4,11 +4,19 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, FolderKanban, ArrowRight, Trash2, LogIn, LayoutGrid, Table } from "lucide-react";
+import {
+  Plus,
+  FolderKanban,
+  ArrowRight,
+  Trash2,
+  LogIn,
+  LayoutGrid,
+  Table,
+  Search,
+} from "lucide-react";
 import { Id } from "@/convex/_generated/dataModel";
 import { UserMenu } from "@/components/user-menu";
 import { useRouter } from "next/navigation";
@@ -18,7 +26,6 @@ export default function Home() {
   const { data: session, isPending: isSessionPending } = useSession();
   const userId = session?.user?.id;
 
-  // Query workspaces based on auth state
   const workspaces = useQuery(api.workspaces.listForUser, userId ? {} : "skip");
 
   const createWorkspace = useMutation(api.workspaces.createWithOwner);
@@ -36,7 +43,6 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const router = useRouter();
 
-  // Migrate orphaned workspaces on first login
   useEffect(() => {
     if (userId && !hasMigrated) {
       assignOrphaned({ betterAuthUserId: userId })
@@ -52,9 +58,7 @@ export default function Home() {
 
   const handleCreate = async () => {
     if (!newWorkspaceName.trim() || !userId) return;
-    await createWorkspace({
-      name: newWorkspaceName.trim(),
-    });
+    await createWorkspace({ name: newWorkspaceName.trim() });
     setNewWorkspaceName("");
     setIsCreating(false);
   };
@@ -77,7 +81,7 @@ export default function Home() {
       return name.includes(term) || docs.includes(term);
     });
 
-    const sorted = filtered.slice().sort((a, b) => {
+    return filtered.slice().sort((a, b) => {
       const aUpdated = a.updatedAt ?? a.createdAt;
       const bUpdated = b.updatedAt ?? b.createdAt;
       switch (sortKey) {
@@ -96,174 +100,164 @@ export default function Home() {
           return a.name.localeCompare(b.name);
       }
     });
-
-    return sorted;
   }, [workspaces, roleFilter, searchTerm, sortKey]);
 
   const formatDate = (timestamp?: number) => {
-    if (!timestamp) return "—";
+    if (!timestamp) return "--";
     return new Intl.DateTimeFormat("en-US", {
       month: "short",
-      day: "numeric",
+      day: "2-digit",
       year: "numeric",
     }).format(new Date(timestamp));
   };
 
-  // Show loading state
   if (isSessionPending) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20 flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
+          <div className="kb-label">Connecting to workspace index...</div>
+        </div>
       </main>
     );
   }
 
-  // Show login prompt if not authenticated
   if (!session?.user) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20 flex items-center justify-center">
-        <Card className="max-w-md w-full mx-4">
-          <CardHeader className="text-center">
-            <CardTitle className="text-3xl">
-              <span className="text-primary">Kanban</span>Thing
-            </CardTitle>
-            <CardDescription className="text-base">
-              Task management for humans and LLM agents
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-center text-muted-foreground">
-              Sign in to create and manage your workspaces
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-6 md:min-h-[calc(100vh-3rem)]">
+          <div className="kb-panel kb-anim w-full max-w-xl p-8">
+            <div className="mb-3 kb-label">Access Required</div>
+            <h1 className="kb-title mb-2">
+              KANBAN<span className="text-primary">THING</span>
+            </h1>
+            <p className="mb-8 text-sm text-muted-foreground">
+              Real-time issue control for human and agent collaboration.
             </p>
             <Link href="/login" className="block">
               <Button className="w-full" size="lg">
-                <LogIn className="w-5 h-5 mr-2" />
+                <LogIn className="mr-2 h-4 w-4" />
                 Sign In
               </Button>
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20">
-      <div className="container mx-auto px-6 py-12">
-        <div className="mb-12 flex items-start justify-between">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight mb-2">
-              <span className="text-primary">Kanban</span>Thing
-            </h1>
-            <p className="text-muted-foreground text-lg">
-              Task management for humans and LLM agents
-            </p>
-          </div>
-          <UserMenu />
-        </div>
-
-        <div className="mb-8">
-          {!isCreating ? (
-            <Button onClick={() => setIsCreating(true)} size="lg">
-              <Plus className="w-5 h-5 mr-2" />
-              New Workspace
-            </Button>
-          ) : (
-            <Card className="max-w-md">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg">Create Workspace</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleCreate();
-                  }}
-                  className="flex gap-3"
-                >
-                  <Input
-                    placeholder="Workspace name"
-                    value={newWorkspaceName}
-                    onChange={(e) => setNewWorkspaceName(e.target.value)}
-                    autoFocus
-                  />
-                  <Button type="submit">Create</Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsCreating(false)}
-                  >
-                    Cancel
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-2">
-              <div className="text-sm font-medium">Search</div>
-              <Input
-                placeholder="Search by name or description"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+    <main className="min-h-screen p-4 md:p-6">
+      <div className="kb-shell kb-scroll min-h-[calc(100vh-2rem)] overflow-hidden md:min-h-[calc(100vh-3rem)]">
+        <header className="kb-header border-b-2 border-primary/45 px-4 py-4 md:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="kb-label mb-2">Workspace Control Plane</div>
+              <h1 className="kb-title text-3xl md:text-4xl">
+                KANBAN<span className="text-primary">THING</span>
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Operate your teams and agents from one board-first workspace index.
+              </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Filter</div>
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                  value={roleFilter}
-                  onChange={(e) =>
-                    setRoleFilter(e.target.value as "all" | "owner" | "admin" | "member")
-                  }
-                >
-                  <option value="all">All roles</option>
-                  <option value="owner">Owners</option>
-                  <option value="admin">Admins</option>
-                  <option value="member">Members</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Sort</div>
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                  value={sortKey}
-                  onChange={(e) =>
-                    setSortKey(
-                      e.target.value as
-                        | "updated_desc"
-                        | "updated_asc"
-                        | "created_desc"
-                        | "created_asc"
-                        | "name_asc"
-                        | "name_desc"
-                    )
-                  }
-                >
-                  <option value="updated_desc">Updated (newest)</option>
-                  <option value="updated_asc">Updated (oldest)</option>
-                  <option value="created_desc">Created (newest)</option>
-                  <option value="created_asc">Created (oldest)</option>
-                  <option value="name_asc">Name (A-Z)</option>
-                  <option value="name_desc">Name (Z-A)</option>
-                </select>
-              </div>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setIsCreating((prev) => !prev)}>
+                <Plus className="h-4 w-4" />
+                {isCreating ? "Close" : "New Workspace"}
+              </Button>
+              <UserMenu />
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            {workspaces !== undefined && (
-              <div className="text-sm text-muted-foreground">
-                {filteredWorkspaces.length} of {workspaces.length} workspaces
-              </div>
-            )}
-            <Tabs
-              value={viewMode}
-              onValueChange={(value) => setViewMode(value as "cards" | "table")}
+        </header>
+
+        <section className="border-b border-border/80 bg-card/60 px-4 py-4 md:px-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="kb-chip">Live Index</div>
+            <div className="kb-chip">Auth: Connected</div>
+            <div className="kb-chip">
+              {filteredWorkspaces.length} / {workspaces?.length ?? 0} Visible
+            </div>
+          </div>
+
+          {isCreating && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleCreate();
+              }}
+              className="mt-4 flex flex-col gap-3 md:flex-row"
             >
+              <Input
+                placeholder="Workspace name"
+                value={newWorkspaceName}
+                onChange={(event) => setNewWorkspaceName(event.target.value)}
+                autoFocus
+              />
+              <Button type="submit" disabled={!newWorkspaceName.trim()}>
+                <Plus className="h-4 w-4" />
+                Create
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setIsCreating(false)}>
+                Cancel
+              </Button>
+            </form>
+          )}
+        </section>
+
+        <section className="border-b border-border/70 bg-background/70 px-4 py-4 md:px-6">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_220px_auto] xl:items-end">
+            <label className="space-y-2">
+              <span className="kb-label">Search</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-9"
+                  placeholder="Search by name or docs"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                />
+              </div>
+            </label>
+            <label className="space-y-2">
+              <span className="kb-label">Role Filter</span>
+              <select
+                className="h-10 w-full border border-input bg-background/60 px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                value={roleFilter}
+                onChange={(event) =>
+                  setRoleFilter(event.target.value as "all" | "owner" | "admin" | "member")
+                }
+              >
+                <option value="all">All roles</option>
+                <option value="owner">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="member">Member</option>
+              </select>
+            </label>
+            <label className="space-y-2">
+              <span className="kb-label">Sort</span>
+              <select
+                className="h-10 w-full border border-input bg-background/60 px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                value={sortKey}
+                onChange={(event) =>
+                  setSortKey(
+                    event.target.value as
+                      | "updated_desc"
+                      | "updated_asc"
+                      | "created_desc"
+                      | "created_asc"
+                      | "name_asc"
+                      | "name_desc"
+                  )
+                }
+              >
+                <option value="updated_desc">Updated (newest)</option>
+                <option value="updated_asc">Updated (oldest)</option>
+                <option value="created_desc">Created (newest)</option>
+                <option value="created_asc">Created (oldest)</option>
+                <option value="name_asc">Name (A-Z)</option>
+                <option value="name_desc">Name (Z-A)</option>
+              </select>
+            </label>
+            <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "cards" | "table")}> 
               <TabsList>
                 <TabsTrigger value="cards">
                   <LayoutGrid className="h-4 w-4" />
@@ -276,57 +270,52 @@ export default function Home() {
               </TabsList>
             </Tabs>
           </div>
-        </div>
+        </section>
 
-        {workspaces === undefined ? (
-          <div className="col-span-full text-center py-12 text-muted-foreground">
-            Loading workspaces...
-          </div>
-        ) : filteredWorkspaces.length === 0 ? (
-          <div className="col-span-full text-center py-12 text-muted-foreground">
-            {workspaces.length === 0
-              ? "No workspaces yet. Create one to get started."
-              : "No workspaces match your search."}
-          </div>
-        ) : viewMode === "cards" ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredWorkspaces.map((workspace) => (
-              <Card
-                key={workspace._id}
-                role="button"
-                tabIndex={0}
-                className="group cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                onClick={() => router.push(`/workspace/${workspace._id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    router.push(`/workspace/${workspace._id}`);
-                  }
-                }}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                        <FolderKanban className="h-5 w-5" />
+        <section className="kb-scroll max-h-[calc(100vh-350px)] overflow-auto p-4 md:p-6">
+          {workspaces === undefined ? (
+            <div className="kb-label">Loading workspaces...</div>
+          ) : filteredWorkspaces.length === 0 ? (
+            <div className="kb-panel p-6 text-sm text-muted-foreground">
+              {workspaces.length === 0
+                ? "No workspaces yet. Create one to start."
+                : "No workspaces match your filters."}
+            </div>
+          ) : viewMode === "cards" ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredWorkspaces.map((workspace, index) => (
+                <article
+                  key={workspace._id}
+                  role="button"
+                  tabIndex={0}
+                  className="kb-panel kb-anim group cursor-pointer p-4 transition hover:border-primary/65 hover:bg-accent/45"
+                  style={{ animationDelay: `${index * 35}ms` }}
+                  onClick={() => router.push(`/workspace/${workspace._id}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      router.push(`/workspace/${workspace._id}`);
+                    }
+                  }}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="border border-primary/45 bg-primary/15 p-2 text-primary">
+                        <FolderKanban className="h-4 w-4" />
                       </div>
                       <div>
-                        <CardTitle className="text-xl">{workspace.name}</CardTitle>
-                        {workspace.role && (
-                          <span className="text-xs text-muted-foreground capitalize">
-                            {workspace.role}
-                          </span>
-                        )}
+                        <h2 className="text-lg font-semibold tracking-[0.03em]">{workspace.name}</h2>
+                        <div className="kb-label mt-1">{workspace.role ?? "member"}</div>
                       </div>
                     </div>
                     {workspace.role === "owner" && (
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
+                        size="icon-sm"
+                        className="opacity-0 group-hover:opacity-100"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
                           handleDelete(workspace._id);
                         }}
                       >
@@ -334,110 +323,97 @@ export default function Home() {
                       </Button>
                     )}
                   </div>
-                  <CardDescription className="mt-2">
-                    {workspace.docs
-                      ? workspace.docs.slice(0, 100) + (workspace.docs.length > 100 ? "..." : "")
-                      : "No description"}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4 pt-2">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Created {formatDate(workspace.createdAt)}</span>
-                    <span>Updated {formatDate(workspace.updatedAt ?? workspace.createdAt)}</span>
+
+                  <p className="line-clamp-3 min-h-[60px] text-sm text-muted-foreground">
+                    {workspace.docs || "No project docs yet."}
+                  </p>
+
+                  <div className="mt-5 flex items-center justify-between border-t border-border/70 pt-3">
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <div>Created: {formatDate(workspace.createdAt)}</div>
+                      <div>Updated: {formatDate(workspace.updatedAt ?? workspace.createdAt)}</div>
+                    </div>
+                    <Button variant="outline" size="sm" className="group/cta">
+                      Open
+                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover/cta:translate-x-0.5" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    className="w-full group/btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      router.push(`/workspace/${workspace._id}`);
-                    }}
-                  >
-                    Open Board
-                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border bg-card">
-            <table className="w-full text-sm">
-              <thead className="text-xs uppercase text-muted-foreground">
-                <tr className="border-b">
-                  <th className="px-4 py-3 text-left">Workspace</th>
-                  <th className="px-4 py-3 text-left">Description</th>
-                  <th className="px-4 py-3 text-left">Role</th>
-                  <th className="px-4 py-3 text-left">Created</th>
-                  <th className="px-4 py-3 text-left">Updated</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredWorkspaces.map((workspace) => (
-                  <tr
-                    key={workspace._id}
-                    role="button"
-                    tabIndex={0}
-                    className="cursor-pointer border-b transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    onClick={() => router.push(`/workspace/${workspace._id}`)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        router.push(`/workspace/${workspace._id}`);
-                      }
-                    }}
-                  >
-                    <td className="px-4 py-3 font-medium">{workspace.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {workspace.docs
-                        ? workspace.docs.slice(0, 80) +
-                          (workspace.docs.length > 80 ? "..." : "")
-                        : "No description"}
-                    </td>
-                    <td className="px-4 py-3 capitalize text-muted-foreground">
-                      {workspace.role ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatDate(workspace.createdAt)}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatDate(workspace.updatedAt ?? workspace.createdAt)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/workspace/${workspace._id}`);
-                          }}
-                        >
-                          Open
-                        </Button>
-                        {workspace.role === "owner" && (
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="kb-panel overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/80 bg-card/70">
+                    <th className="px-4 py-3 text-left kb-label">Workspace</th>
+                    <th className="px-4 py-3 text-left kb-label">Docs</th>
+                    <th className="px-4 py-3 text-left kb-label">Role</th>
+                    <th className="px-4 py-3 text-left kb-label">Created</th>
+                    <th className="px-4 py-3 text-left kb-label">Updated</th>
+                    <th className="px-4 py-3 text-right kb-label">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredWorkspaces.map((workspace) => (
+                    <tr
+                      key={workspace._id}
+                      role="button"
+                      tabIndex={0}
+                      className="cursor-pointer border-b border-border/60 hover:bg-accent/30"
+                      onClick={() => router.push(`/workspace/${workspace._id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          router.push(`/workspace/${workspace._id}`);
+                        }
+                      }}
+                    >
+                      <td className="px-4 py-3 font-medium">{workspace.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {workspace.docs
+                          ? workspace.docs.slice(0, 90) + (workspace.docs.length > 90 ? "..." : "")
+                          : "No docs"}
+                      </td>
+                      <td className="px-4 py-3 capitalize text-muted-foreground">{workspace.role}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{formatDate(workspace.createdAt)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {formatDate(workspace.updatedAt ?? workspace.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleDelete(workspace._id);
+                            variant="outline"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              router.push(`/workspace/${workspace._id}`);
                             }}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            Open
                           </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                          {workspace.role === "owner" && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleDelete(workspace._id);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );

@@ -249,29 +249,34 @@ export default function WorkspaceSettingsPage() {
 
   if (workspace === undefined || apiKeys === undefined || docsVersions === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
+          <div className="kb-label">Loading workspace settings...</div>
+        </div>
+      </main>
     );
   }
 
   if (workspace === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 text-center md:min-h-[calc(100vh-3rem)]">
+        <div>
           <h1 className="text-2xl font-bold mb-4">Workspace not found</h1>
           <Link href="/">
             <Button>Go Home</Button>
           </Link>
         </div>
-      </div>
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-6 py-4">
+    <main className="min-h-screen p-4 md:p-6">
+      <div className="kb-shell min-h-[calc(100vh-2rem)] overflow-hidden md:min-h-[calc(100vh-3rem)]">
+      <header className="kb-header border-b-2 border-primary/45 sticky top-0 z-10">
+        <div className="px-4 py-4 md:px-6">
           <div className="flex items-center gap-4">
             <Link href={`/workspace/${workspaceId}`}>
               <Button variant="ghost" size="icon">
@@ -279,8 +284,9 @@ export default function WorkspaceSettingsPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold">{workspace.name} Settings</h1>
-              <p className="text-sm text-muted-foreground">
+              <div className="kb-label">Workspace Administration</div>
+              <h1 className="text-2xl font-semibold tracking-[0.04em]">{workspace.name} Settings</h1>
+              <p className="text-sm text-muted-foreground mt-1">
                 Configure prefix, project docs, and API keys
               </p>
             </div>
@@ -288,7 +294,7 @@ export default function WorkspaceSettingsPage() {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8 max-w-4xl space-y-8">
+      <div className="mx-auto max-w-4xl space-y-8 p-4 md:p-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -742,7 +748,7 @@ export default function WorkspaceSettingsPage() {
             </Button>
           </CardContent>
         </Card>
-      </main>
+      </div>
 
       <Dialog
         open={isDocsDialogOpen}
@@ -768,6 +774,7 @@ export default function WorkspaceSettingsPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </main>
   );
 }

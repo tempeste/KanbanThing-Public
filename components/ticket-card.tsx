@@ -55,11 +55,11 @@ export function TicketCard({
 
   return (
     <Card
-      className={`group relative rounded-lg border p-3 shadow-sm transition ${
+      className={`group relative gap-4 p-3 transition ${
         isArchived
-          ? "opacity-60 bg-muted/30 border-border/40 grayscale-[30%] hover:opacity-80 hover:grayscale-0"
-          : "border-border/60 bg-background/40 hover:border-primary/40 hover:bg-accent/30"
-      } ${isDragOver ? "border-primary/40 shadow-md" : ""}`}
+          ? "border-border/40 bg-muted/25 opacity-60 grayscale-[35%] hover:opacity-90 hover:grayscale-0"
+          : "border-border/80 bg-card/70 hover:border-primary/60 hover:bg-accent/35"
+      } ${isDragOver ? "border-primary/70 ring-1 ring-primary/45" : ""}`}
       role="button"
       tabIndex={0}
       draggable
@@ -71,45 +71,53 @@ export function TicketCard({
       onDrop={onDrop}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-2">
+        <div className="flex min-w-0 items-start gap-2">
           <button
             type="button"
-            className="mt-1 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition"
+            className="mt-0.5 border border-border/70 bg-background/60 p-1 text-muted-foreground opacity-0 transition hover:text-foreground group-hover:opacity-100"
             draggable
             onDragStart={onDragStart}
             onDragEnd={onDragHandleEnd}
           >
-            <GripVertical className="w-4 h-4" />
+            <GripVertical className="h-3.5 w-3.5" />
           </button>
+
           <div className="min-w-0">
-            <Link
-              href={`/workspace/${workspaceId}/tickets/${ticket._id}`}
-              className="flex flex-wrap items-center gap-2 font-medium hover:text-primary text-sm"
-            >
-              <span className="font-mono text-xs text-muted-foreground">
-                {ticketNumber ?? "—"}
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+                {ticketNumber ?? "--"}
               </span>
-              {ticket.title}
-            </Link>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {progressTotal > 0 && (
-                <Badge variant="outline" className="text-[10px]">
-                  {progressDone}/{progressTotal} sub-issues
+                <Badge variant="outline" className="font-mono text-[10px] tracking-[0.08em]">
+                  {progressDone}/{progressTotal}
                 </Badge>
               )}
               {isArchived && <ArchivedBadge />}
             </div>
+
+            <Link
+              href={`/workspace/${workspaceId}/tickets/${ticket._id}`}
+              className="line-clamp-2 text-sm font-semibold leading-snug hover:text-primary"
+            >
+              {ticket.title}
+            </Link>
+
             {parentTicket && (
               <div className="mt-2 text-[11px] text-muted-foreground">
                 Sub-issue of{" "}
                 <span className="font-mono">
-                  {formatTicketNumber(workspacePrefix, parentTicket.number) ?? "—"}
+                  {formatTicketNumber(workspacePrefix, parentTicket.number) ?? "--"}
                 </span>{" "}
                 · {parentTicket.title}
               </div>
             )}
+
+            {ticket.description && (
+              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{ticket.description}</p>
+            )}
           </div>
         </div>
+
         <TicketActionsMenu
           isArchived={isArchived}
           onStatusChange={onStatusChange}
@@ -118,33 +126,29 @@ export function TicketCard({
         />
       </div>
 
-      {ticket.description && (
-        <p className="mt-3 text-xs text-muted-foreground line-clamp-2">
-          {ticket.description}
-        </p>
-      )}
-
-      <div className="mt-4 flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" asChild>
-          <Link href={`/workspace/${workspaceId}/tickets/${ticket._id}`}>
-            Open
-          </Link>
+          <Link href={`/workspace/${workspaceId}/tickets/${ticket._id}`}>Open</Link>
         </Button>
         <Button variant="ghost" size="sm" asChild>
           <Link href={`/workspace/${workspaceId}/tickets/new?parentId=${ticket._id}`}>
-            <Plus className="w-3 h-3 mr-1" />
+            <Plus className="mr-1 h-3 w-3" />
             Sub-issue
           </Link>
         </Button>
-        {ticket.ownerId && (
-          <Badge variant="outline" className="ml-auto gap-1 text-xs">
+        {ticket.ownerId ? (
+          <Badge variant="outline" className="ml-auto gap-1 font-mono text-[10px] tracking-[0.08em]">
             {ticket.ownerType === "agent" ? (
-              <Bot className="w-3 h-3" />
+              <Bot className="h-3 w-3 text-primary" />
             ) : (
-              <User className="w-3 h-3" />
+              <User className="h-3 w-3" />
             )}
             {ticket.ownerDisplayName || ticket.ownerId}
           </Badge>
+        ) : (
+          <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+            Unassigned
+          </span>
         )}
       </div>
     </Card>

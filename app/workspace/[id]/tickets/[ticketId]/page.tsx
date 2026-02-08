@@ -16,7 +16,7 @@ import { Separator } from "@/components/ui/separator";
 import { Markdown } from "@/components/markdown";
 import { ArrowLeft, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { formatTicketNumber, generateWorkspacePrefix } from "@/lib/utils";
-import { IssueStatusBadge, STATUS_META } from "@/components/issue-status";
+import { IssueStatusBadge, STATUS_META, IssueStatus } from "@/components/issue-status";
 import { SubIssuesCard } from "@/components/issue-detail/sub-issues-card";
 import { IssueSidebar } from "@/components/issue-detail/issue-sidebar";
 import { ArchivedBadge } from "@/components/archived-badge";
@@ -54,6 +54,7 @@ export default function TicketDetailPage() {
   const [isAddingComment, setIsAddingComment] = useState(false);
   const [existingChildId, setExistingChildId] = useState<Id<"tickets"> | "">("");
   const [isAddingExisting, setIsAddingExisting] = useState(false);
+  const [optimisticStatus, setOptimisticStatus] = useState<IssueStatus | null>(null);
 
   const ticket = hierarchy?.ticket ?? null;
   const ancestors = hierarchy?.ancestors ?? [];
@@ -141,6 +142,13 @@ export default function TicketDetailPage() {
     setParentId(ticket.parentId ?? null);
   }, [ticket, isEditing]);
 
+  useEffect(() => {
+    if (!optimisticStatus) return;
+    if (ticket?.status === optimisticStatus) {
+      setOptimisticStatus(null);
+    }
+  }, [ticket?.status, optimisticStatus]);
+
   if (
     workspace === undefined ||
     hierarchy === undefined ||
@@ -149,22 +157,26 @@ export default function TicketDetailPage() {
     activities === undefined
   ) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
+          <div className="kb-label">Loading issue detail...</div>
+        </div>
+      </main>
     );
   }
 
   if (!ticket || workspace === null || ticket.workspaceId !== workspaceId) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 text-center md:min-h-[calc(100vh-3rem)]">
+        <div>
           <h1 className="text-2xl font-bold mb-4">Issue not found</h1>
           <Link href={backHref}>
             <Button>Back to Workspace</Button>
           </Link>
         </div>
-      </div>
+        </div>
+      </main>
     );
   }
 
@@ -173,6 +185,15 @@ export default function TicketDetailPage() {
   const progressTotal = ticket.childCount ?? 0;
   const progressDone = ticket.childDoneCount ?? 0;
   const progressPct = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : 0;
+  const effectiveStatus = optimisticStatus ?? ticket.status;
+  const effectiveTicket = {
+    ...ticket,
+    status: effectiveStatus,
+    ownerId: effectiveStatus === "unclaimed" ? undefined : ticket.ownerId,
+    ownerType: effectiveStatus === "unclaimed" ? undefined : ticket.ownerType,
+    ownerDisplayName:
+      effectiveStatus === "unclaimed" ? undefined : ticket.ownerDisplayName,
+  };
 
   const formatActorName = (
     actorType: string,
@@ -285,9 +306,10 @@ export default function TicketDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+    <main className="min-h-screen p-4 md:p-6">
+      <div className="kb-shell min-h-[calc(100vh-2rem)] overflow-hidden md:min-h-[calc(100vh-3rem)]">
+      <header className="kb-header border-b-2 border-primary/45 sticky top-0 z-10">
+        <div className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild>
               <Link href={backHref}>
@@ -295,9 +317,9 @@ export default function TicketDetailPage() {
               </Link>
             </Button>
             <div>
-              <div className="text-xs text-muted-foreground">{workspace.name}</div>
+              <div className="kb-label">{workspace.name}</div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold">Issue</h1>
+                <h1 className="text-xl font-semibold tracking-[0.04em]">Issue</h1>
               </div>
             </div>
           </div>
@@ -330,7 +352,7 @@ export default function TicketDetailPage() {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
+      <div className="p-4 md:p-6">
         <div className="mb-6 text-sm text-muted-foreground">
           <Link href={`/workspace/${workspaceId}`} className="hover:text-primary">
             {workspace.name}
@@ -365,7 +387,7 @@ export default function TicketDetailPage() {
                 {ticketNumber && (
                   <span className="font-mono">{ticketNumber}</span>
                 )}
-                <IssueStatusBadge status={ticket.status} />
+                <IssueStatusBadge status={effectiveStatus} />
                 {progressTotal > 0 && (
                   <Badge variant="outline" className="text-[10px]">
                     {progressDone}/{progressTotal} sub-issues
@@ -568,21 +590,26 @@ export default function TicketDetailPage() {
             </Card>
           </div>
 
-          <IssueSidebar
-            ticket={ticket}
+            <IssueSidebar
+            ticket={effectiveTicket}
             workspaceId={workspaceId}
             progressDone={progressDone}
             progressTotal={progressTotal}
             progressPct={progressPct}
-            onStatusChange={(status) =>
+            onStatusChange={(status) => {
+              setOptimisticStatus(status);
               updateStatus({
                 id: ticket._id,
                 status,
-              })
-            }
+              }).catch((error) => {
+                setOptimisticStatus(null);
+                console.error(error);
+              });
+            }}
           />
         </div>
-      </main>
-    </div>
+      </div>
+      </div>
+    </main>
   );
 }
