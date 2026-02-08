@@ -34,6 +34,8 @@ interface KanbanBoardProps {
   workspaceId: Id<"workspaces">;
   tickets: TicketSummary[];
   workspacePrefix: string;
+  showArchived: boolean;
+  onToggleShowArchived: () => void;
   compact?: boolean;
 }
 
@@ -46,11 +48,16 @@ const STATUS_META: Record<Status, { label: string; accent: string }> = {
 
 type DragOverPosition = "above" | "below" | null;
 
-export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoardProps) {
+export function KanbanBoard({
+  workspaceId,
+  tickets,
+  workspacePrefix,
+  showArchived,
+  onToggleShowArchived,
+}: KanbanBoardProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const userId = session?.user?.id;
-  const [showArchived, setShowArchived] = useState(false);
 
   const userProfile = useQuery(
     api.userProfiles.getByAuthId,
@@ -589,7 +596,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
       <div className="border-t border-[#1a1a1a] px-4 py-3 md:px-5">
         <button
           type="button"
-          onClick={() => setShowArchived((prev) => !prev)}
+          onClick={onToggleShowArchived}
           className="inline-flex border border-[#333] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#666] transition hover:border-[#555] hover:text-[#bbb]"
         >
           {showArchived ? "Hide Archived" : "Show Archived"}

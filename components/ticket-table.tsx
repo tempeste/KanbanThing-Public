@@ -1,38 +1,66 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useCallback } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/convex/_generated/api";
-import { Id, Doc } from "@/convex/_generated/dataModel";
+import { Id } from "@/convex/_generated/dataModel";
 import { TicketTableRow } from "@/components/ticket-table-row";
 import { IssueStatus } from "@/components/issue-status";
-
-type Ticket = Doc<"tickets">;
+import {
+  deriveChildrenByParent,
+  deriveTreeRows,
+  deriveVisibleTickets,
+  getTicketOrderValue,
+} from "@/lib/ticket-derivations";
+import { TicketSummary } from "@/lib/ticket-summary";
 
 interface TicketTableProps {
   workspaceId: Id<"workspaces">;
-  tickets: Ticket[];
+  tickets: TicketSummary[];
   workspacePrefix: string;
+  showArchived: boolean;
+  onToggleShowArchived: () => void;
   compact?: boolean;
 }
 
-const getOrderValue = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
+type DragOverPosition = "above" | "below" | "inside" | null;
 
-export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTableProps) {
+export function TicketTable({
+  workspaceId,
+  tickets,
+  workspacePrefix,
+  showArchived,
+  onToggleShowArchived,
+}: TicketTableProps) {
   const router = useRouter();
-  const [showArchived, setShowArchived] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragOverId, setDragOverId] = useState<Id<"tickets"> | null>(null);
-  const [dragOverPosition, setDragOverPosition] = useState<"above" | "below" | "inside" | null>(
-    null
-  );
+  const [dragOverPosition, setDragOverPosition] = useState<DragOverPosition>(null);
   const [optimisticMoves, setOptimisticMoves] = useState<
     Map<string, { parentId: Id<"tickets"> | null; order: number }>
   >(new Map());
-  const [optimisticStatuses, setOptimisticStatuses] = useState<Map<string, IssueStatus>>(new Map());
-  const [optimisticArchived, setOptimisticArchived] = useState<Map<string, boolean>>(new Map());
+  const [optimisticStatuses, setOptimisticStatuses] = useState<
+    Map<string, IssueStatus>
+  >(new Map());
+  const [optimisticArchived, setOptimisticArchived] = useState<Map<string, boolean>>(
+    new Map()
+  );
+
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const dragRafRef = useRef<number | null>(null);
+  const pendingDragStateRef = useRef<{
+    id: Id<"tickets"> | null;
+    position: DragOverPosition;
+  } | null>(null);
 
   const updateStatus = useMutation(api.tickets.updateStatus);
   const updateTicket = useMutation(api.tickets.update);
@@ -100,64 +128,62 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
         archived: archivedOverride ?? ticket.archived,
         ownerId: statusOverride === "unclaimed" ? undefined : ticket.ownerId,
         ownerType: statusOverride === "unclaimed" ? undefined : ticket.ownerType,
-        ownerDisplayName: statusOverride === "unclaimed" ? undefined : ticket.ownerDisplayName,
+        ownerDisplayName:
+          statusOverride === "unclaimed" ? undefined : ticket.ownerDisplayName,
       };
     });
   }, [tickets, resolvedOptimisticMoves, resolvedOptimisticStatuses, resolvedOptimisticArchived]);
 
-  const visibleTickets = useMemo(() => {
-    if (showArchived) return mergedTickets;
+  const visibleTickets = useMemo(
+    () => deriveVisibleTickets(mergedTickets, showArchived),
+    [mergedTickets, showArchived]
+  );
+  const ticketsById = useMemo(
+    () => new Map(visibleTickets.map((ticket) => [ticket._id, ticket])),
+    [visibleTickets]
+  );
+  const childrenByParent = useMemo(
+    () => deriveChildrenByParent(visibleTickets),
+    [visibleTickets]
+  );
+  const treeRows = useMemo(
+    () => deriveTreeRows(childrenByParent, collapsed),
+    [childrenByParent, collapsed]
+  );
 
-    const ticketById = new Map(mergedTickets.map((ticket) => [ticket._id, ticket]));
-    const hasArchivedAncestor = (ticket: Ticket) => {
-      let currentParentId = ticket.parentId ?? null;
-      while (currentParentId) {
-        const parent = ticketById.get(currentParentId);
-        if (!parent) return false;
-        if (parent.archived ?? false) return true;
-        currentParentId = parent.parentId ?? null;
+  const rowVirtualizer = useVirtualizer({
+    count: treeRows.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => 64,
+    overscan: 12,
+  });
+
+  const flushDragState = useCallback(() => {
+    dragRafRef.current = null;
+    const next = pendingDragStateRef.current;
+    pendingDragStateRef.current = null;
+    if (!next) return;
+    setDragOverId(next.id);
+    setDragOverPosition(next.position);
+  }, []);
+
+  const scheduleDragState = useCallback(
+    (id: Id<"tickets"> | null, position: DragOverPosition) => {
+      pendingDragStateRef.current = { id, position };
+      if (dragRafRef.current !== null) return;
+      dragRafRef.current = requestAnimationFrame(flushDragState);
+    },
+    [flushDragState]
+  );
+
+  useEffect(
+    () => () => {
+      if (dragRafRef.current !== null) {
+        cancelAnimationFrame(dragRafRef.current);
       }
-      return false;
-    };
-
-    return mergedTickets.filter(
-      (ticket) => !(ticket.archived ?? false) && !hasArchivedAncestor(ticket)
-    );
-  }, [mergedTickets, showArchived]);
-
-  const ticketsById = useMemo(() => new Map(visibleTickets.map((ticket) => [ticket._id, ticket])), [visibleTickets]);
-
-  const childrenByParent = useMemo(() => {
-    const map = new Map<string, Ticket[]>();
-    for (const ticket of visibleTickets) {
-      const hasVisibleParent = ticket.parentId ? ticketsById.has(ticket.parentId) : false;
-      const key = hasVisibleParent ? ticket.parentId! : "root";
-      const list = map.get(key) ?? [];
-      list.push(ticket);
-      map.set(key, list);
-    }
-    for (const list of map.values()) {
-      list.sort((a, b) => getOrderValue(a) - getOrderValue(b));
-    }
-    return map;
-  }, [visibleTickets, ticketsById]);
-
-  const treeRows = useMemo(() => {
-    const result: Array<{ ticket: Ticket; depth: number }> = [];
-    const visit = (ticket: Ticket, depth: number) => {
-      result.push({ ticket, depth });
-      if (collapsed.has(ticket._id)) return;
-      const children = childrenByParent.get(ticket._id) ?? [];
-      for (const child of children) {
-        visit(child, depth + 1);
-      }
-    };
-    const roots = childrenByParent.get("root") ?? [];
-    for (const root of roots) {
-      visit(root, 0);
-    }
-    return result;
-  }, [childrenByParent, collapsed]);
+    },
+    []
+  );
 
   const toggleCollapsed = (ticketId: Id<"tickets">) => {
     setCollapsed((prev) => {
@@ -181,7 +207,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
   };
 
   const calculateOrder = (
-    siblings: Ticket[],
+    siblings: TicketSummary[],
     targetId: Id<"tickets">,
     position: "above" | "below",
     draggingId: Id<"tickets">
@@ -189,22 +215,28 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
     const list = siblings.filter((ticket) => ticket._id !== draggingId);
     const targetIndex = list.findIndex((ticket) => ticket._id === targetId);
     if (targetIndex === -1) return null;
-    const prevTicket = position === "above" ? list[targetIndex - 1] : list[targetIndex];
-    const nextTicket = position === "above" ? list[targetIndex] : list[targetIndex + 1];
+    const prevTicket =
+      position === "above" ? list[targetIndex - 1] : list[targetIndex];
+    const nextTicket =
+      position === "above" ? list[targetIndex] : list[targetIndex + 1];
 
     if (prevTicket && nextTicket) {
-      return (getOrderValue(prevTicket) + getOrderValue(nextTicket)) / 2;
+      return (getTicketOrderValue(prevTicket) + getTicketOrderValue(nextTicket)) / 2;
     }
     if (!prevTicket && nextTicket) {
-      return getOrderValue(nextTicket) - 1000;
+      return getTicketOrderValue(nextTicket) - 1000;
     }
     if (prevTicket && !nextTicket) {
-      return getOrderValue(prevTicket) + 1000;
+      return getTicketOrderValue(prevTicket) + 1000;
     }
-    return list.length ? getOrderValue(list[list.length - 1]) + 1000 : 0;
+    return list.length ? getTicketOrderValue(list[list.length - 1]) + 1000 : 0;
   };
 
-  const applyOptimisticMove = (ticketId: Id<"tickets">, parentId: Id<"tickets"> | null, order: number) => {
+  const applyOptimisticMove = (
+    ticketId: Id<"tickets">,
+    parentId: Id<"tickets"> | null,
+    order: number
+  ) => {
     setOptimisticMoves((prev) => {
       const next = new Map(prev);
       next.set(ticketId, { parentId, order });
@@ -220,11 +252,19 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
     });
   };
 
-  const handleDrop = async (event: React.DragEvent<HTMLDivElement>, targetTicket: Ticket) => {
+  const clearDragState = () => {
+    pendingDragStateRef.current = null;
+    setDragOverId(null);
+    setDragOverPosition(null);
+  };
+
+  const handleDrop = async (
+    event: React.DragEvent<HTMLDivElement>,
+    targetTicket: TicketSummary
+  ) => {
     event.preventDefault();
     const draggedId = event.dataTransfer.getData("application/x-ticket-id") as Id<"tickets">;
     if (!draggedId || draggedId === targetTicket._id) return;
-
     if (isDescendant(draggedId, targetTicket._id)) return;
 
     try {
@@ -233,16 +273,21 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
         const lastTicket = siblings[siblings.length - 1];
         const draggedTicket = ticketsById.get(draggedId);
         const order = lastTicket
-          ? getOrderValue(lastTicket) + 1000
+          ? getTicketOrderValue(lastTicket) + 1000
           : draggedTicket
-          ? getOrderValue(draggedTicket)
-          : 0;
+            ? getTicketOrderValue(draggedTicket)
+            : 0;
         applyOptimisticMove(draggedId, targetTicket._id, order);
         await updateTicket({ id: draggedId, parentId: targetTicket._id, order });
       } else if (dragOverPosition === "above" || dragOverPosition === "below") {
         const nextParentId = targetTicket.parentId ?? null;
         const siblings = childrenByParent.get(nextParentId ?? "root") ?? [];
-        const order = calculateOrder(siblings, targetTicket._id, dragOverPosition, draggedId);
+        const order = calculateOrder(
+          siblings,
+          targetTicket._id,
+          dragOverPosition,
+          draggedId
+        );
         if (order === null) return;
         applyOptimisticMove(draggedId, nextParentId, order);
         await updateTicket({ id: draggedId, parentId: nextParentId, order });
@@ -250,10 +295,9 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
     } catch (error) {
       clearOptimisticMove(draggedId);
       console.error(error);
+    } finally {
+      clearDragState();
     }
-
-    setDragOverId(null);
-    setDragOverPosition(null);
   };
 
   const handleDelete = async (ticketId: Id<"tickets">) => {
@@ -262,7 +306,10 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
     }
   };
 
-  const handleDragStart = (event: React.DragEvent<HTMLElement>, ticketId: Id<"tickets">) => {
+  const handleDragStart = (
+    event: React.DragEvent<HTMLElement>,
+    ticketId: Id<"tickets">
+  ) => {
     event.dataTransfer.setData("application/x-ticket-id", ticketId);
     event.dataTransfer.setData("text/plain", ticketId);
     event.dataTransfer.effectAllowed = "move";
@@ -322,8 +369,8 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
   };
 
   return (
-    <div className="kb-scroll h-full overflow-auto">
-      <div className="sticky top-0 z-10 hidden border-b-2 border-[#222] bg-[#0d0d0d] px-7 py-2 md:grid md:grid-cols-[90px_minmax(0,1fr)_170px_120px_110px] md:items-center">
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="hidden border-b-2 border-[#222] bg-[#0d0d0d] px-7 py-2 md:grid md:grid-cols-[90px_minmax(0,1fr)_170px_120px_110px] md:items-center">
         {["ID", "TITLE", "ASSIGNEE", "STATUS", "ACTIONS"].map((header) => (
           <span
             key={header}
@@ -336,64 +383,82 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
         ))}
       </div>
 
-      <div className="divide-y divide-[#1a1a1a]">
+      <div ref={listRef} className="kb-scroll min-h-0 flex-1 overflow-auto">
         {treeRows.length === 0 && (
-          <div className="px-7 py-10 font-mono text-xs uppercase tracking-[0.12em] text-[#666]">No issues yet.</div>
+          <div className="px-7 py-10 font-mono text-xs uppercase tracking-[0.12em] text-[#666]">
+            No issues yet.
+          </div>
         )}
 
-        {treeRows.map(({ ticket, depth }) => {
-          const hasChildren = (ticket.childCount ?? 0) > 0;
-          const isCollapsed = collapsed.has(ticket._id);
-          const parentTicket = ticket.parentId ? ticketsById.get(ticket.parentId) : null;
-          const dragClass =
-            dragOverId === ticket._id
-              ? dragOverPosition === "inside"
-                ? "bg-[#171717]"
-                : dragOverPosition === "above"
-                ? "border-t-2 border-t-[#FF3B00]"
-                : "border-b-2 border-b-[#FF3B00]"
-              : "";
+        {treeRows.length > 0 && (
+          <div
+            className="relative divide-y divide-[#1a1a1a]"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const { ticket, depth } = treeRows[virtualRow.index];
+              const hasChildren = (ticket.childCount ?? 0) > 0;
+              const isCollapsed = collapsed.has(ticket._id);
+              const parentTicket = ticket.parentId
+                ? ticketsById.get(ticket.parentId) ?? null
+                : null;
+              const dragClass =
+                dragOverId === ticket._id
+                  ? dragOverPosition === "inside"
+                    ? "bg-[#171717]"
+                    : dragOverPosition === "above"
+                      ? "border-t-2 border-t-[#FF3B00]"
+                      : "border-b-2 border-b-[#FF3B00]"
+                  : "";
 
-          return (
-            <TicketTableRow
-              key={ticket._id}
-              ticket={ticket}
-              workspaceId={workspaceId}
-              workspacePrefix={workspacePrefix}
-              parentTicket={parentTicket}
-              depth={depth}
-              hasChildren={hasChildren}
-              isCollapsed={isCollapsed}
-              dragClass={dragClass}
-              onToggleCollapse={() => toggleCollapsed(ticket._id)}
-              onDragStart={(event) => handleDragStart(event, ticket._id)}
-              onDragOver={(event) => {
-                event.preventDefault();
-                const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                const offset = event.clientY - rect.top;
-                const threshold = rect.height * 0.25;
-                let position: "above" | "below" | "inside" = "inside";
-                if (offset < threshold) position = "above";
-                else if (offset > rect.height - threshold) position = "below";
-                setDragOverId(ticket._id);
-                setDragOverPosition(position);
-              }}
-              onDragLeave={() => {
-                setDragOverId(null);
-                setDragOverPosition(null);
-              }}
-              onDrop={(event) => handleDrop(event, ticket)}
-              onClick={(event) => handleRowClick(event, ticket._id)}
-              onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
-              onStatusChange={(status) => handleStatusChange(ticket._id, status)}
-              onArchiveToggle={() => handleArchiveToggle(ticket._id, !(ticket.archived ?? false))}
-              onDelete={() => handleDelete(ticket._id)}
-            />
-          );
-        })}
+              return (
+                <div
+                  key={ticket._id}
+                  ref={rowVirtualizer.measureElement}
+                  className="absolute left-0 top-0 w-full"
+                  style={{ transform: `translateY(${virtualRow.start}px)` }}
+                >
+                  <TicketTableRow
+                    ticket={ticket}
+                    workspaceId={workspaceId}
+                    workspacePrefix={workspacePrefix}
+                    parentTicket={parentTicket}
+                    depth={depth}
+                    hasChildren={hasChildren}
+                    isCollapsed={isCollapsed}
+                    dragClass={dragClass}
+                    onToggleCollapse={() => toggleCollapsed(ticket._id)}
+                    onDragStart={(event) => handleDragStart(event, ticket._id)}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      const rect = (
+                        event.currentTarget as HTMLDivElement
+                      ).getBoundingClientRect();
+                      const offset = event.clientY - rect.top;
+                      const threshold = rect.height * 0.25;
+                      let position: DragOverPosition = "inside";
+                      if (offset < threshold) position = "above";
+                      else if (offset > rect.height - threshold) position = "below";
+                      scheduleDragState(ticket._id, position);
+                    }}
+                    onDragLeave={() => scheduleDragState(null, null)}
+                    onDrop={(event) => handleDrop(event, ticket)}
+                    onClick={(event) => handleRowClick(event, ticket._id)}
+                    onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
+                    onStatusChange={(status) => handleStatusChange(ticket._id, status)}
+                    onArchiveToggle={() =>
+                      handleArchiveToggle(ticket._id, !(ticket.archived ?? false))
+                    }
+                    onDelete={() => handleDelete(ticket._id)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      <div className="px-7 py-3">
+      <div className="border-t border-[#1a1a1a] px-7 py-3">
         <Link
           href={`/workspace/${workspaceId}/tickets/new?tab=list`}
           className="inline-flex border border-[#333] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#666] transition hover:border-[#555] hover:text-[#bbb]"
@@ -402,7 +467,7 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
         </Link>
         <button
           type="button"
-          onClick={() => setShowArchived((prev) => !prev)}
+          onClick={onToggleShowArchived}
           className="ml-2 inline-flex border border-[#333] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#666] transition hover:border-[#555] hover:text-[#bbb]"
         >
           {showArchived ? "Hide Archived" : "Show Archived"}
