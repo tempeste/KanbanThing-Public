@@ -58,7 +58,39 @@ export const syncFromAuth = mutation({
 export const syncFromAuthIds = mutation({
   args: { betterAuthUserIds: v.array(v.string()) },
   handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error("Unauthorized");
+    }
+
     const uniqueIds = Array.from(new Set(args.betterAuthUserIds)).filter(Boolean);
+    if (uniqueIds.length > 100) {
+      throw new Error("Too many user IDs");
+    }
+
+    const callerMemberships = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_user", (q) => q.eq("betterAuthUserId", authUser._id))
+      .collect();
+    const allowedUserIds = new Set<string>([authUser._id]);
+
+    for (const membership of callerMemberships) {
+      const workspaceMembers = await ctx.db
+        .query("workspaceMembers")
+        .withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId))
+        .collect();
+
+      for (const workspaceMember of workspaceMembers) {
+        allowedUserIds.add(workspaceMember.betterAuthUserId);
+      }
+    }
+
+    for (const id of uniqueIds) {
+      if (!allowedUserIds.has(id)) {
+        throw new Error("Unauthorized");
+      }
+    }
+
     let synced = 0;
     const missing: string[] = [];
 
