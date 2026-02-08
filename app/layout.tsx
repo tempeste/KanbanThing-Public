@@ -3,6 +3,8 @@ import { JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { ConvexAuthProvider } from "@/components/convex-auth-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/components/theme-provider";
+import { getToken } from "@/lib/auth-server";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-sans",
@@ -19,21 +21,25 @@ export const metadata: Metadata = {
   description: "LLM-friendly task board for human-agent collaboration",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialToken = await getToken();
+
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <ConvexAuthProvider>
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
-        </ConvexAuthProvider>
+        <ThemeProvider>
+          <ConvexAuthProvider initialToken={initialToken}>
+            <TooltipProvider>
+              {children}
+            </TooltipProvider>
+          </ConvexAuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

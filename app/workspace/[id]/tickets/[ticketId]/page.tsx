@@ -194,29 +194,25 @@ export default function TicketDetailPage() {
     activities === undefined
   ) {
     return (
-      <main className="min-h-screen p-4 md:p-6">
-        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-5 w-5 border-2 border-primary/40 border-t-primary animate-spin" />
-            <div className="kb-label">Loading...</div>
-          </div>
+      <div className="flex h-full flex-1 items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-5 w-5 border-2 border-primary/40 border-t-primary animate-spin" />
+          <div className="kb-label">Loading...</div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!ticket || workspace === null || ticket.workspaceId !== workspaceId) {
     return (
-      <main className="min-h-screen p-4 md:p-6">
-        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 text-center md:min-h-[calc(100vh-3rem)]">
-          <div>
-            <h1 className="text-2xl font-bold mb-4">Issue not found</h1>
-            <Link href={backHref}>
-              <Button>Back to Workspace</Button>
-            </Link>
-          </div>
+      <div className="flex h-full flex-1 items-center justify-center text-center">
+        <div>
+          <h1 className="text-2xl font-bold mb-4">Issue not found</h1>
+          <Link href={backHref}>
+            <Button>Back to Workspace</Button>
+          </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -345,10 +341,8 @@ export default function TicketDetailPage() {
   };
 
   return (
-    <main className="min-h-screen p-4 md:p-6">
-      <div className="kb-shell min-h-[calc(100vh-2rem)] overflow-hidden md:min-h-[calc(100vh-3rem)]">
-        {/* ── Compact top bar ── */}
-        <header className="border-b border-border/60 bg-card/50">
+    <div className="min-h-full">
+      <header className="border-b border-border/60 bg-card/50 sticky top-0 z-10">
           <div className="flex items-center justify-between px-4 py-2.5 md:px-6">
             {/* Left: back + breadcrumb */}
             <div className="flex items-center gap-1.5 min-w-0">
@@ -771,7 +765,8 @@ export default function TicketDetailPage() {
             />
           </div>
         </div>
-      </div>
-    </main>
+    </div>
   );
 }
+
+

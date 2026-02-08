@@ -30,12 +30,12 @@ export function TicketActionsMenu({
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 rounded-none border border-[#2f2f2f] bg-[#0f0f0f] text-[#666] hover:bg-[#171717] hover:text-[#cfcfcf]"
+          className="h-6 w-6 rounded-none border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <MoreVertical className="h-3.5 w-3.5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="rounded-none border-[#333] bg-[#0f0f0f] text-[#d0d0d0]">
+      <DropdownMenuContent align="end" className="rounded-none border-border bg-card text-foreground/90">
         {Object.entries(STATUS_META).map(([status, config]) => (
           <DropdownMenuItem
             key={status}

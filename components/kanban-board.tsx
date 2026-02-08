@@ -35,15 +35,14 @@ interface KanbanBoardProps {
   tickets: TicketSummary[];
   workspacePrefix: string;
   showArchived: boolean;
-  onToggleShowArchived: () => void;
   compact?: boolean;
 }
 
 const STATUS_COLUMNS: Status[] = ["unclaimed", "in_progress", "done"];
 const STATUS_META: Record<Status, { label: string; accent: string }> = {
-  unclaimed: { label: "UNCLAIMED", accent: "#FF3B00" },
-  in_progress: { label: "IN PROGRESS", accent: "#FFB800" },
-  done: { label: "DONE", accent: "#00FF94" },
+  unclaimed: { label: "UNCLAIMED", accent: "var(--unclaimed)" },
+  in_progress: { label: "IN PROGRESS", accent: "var(--in-progress)" },
+  done: { label: "DONE", accent: "var(--done)" },
 };
 
 type DragOverPosition = "above" | "below" | null;
@@ -53,7 +52,6 @@ export function KanbanBoard({
   tickets,
   workspacePrefix,
   showArchived,
-  onToggleShowArchived,
 }: KanbanBoardProps) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -181,19 +179,19 @@ export function KanbanBoard({
   const unclaimedVirtualizer = useVirtualizer({
     count: ticketsByStatus.unclaimed.length,
     getScrollElement: () => unclaimedColumnRef.current,
-    estimateSize: () => 176,
+    estimateSize: () => 120,
     overscan: 10,
   });
   const inProgressVirtualizer = useVirtualizer({
     count: ticketsByStatus.in_progress.length,
     getScrollElement: () => inProgressColumnRef.current,
-    estimateSize: () => 176,
+    estimateSize: () => 120,
     overscan: 10,
   });
   const doneVirtualizer = useVirtualizer({
     count: ticketsByStatus.done.length,
     getScrollElement: () => doneColumnRef.current,
-    estimateSize: () => 176,
+    estimateSize: () => 120,
     overscan: 10,
   });
 
@@ -448,7 +446,7 @@ export function KanbanBoard({
           return (
             <section
             key={status}
-            className={`flex min-h-0 flex-1 flex-col border-[#222] ${
+            className={`flex min-h-0 flex-1 flex-col border-border ${
               index < STATUS_COLUMNS.length - 1 ? "border-r" : ""
             } ${dragOverStatus === status ? "bg-white/[0.02]" : ""}`}
             onDragOver={(event) => {
@@ -486,7 +484,7 @@ export function KanbanBoard({
               className="flex items-end justify-between border-b-2 px-4 pb-3 pt-4 md:px-5"
               style={{ borderBottomColor: statusMeta.accent }}
             >
-              <span className="font-mono text-[21px] font-extrabold tracking-[0.2em] text-white">
+              <span className="font-mono text-[21px] font-extrabold tracking-[0.2em] text-foreground">
                 {statusMeta.label}
               </span>
               <span
@@ -499,7 +497,7 @@ export function KanbanBoard({
 
             <div ref={columnRef} className="kb-scroll h-full overflow-auto px-3 py-3">
               {columnTickets.length === 0 && (
-                <div className="pt-4 font-mono text-[10px] uppercase tracking-[0.1em] text-[#555]">
+                <div className="pt-4 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">
                   No issues
                 </div>
               )}
@@ -519,7 +517,7 @@ export function KanbanBoard({
                       <div
                         key={ticket._id}
                         ref={virtualizer.measureElement}
-                        className="absolute left-0 top-0 w-full pb-2.5"
+                        className="absolute left-0 top-0 w-full pb-1"
                         style={{ transform: `translateY(${virtualItem.start}px)` }}
                       >
                         <TicketCard
@@ -593,15 +591,6 @@ export function KanbanBoard({
         })}
       </div>
 
-      <div className="border-t border-[#1a1a1a] px-4 py-3 md:px-5">
-        <button
-          type="button"
-          onClick={onToggleShowArchived}
-          className="inline-flex border border-[#333] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#666] transition hover:border-[#555] hover:text-[#bbb]"
-        >
-          {showArchived ? "Hide Archived" : "Show Archived"}
-        </button>
-      </div>
     </div>
   );
 }

@@ -40,14 +40,15 @@ function ProfileSyncer() {
 export function ConvexAuthProvider({
   children,
   initialToken,
-}: PropsWithChildren<{ initialToken?: string | null }>) {
+  disableProfileSync = false,
+}: PropsWithChildren<{ initialToken?: string | null; disableProfileSync?: boolean }>) {
   return (
     <ConvexBetterAuthProvider
       client={convex}
       authClient={authClient}
       initialToken={initialToken}
     >
-      <ProfileSyncer />
+      {!disableProfileSync && <ProfileSyncer />}
       {children}
     </ConvexBetterAuthProvider>
   );
