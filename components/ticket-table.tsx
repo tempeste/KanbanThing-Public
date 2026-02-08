@@ -51,6 +51,15 @@ export function TicketTable({
   const [optimisticArchived, setOptimisticArchived] = useState<Map<string, boolean>>(
     new Map()
   );
+  const [colWidths, setColWidths] = useState({
+    id: 160,
+    assignee: 160,
+    status: 120,
+    actions: 100,
+  });
+  const colWidthsRef = useRef(colWidths);
+  colWidthsRef.current = colWidths;
+  const gridTemplate = `${colWidths.id}px minmax(0,1fr) ${colWidths.assignee}px ${colWidths.status}px ${colWidths.actions}px`;
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const dragRafRef = useRef<number | null>(null);
@@ -365,18 +374,64 @@ export function TicketTable({
     });
   };
 
+  const handleResizeStart = useCallback(
+    (col: "id" | "assignee" | "status" | "actions", e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = colWidthsRef.current[col];
+      const mins: Record<string, number> = { id: 80, assignee: 80, status: 80, actions: 60 };
+
+      const onMove = (ev: MouseEvent) => {
+        const delta = ev.clientX - startX;
+        setColWidths((prev) => ({
+          ...prev,
+          [col]: Math.max(mins[col], startWidth + delta),
+        }));
+      };
+
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.removeProperty("cursor");
+        document.body.style.removeProperty("user-select");
+      };
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    []
+  );
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="hidden border-b-2 border-border bg-card px-7 py-2 md:grid md:grid-cols-[90px_minmax(0,1fr)_170px_120px_110px] md:items-center">
-        {["ID", "TITLE", "ASSIGNEE", "STATUS", "ACTIONS"].map((header) => (
-          <span
-            key={header}
-            className={`font-mono text-[9px] font-extrabold tracking-[0.2em] text-muted-foreground/60 ${
-              header === "ACTIONS" ? "text-right" : ""
-            }`}
-          >
-            {header}
-          </span>
+      <div
+        className="hidden border-b-2 border-border bg-card px-7 py-2 md:grid md:items-center"
+        style={{ gridTemplateColumns: gridTemplate }}
+      >
+        {([
+          { label: "ID", key: "id" as const },
+          { label: "TITLE", key: null },
+          { label: "ASSIGNEE", key: "assignee" as const },
+          { label: "STATUS", key: "status" as const },
+          { label: "ACTIONS", key: null },
+        ]).map((col) => (
+          <div key={col.label} className="relative select-none">
+            <span
+              className={`font-mono text-[9px] font-extrabold tracking-[0.2em] text-muted-foreground/60 ${
+                col.label === "ACTIONS" ? "block text-right" : ""
+              }`}
+            >
+              {col.label}
+            </span>
+            {col.key && (
+              <div
+                className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-primary/20"
+                onMouseDown={(e) => handleResizeStart(col.key!, e)}
+              />
+            )}
+          </div>
         ))}
       </div>
 
@@ -419,6 +474,7 @@ export function TicketTable({
                     ticket={ticket}
                     workspaceId={workspaceId}
                     workspacePrefix={workspacePrefix}
+                    gridTemplate={gridTemplate}
                     parentTicket={parentTicket}
                     depth={depth}
                     hasChildren={hasChildren}
