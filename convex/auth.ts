@@ -17,11 +17,6 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     .map((e: string) => e.trim().toLowerCase())
     .filter(Boolean);
 
-  const allowedGithubUsers = (process.env.ALLOWED_GITHUB_USERS ?? "")
-    .split(",")
-    .map((u: string) => u.trim().toLowerCase())
-    .filter(Boolean);
-
   const setPasswordEndpoint = createAuthEndpoint(
     "/set-password",
     {
@@ -94,8 +89,8 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       user: {
         create: {
           before: async (user) => {
-            // If no whitelist configured, allow all
-            if (allowedEmails.length === 0 && allowedGithubUsers.length === 0) {
+            // If no email whitelist configured, allow all.
+            if (allowedEmails.length === 0) {
               return { data: user };
             }
 
@@ -104,64 +99,10 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
               return { data: user };
             }
 
-            // For email/password signups without whitelist match
+            // For signups without whitelist match
             throw new APIError("FORBIDDEN", {
               message: "Registration is restricted. Contact the site owner.",
             });
-          },
-        },
-      },
-      account: {
-        create: {
-          before: async (account) => {
-            // Skip whitelist check if no lists configured
-            if (allowedEmails.length === 0 && allowedGithubUsers.length === 0) {
-              return { data: account };
-            }
-
-            // Check GitHub username whitelist for GitHub OAuth
-            if (account.providerId === "github" && account.accountId) {
-              const githubAccountId = account.accountId.toLowerCase();
-              const githubUsername =
-                (
-                  account as {
-                    username?: string;
-                    userName?: string;
-                    login?: string;
-                  }
-                ).username ??
-                (
-                  account as {
-                    username?: string;
-                    userName?: string;
-                    login?: string;
-                  }
-                ).userName ??
-                (
-                  account as {
-                    username?: string;
-                    userName?: string;
-                    login?: string;
-                  }
-                ).login;
-
-              if (
-                allowedGithubUsers.includes(githubAccountId) ||
-                (githubUsername &&
-                  allowedGithubUsers.includes(githubUsername.toLowerCase()))
-              ) {
-                return { data: account };
-              }
-            }
-
-            // For Google OAuth, the user hook will check email
-            if (account.providerId === "google") {
-              return { data: account };
-            }
-
-            // Note: For OAuth, the user.create.before hook runs first,
-            // which checks email whitelist for all providers
-            return { data: account };
           },
         },
       },
