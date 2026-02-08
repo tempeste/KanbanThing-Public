@@ -433,7 +433,7 @@ export function KanbanBoard({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="kb-scroll flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto md:snap-none md:overflow-x-hidden">
         {STATUS_COLUMNS.map((status, index) => {
         const statusMeta = STATUS_META[status];
         const countLabel = (ticketsByStatus[status]?.length ?? 0)
@@ -446,7 +446,7 @@ export function KanbanBoard({
           return (
             <section
             key={status}
-            className={`flex min-h-0 flex-1 flex-col border-border ${
+            className={`flex min-h-0 min-w-[85vw] shrink-0 snap-center flex-col border-border md:min-w-0 md:flex-1 ${
               index < STATUS_COLUMNS.length - 1 ? "border-r" : ""
             } ${dragOverStatus === status ? "bg-white/[0.02]" : ""}`}
             onDragOver={(event) => {
@@ -484,11 +484,11 @@ export function KanbanBoard({
               className="flex items-end justify-between border-b-2 px-4 pb-3 pt-4 md:px-5"
               style={{ borderBottomColor: statusMeta.accent }}
             >
-              <span className="font-mono text-[21px] font-extrabold tracking-[0.2em] text-foreground">
+              <span className="font-mono text-[15px] font-extrabold tracking-[0.2em] text-foreground md:text-[21px]">
                 {statusMeta.label}
               </span>
               <span
-                className="font-mono text-[40px] font-black leading-none"
+                className="font-mono text-[28px] font-black leading-none md:text-[40px]"
                 style={{ color: statusMeta.accent }}
               >
                 {countLabel}
