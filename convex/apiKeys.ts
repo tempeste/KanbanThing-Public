@@ -140,3 +140,25 @@ export const remove = mutation({
     await ctx.db.delete(args.id);
   },
 });
+
+export const updateRole = mutation({
+  args: {
+    id: v.id("apiKeys"),
+    role: v.union(v.literal("admin"), v.literal("agent")),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
+  handler: async (ctx, args) => {
+    const key = await ctx.db.get(args.id);
+    if (!key) {
+      throw new Error("API key not found");
+    }
+
+    await requireKeyManagementAccess(ctx, key.workspaceId, args.agentApiKeyId);
+
+    if (args.agentApiKeyId === args.id && args.role === "agent") {
+      throw new Error("Cannot demote the API key used for this request");
+    }
+
+    await ctx.db.patch(args.id, { role: args.role });
+  },
+});

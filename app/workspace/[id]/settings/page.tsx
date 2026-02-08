@@ -91,6 +91,7 @@ export default function WorkspaceSettingsPage() {
   const updateWorkspace = useMutation(api.workspaces.update);
   const createApiKey = useMutation(api.apiKeys.create);
   const deleteApiKey = useMutation(api.apiKeys.remove);
+  const updateApiKeyRole = useMutation(api.apiKeys.updateRole);
   const resetWorkspaceTickets = useMutation(api.workspaces.resetWorkspaceTickets);
   const addMembersByEmails = useMutation(api.workspaceMembers.addByEmails);
   const removeMember = useMutation(api.workspaceMembers.remove);
@@ -105,6 +106,7 @@ export default function WorkspaceSettingsPage() {
   const [newKeyRole, setNewKeyRole] = useState<"agent" | "admin">("agent");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+  const [updatingApiKeyId, setUpdatingApiKeyId] = useState<Id<"apiKeys"> | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [memberEmails, setMemberEmails] = useState("");
   const [isAddingMembers, setIsAddingMembers] = useState(false);
@@ -192,6 +194,25 @@ export default function WorkspaceSettingsPage() {
     }
     if (confirm("Delete this API key? Any agents using it will lose access.")) {
       await deleteApiKey({ id });
+    }
+  };
+
+  const handleChangeApiKeyRole = async (
+    id: Id<"apiKeys">,
+    role: "agent" | "admin"
+  ) => {
+    if (!canManageApiKeys) {
+      alert("Only workspace owners and admins can update API key roles.");
+      return;
+    }
+
+    setUpdatingApiKeyId(id);
+    try {
+      await updateApiKeyRole({ id, role });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to update API key role");
+    } finally {
+      setUpdatingApiKeyId(null);
     }
   };
 
@@ -566,16 +587,34 @@ export default function WorkspaceSettingsPage() {
                           Role: {key.role ?? "admin"}
                         </p>
                       </div>
-                      {canManageApiKeys && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDeleteKey(key._id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {canManageApiKeys && (
+                          <select
+                            className="h-8 px-2 text-sm border rounded-md bg-background"
+                            value={key.role ?? "admin"}
+                            onChange={(e) =>
+                              handleChangeApiKeyRole(
+                                key._id,
+                                e.target.value as "agent" | "admin"
+                              )
+                            }
+                            disabled={updatingApiKeyId === key._id}
+                          >
+                            <option value="agent">Agent</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        )}
+                        {canManageApiKeys && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => handleDeleteKey(key._id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -649,6 +688,9 @@ export default function WorkspaceSettingsPage() {
                 </p>
                 <p className="text-foreground">
                   {"curl -X DELETE -H \"X-API-Key: sk_admin...\" /api/api-keys/API_KEY_ID"}
+                </p>
+                <p className="text-foreground">
+                  {"curl -X PATCH -H \"X-API-Key: sk_admin...\" -H \"Content-Type: application/json\" -d '{\"role\":\"admin\"}' /api/api-keys/API_KEY_ID"}
                 </p>
               </div>
             </div>
