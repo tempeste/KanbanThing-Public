@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { Doc, Id } from "@/convex/_generated/dataModel";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { IssueStatusBadge, IssueStatus, STATUS_META } from "@/components/issue-status";
+import { IssueStatus, STATUS_META } from "@/components/issue-status";
 import { AssigneePicker } from "@/components/assignee-picker";
+import { ExternalLink } from "lucide-react";
 
 type Ticket = Doc<"tickets">;
 
@@ -27,13 +26,13 @@ export function IssueSidebar({
   onStatusChange,
 }: IssueSidebarProps) {
   return (
-    <aside className="space-y-4">
-      <Card className="space-y-4 p-4">
-        <div>
+    <aside className="space-y-0 lg:sticky lg:top-6 lg:self-start">
+      <div className="border border-border/60 bg-card/40 divide-y divide-border/40">
+        {/* Status */}
+        <div className="px-4 py-3">
           <div className="kb-label mb-2">Status</div>
-          <IssueStatusBadge status={ticket.status} className="mb-2" />
           <select
-            className="mt-1 flex h-10 w-full border border-input bg-background/70 px-3 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="flex h-8 w-full border border-input bg-background/70 px-2.5 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
             value={ticket.status}
             onChange={(event) => onStatusChange(event.target.value as IssueStatus)}
           >
@@ -45,7 +44,8 @@ export function IssueSidebar({
           </select>
         </div>
 
-        <div>
+        {/* Assignee */}
+        <div className="px-4 py-3">
           <div className="kb-label mb-2">Assignee</div>
           <AssigneePicker
             workspaceId={workspaceId}
@@ -56,43 +56,56 @@ export function IssueSidebar({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <div className="kb-label mb-1">Created</div>
-            <div>{new Date(ticket.createdAt).toLocaleString()}</div>
-          </div>
-          <div>
-            <div className="kb-label mb-1">Updated</div>
-            <div>{new Date(ticket.updatedAt).toLocaleString()}</div>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="space-y-2 p-4">
-        <div className="kb-label">Project Docs</div>
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/workspace/${workspaceId}/settings`}>Open Workspace Settings</Link>
-        </Button>
-      </Card>
-
-      <Card className="space-y-3 p-4">
-        <div className="kb-label">Sub-issue Progress</div>
-        {progressTotal > 0 ? (
-          <>
-            <div className="flex items-center justify-between text-sm">
-              <span>
+        {/* Progress */}
+        {progressTotal > 0 && (
+          <div className="px-4 py-3">
+            <div className="kb-label mb-2">Progress</div>
+            <div className="flex items-center justify-between text-sm mb-1.5">
+              <span className="text-muted-foreground">
                 {progressDone}/{progressTotal} done
               </span>
-              <span className="font-mono text-xs tracking-[0.12em]">{progressPct}%</span>
+              <span className="font-mono text-[10px] tracking-wide text-muted-foreground">
+                {progressPct}%
+              </span>
             </div>
-            <div className="h-2 border border-border/70 bg-background/70">
-              <div className="h-full bg-primary" style={{ width: `${progressPct}%` }} />
+            <div className="h-1 bg-border/40 overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300"
+                style={{ width: `${progressPct}%` }}
+              />
             </div>
-          </>
-        ) : (
-          <div className="text-sm text-muted-foreground">No sub-issues yet.</div>
+          </div>
         )}
-      </Card>
+
+        {/* Dates */}
+        <div className="px-4 py-3">
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <div className="kb-label mb-1">Created</div>
+              <div className="text-muted-foreground">
+                {new Date(ticket.createdAt).toLocaleDateString()}
+              </div>
+            </div>
+            <div>
+              <div className="kb-label mb-1">Updated</div>
+              <div className="text-muted-foreground">
+                {new Date(ticket.updatedAt).toLocaleDateString()}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Workspace link */}
+        <div className="px-4 py-3">
+          <Link
+            href={`/workspace/${workspaceId}/settings`}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Workspace Settings
+          </Link>
+        </div>
+      </div>
     </aside>
   );
 }
