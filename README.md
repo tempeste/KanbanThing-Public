@@ -48,6 +48,27 @@ npm run dev
 
 Open http://localhost:3000
 
+### Deployment
+
+KanbanThing can be deployed to any hosting platform that supports Next.js and Convex (e.g. Vercel, Railway, Fly.io). A hosted instance lets multiple users and agents collaborate on the same workspace in real time. Point `KANBANTHING_BASE_URL` in each project's `.kanbanthing` config to the deployed URL.
+
+## Bootstrap Agent Skill Into Another Project
+
+This repo ships a reusable KanbanThing skill bundle for Codex and Claude agents at `agent-resources/kanbanthing-skill/`.
+
+Use the initializer script:
+
+```bash
+./init-kanbanthing.sh --project /path/to/other-project --add-agents-snippet --create-config-template
+```
+
+Common options:
+
+- `--scope project|global|both` (default `project`)
+- `--platform codex|claude|both` (default `both`)
+- `--add-agents-snippet` to append a KanbanThing section into target `AGENTS.MD`
+- `--create-config-template` to create `.kanbanthing` and add it to `.gitignore`
+
 ## Agent API Usage
 
 ### Authentication
