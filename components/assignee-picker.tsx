@@ -3,7 +3,7 @@
 import { useQuery, useMutation } from "convex/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { Doc, Id } from "@/convex/_generated/dataModel";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Bot, User, UserX, ChevronDown } from "lucide-react";
+
+type PatchableTicket = Pick<
+  Doc<"tickets">,
+  "_id" | "status" | "ownerId" | "ownerType" | "ownerDisplayName"
+>;
 
 interface AssigneePickerProps {
   workspaceId: Id<"workspaces">;
@@ -28,7 +33,7 @@ function patchTicketInQueries(
   localStore: OptimisticLocalStore,
   workspaceId: Id<"workspaces">,
   ticketId: Id<"tickets">,
-  patch: (ticket: any) => any
+  patch: <T extends PatchableTicket>(ticket: T) => T
 ) {
   const tickets = localStore.getQuery(api.tickets.list, { workspaceId });
   if (tickets) {
@@ -36,6 +41,17 @@ function patchTicketInQueries(
       api.tickets.list,
       { workspaceId },
       tickets.map((ticket) => (ticket._id === ticketId ? patch(ticket) : ticket))
+    );
+  }
+
+  const ticketSummaries = localStore.getQuery(api.tickets.listSummaries, { workspaceId });
+  if (ticketSummaries) {
+    localStore.setQuery(
+      api.tickets.listSummaries,
+      { workspaceId },
+      ticketSummaries.map((ticket) =>
+        ticket._id === ticketId ? patch(ticket) : ticket
+      )
     );
   }
 
