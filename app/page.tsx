@@ -5,7 +5,7 @@ import { api } from "@/convex/_generated/api";
 import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Plus,
@@ -30,7 +30,6 @@ export default function Home() {
 
   const createWorkspace = useMutation(api.workspaces.createWithOwner);
   const deleteWorkspace = useMutation(api.workspaces.removeWithCleanup);
-  const assignOrphaned = useMutation(api.migrations.assignOrphanedWorkspaces);
 
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -40,24 +39,7 @@ export default function Home() {
     "updated_desc" | "updated_asc" | "created_desc" | "created_asc" | "name_asc" | "name_desc"
   >("updated_desc");
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
-  const migratedUserIdRef = useRef<string | null>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    if (!userId || migratedUserIdRef.current === userId) return;
-
-    migratedUserIdRef.current = userId;
-    assignOrphaned({ betterAuthUserId: userId })
-        .then((result) => {
-          if (result.count > 0) {
-            console.log(`Claimed ${result.count} orphaned workspaces:`, result.claimed);
-          }
-        })
-        .catch((error) => {
-          migratedUserIdRef.current = null;
-          console.error(error);
-        });
-  }, [userId, assignOrphaned]);
 
   const handleCreate = async () => {
     if (!newWorkspaceName.trim() || !userId) return;

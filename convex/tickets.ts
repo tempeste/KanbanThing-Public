@@ -15,6 +15,9 @@ const Status = v.union(
   v.literal("in_progress"),
   v.literal("done")
 );
+const MAX_TITLE_LENGTH = 300;
+const MAX_DESCRIPTION_LENGTH = 20_000;
+const MAX_LIST_LIMIT = 500;
 
 type CountsDelta = {
   count: number;
@@ -23,6 +26,13 @@ type CountsDelta = {
 
 const getOrderValue = (ticket: { order?: number; createdAt: number }) =>
   ticket.order ?? ticket.createdAt;
+
+const normalizeLimit = (limit?: number) => {
+  if (typeof limit !== "number" || !Number.isFinite(limit)) return undefined;
+  const parsed = Math.floor(limit);
+  if (parsed <= 0) return 1;
+  return Math.min(parsed, MAX_LIST_LIMIT);
+};
 
 const getCountedState = (archived: boolean | undefined, status: TicketStatus) => {
   const counted = !archived;
@@ -111,14 +121,16 @@ const cascadeArchive = async (
 export const list = query({
   args: {
     workspaceId: v.id("workspaces"),
+    limit: v.optional(v.number()),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
-    return await ctx.db
+    const query = ctx.db
       .query("tickets")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
-      .collect();
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId));
+    const limit = normalizeLimit(args.limit);
+    return limit === undefined ? await query.collect() : await query.take(limit);
   },
 });
 
@@ -126,16 +138,18 @@ export const listByStatus = query({
   args: {
     workspaceId: v.id("workspaces"),
     status: Status,
+    limit: v.optional(v.number()),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
-    return await ctx.db
+    const query = ctx.db
       .query("tickets")
       .withIndex("by_workspace_status", (q) =>
         q.eq("workspaceId", args.workspaceId).eq("status", args.status)
-      )
-      .collect();
+      );
+    const limit = normalizeLimit(args.limit);
+    return limit === undefined ? await query.collect() : await query.take(limit);
   },
 });
 
@@ -143,16 +157,18 @@ export const listByParent = query({
   args: {
     workspaceId: v.id("workspaces"),
     parentId: v.union(v.id("tickets"), v.null()),
+    limit: v.optional(v.number()),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
     await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
-    return await ctx.db
+    const query = ctx.db
       .query("tickets")
       .withIndex("by_workspace_parent", (q) =>
         q.eq("workspaceId", args.workspaceId).eq("parentId", args.parentId)
-      )
-      .collect();
+      );
+    const limit = normalizeLimit(args.limit);
+    return limit === undefined ? await query.collect() : await query.take(limit);
   },
 });
 
@@ -221,8 +237,20 @@ export const create = mutation({
     }
     await requireWorkspaceAccess(ctx, args.workspaceId, args.agentApiKeyId);
 
+    const title = args.title.trim();
+    if (!title) {
+      throw new Error("Title is required");
+    }
+    if (title.length > MAX_TITLE_LENGTH) {
+      throw new Error(`Title cannot exceed ${MAX_TITLE_LENGTH} characters`);
+    }
+    if (args.description.length > MAX_DESCRIPTION_LENGTH) {
+      throw new Error(`Description cannot exceed ${MAX_DESCRIPTION_LENGTH} characters`);
+    }
+
     const parentId = args.parentId ?? null;
     await ensureValidParent(ctx, args.workspaceId, null, parentId);
+    const parent = parentId ? await ctx.db.get(parentId) : null;
 
     const now = Date.now();
     const nextNumber = (workspace.ticketCounter ?? 0) + 1;
@@ -235,12 +263,12 @@ export const create = mutation({
 
     const id = await ctx.db.insert("tickets", {
       workspaceId: args.workspaceId,
-      title: args.title,
+      title,
       description: args.description,
       number: nextNumber,
       parentId,
       order: now,
-      archived: false,
+      archived: parent ? (parent.archived ?? false) : false,
       status: "unclaimed",
       childCount: 0,
       childDoneCount: 0,
@@ -248,7 +276,7 @@ export const create = mutation({
       updatedAt: now,
     });
 
-    if (parentId) {
+    if (parentId && !(parent?.archived ?? false)) {
       await applyCountsDelta(ctx, parentId, { count: 1, done: 0 });
     }
 
@@ -256,7 +284,7 @@ export const create = mutation({
       workspaceId: args.workspaceId,
       ticketId: id,
       type: "ticket_created",
-      data: { title: args.title, parentId },
+      data: { title, parentId },
       actor: args.actor,
     });
 
@@ -283,13 +311,29 @@ export const update = mutation({
     }
     await requireWorkspaceAccess(ctx, ticket.workspaceId, agentApiKeyId);
 
+    if (args.title !== undefined) {
+      const trimmedTitle = args.title.trim();
+      if (!trimmedTitle) {
+        throw new Error("Title is required");
+      }
+      if (trimmedTitle.length > MAX_TITLE_LENGTH) {
+        throw new Error(`Title cannot exceed ${MAX_TITLE_LENGTH} characters`);
+      }
+      updates.title = trimmedTitle;
+    }
+    if (
+      args.description !== undefined &&
+      args.description.length > MAX_DESCRIPTION_LENGTH
+    ) {
+      throw new Error(`Description cannot exceed ${MAX_DESCRIPTION_LENGTH} characters`);
+    }
+
     const nextParentId = parentId !== undefined ? parentId : ticket.parentId;
-    const nextArchived = archived !== undefined ? archived : ticket.archived ?? false;
-    const archiveChanged = archived !== undefined && nextArchived !== (ticket.archived ?? false);
+    let nextArchived = archived !== undefined ? archived : ticket.archived ?? false;
     const changes: Record<string, { from: unknown; to: unknown }> = {};
 
-    if (args.title !== undefined && args.title !== ticket.title) {
-      changes.title = { from: ticket.title, to: args.title };
+    if (updates.title !== undefined && updates.title !== ticket.title) {
+      changes.title = { from: ticket.title, to: updates.title };
     }
     if (args.description !== undefined && args.description !== ticket.description) {
       changes.description = { from: ticket.description, to: args.description };
@@ -297,14 +341,19 @@ export const update = mutation({
     if (parentId !== undefined && (ticket.parentId ?? null) !== (nextParentId ?? null)) {
       changes.parentId = { from: ticket.parentId ?? null, to: nextParentId ?? null };
     }
-    if (archived !== undefined && (ticket.archived ?? false) !== nextArchived) {
-      changes.archived = { from: ticket.archived ?? false, to: nextArchived };
-    }
     if (args.order !== undefined && args.order !== ticket.order) {
       changes.order = { from: ticket.order ?? null, to: args.order };
     }
 
     await ensureValidParent(ctx, ticket.workspaceId, id, nextParentId ?? null);
+    const nextParent = nextParentId ? await ctx.db.get(nextParentId) : null;
+    if (nextParent && (nextParent.archived ?? false)) {
+      nextArchived = true;
+    }
+    const archiveChanged = nextArchived !== (ticket.archived ?? false);
+    if (archiveChanged) {
+      changes.archived = { from: ticket.archived ?? false, to: nextArchived };
+    }
 
     const prevState = getCountedState(ticket.archived ?? false, ticket.status);
     const nextState = getCountedState(nextArchived, ticket.status);
@@ -381,6 +430,7 @@ const applyStatusChange = async (
   if (status === "unclaimed") {
     updates.ownerId = undefined;
     updates.ownerType = undefined;
+    updates.ownerDisplayName = undefined;
   }
   await ctx.db.patch(ticket._id, updates);
 };
@@ -390,6 +440,7 @@ export const claim = mutation({
     id: v.id("tickets"),
     ownerId: v.string(),
     ownerType: v.union(v.literal("user"), v.literal("agent")),
+    ownerDisplayName: v.optional(v.string()),
     actor: v.optional(actorValidator),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
@@ -411,7 +462,7 @@ export const claim = mutation({
       status: "in_progress",
       ownerId: args.ownerId,
       ownerType: args.ownerType,
-      ownerDisplayName: undefined,
+      ownerDisplayName: args.ownerDisplayName,
       updatedAt: Date.now(),
     });
 
@@ -421,7 +472,11 @@ export const claim = mutation({
       type: "ticket_assignment_changed",
       data: {
         from: prevOwner,
-        to: { ownerId: args.ownerId, ownerType: args.ownerType, ownerDisplayName: null },
+        to: {
+          ownerId: args.ownerId,
+          ownerType: args.ownerType,
+          ownerDisplayName: args.ownerDisplayName ?? null,
+        },
       },
       actor: args.actor,
     });
@@ -779,6 +834,13 @@ export const remove = mutation({
     const ticket = await ctx.db.get(args.id);
     if (!ticket) return;
     await requireWorkspaceAccess(ctx, ticket.workspaceId, args.agentApiKeyId);
+    if (args.agentApiKeyId) {
+      const apiKey = await ctx.db.get(args.agentApiKeyId);
+      const keyRole = apiKey?.role ?? "admin";
+      if (!apiKey || apiKey.workspaceId !== ticket.workspaceId || keyRole !== "admin") {
+        throw new Error("Unauthorized");
+      }
+    }
 
     await logTicketActivity(ctx, {
       workspaceId: ticket.workspaceId,

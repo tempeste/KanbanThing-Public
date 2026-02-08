@@ -109,6 +109,13 @@ export async function POST(
       },
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (
+      message.includes("Comment body is required") ||
+      message.includes("Comment body cannot exceed")
+    ) {
+      return jsonError(message, 400);
+    }
     if (isInvalidConvexIdError(error)) {
       return jsonError("Issue not found", 404);
     }

@@ -1,5 +1,9 @@
 import { NextRequest } from "next/server";
-import { validateApiKey, getConvexClient } from "@/lib/api-auth";
+import {
+  validateApiKey,
+  getConvexClient,
+  requireAdminApiKey,
+} from "@/lib/api-auth";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { serializeTicket } from "@/lib/api-serializers";
@@ -122,6 +126,13 @@ export async function PATCH(
       if (message.includes("Invalid parent ticket") || isInvalidConvexIdError(error)) {
         return jsonError("Invalid parentId", 400);
       }
+      if (
+        message.includes("Title is required") ||
+        message.includes("Title cannot exceed") ||
+        message.includes("Description cannot exceed")
+      ) {
+        return jsonError(message, 400);
+      }
       if (message.includes("Ticket not found")) {
         return jsonError("Issue not found", 404);
       }
@@ -150,6 +161,8 @@ export async function DELETE(
   try {
     const auth = await validateApiKey(request);
     if (auth instanceof Response) return auth;
+    const adminGuard = requireAdminApiKey(auth);
+    if (adminGuard) return adminGuard;
 
     const { id } = await params;
     const convex = getConvexClient();

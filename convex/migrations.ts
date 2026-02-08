@@ -7,7 +7,7 @@ import { authComponent } from "./auth";
  * Migration to assign existing workspaces (without owners) to a user.
  * This allows the first authenticated user to claim orphaned workspaces.
  */
-export const assignOrphanedWorkspaces = mutation({
+export const assignOrphanedWorkspaces = internalMutation({
   args: {
     betterAuthUserId: v.string(),
   },
