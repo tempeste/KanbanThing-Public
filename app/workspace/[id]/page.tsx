@@ -33,10 +33,114 @@ export default function WorkspacePage() {
   const activeTab = tabParam === "list" || tabParam === "board" ? tabParam : "board";
 
   if (workspace === undefined || tickets === undefined) {
+    const loadingWorkspaces = userWorkspaces.slice(0, 6);
+
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
-        <div className="font-mono text-xs uppercase tracking-[0.2em] text-[#666]">Loading workspace state...</div>
-      </main>
+      <div className="relative flex h-screen w-screen overflow-hidden bg-[#0a0a0a] text-[#ccc]" aria-busy="true">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-0 bg-[size:40px_40px]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)",
+          }}
+        />
+
+        <aside className="relative z-10 hidden w-[206px] shrink-0 border-r-[3px] border-r-[#FF3B00] bg-[#0d0d0d] md:flex md:flex-col">
+          <Link
+            href="/"
+            className="block border-b border-[#333] px-4 pb-4 pt-5 transition hover:bg-[#141414] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FF3B00]/70"
+          >
+            <div className="flex items-center gap-2 font-mono text-sm font-extrabold tracking-[0.2em] text-white">
+              <span className="inline-flex h-[18px] w-[18px] items-center justify-center bg-[#FF3B00] text-[10px] font-black text-black">
+                K
+              </span>
+              KANBAN
+              <span className="text-[#FF3B00]">THING</span>
+            </div>
+            <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.3em] text-[#444]">Task control sys v1.0</div>
+          </Link>
+
+          <div className="px-4 pt-3 font-mono text-[9px] font-bold uppercase tracking-[0.25em] text-[#444]">Workspaces</div>
+
+          <div className="kb-scroll mt-2 flex-1 overflow-y-auto">
+            {loadingWorkspaces.length > 0
+              ? loadingWorkspaces.map((ws) => (
+                  <div
+                    key={ws._id}
+                    className="flex w-full items-center justify-between border-b border-[#222] px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-[#666]"
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <span className="h-[6px] w-[6px] shrink-0 bg-[#444]" />
+                      <span className="truncate">{ws.name}</span>
+                    </span>
+                    <span className="ml-2 h-3 w-6 animate-pulse bg-[#1c1c1c]" />
+                  </div>
+                ))
+              : Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="border-b border-[#222] px-4 py-2.5">
+                    <div className="h-3 w-full animate-pulse bg-[#1c1c1c]" />
+                  </div>
+                ))}
+          </div>
+
+          <div className="border-t border-[#222] px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="h-[6px] w-[6px] bg-[#666]" />
+              <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#555]">Loading workspace</span>
+            </div>
+          </div>
+        </aside>
+
+        <main className="relative z-10 flex min-w-0 flex-1 flex-col">
+          <header className="flex h-16 items-center justify-between border-b-2 border-b-[#222] bg-[#0d0d0d] px-4 md:px-7">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="h-8 w-52 animate-pulse bg-[#1a1a1a]" />
+              <div className="hidden h-3 w-16 animate-pulse bg-[#1a1a1a] md:block" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-7 w-16 animate-pulse border border-[#333] bg-[#101010]" />
+              <div className="h-7 w-16 animate-pulse border border-[#333] bg-[#101010]" />
+              <div className="ml-2 h-8 w-8 animate-pulse rounded-full bg-[#1a1a1a]" />
+            </div>
+          </header>
+
+          <div className="flex h-10 items-center gap-8 border-b border-b-[#1a1a1a] bg-[#0a0a0a] px-4 md:px-7">
+            <div className="h-3 w-24 animate-pulse bg-[#1a1a1a]" />
+            <div className="h-3 w-24 animate-pulse bg-[#1a1a1a]" />
+            <div className="h-3 w-24 animate-pulse bg-[#1a1a1a]" />
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-hidden border-t-2 border-t-[#FF3B00]">
+            <div className="grid h-full md:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, columnIndex) => (
+                <section
+                  key={columnIndex}
+                  className={`flex min-h-0 flex-col border-[#222] ${columnIndex < 2 ? "border-r" : ""}`}
+                >
+                  <div className="border-b border-[#222] px-4 pb-3 pt-4 md:px-5">
+                    <div className="h-6 w-36 animate-pulse bg-[#1a1a1a]" />
+                  </div>
+                  <div className="space-y-2.5 p-3">
+                    {Array.from({ length: 3 }).map((_, cardIndex) => (
+                      <div key={cardIndex} className="border border-[#2a2a2a] bg-[#101010] p-4">
+                        <div className="h-3 w-24 animate-pulse bg-[#1d1d1d]" />
+                        <div className="mt-3 h-4 w-full animate-pulse bg-[#1d1d1d]" />
+                        <div className="mt-2 h-4 w-4/5 animate-pulse bg-[#1d1d1d]" />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+
+          <footer className="flex h-7 items-center justify-between border-t border-[#222] bg-[#0d0d0d] px-4 md:px-7">
+            <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#444]">Loading workspace state...</span>
+            <span className="font-mono text-[8px] text-[#333]">...</span>
+          </footer>
+        </main>
+      </div>
     );
   }
 
@@ -88,7 +192,10 @@ export default function WorkspacePage() {
       />
 
       <aside className="relative z-10 hidden w-[206px] shrink-0 border-r-[3px] border-r-[#FF3B00] bg-[#0d0d0d] md:flex md:flex-col">
-        <div className="border-b border-[#333] px-4 pb-4 pt-5">
+        <Link
+          href="/"
+          className="block border-b border-[#333] px-4 pb-4 pt-5 transition hover:bg-[#141414] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FF3B00]/70"
+        >
           <div className="flex items-center gap-2 font-mono text-sm font-extrabold tracking-[0.2em] text-white">
             <span className="inline-flex h-[18px] w-[18px] items-center justify-center bg-[#FF3B00] text-[10px] font-black text-black">
               K
@@ -97,7 +204,7 @@ export default function WorkspacePage() {
             <span className="text-[#FF3B00]">THING</span>
           </div>
           <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.3em] text-[#444]">Task control sys v1.0</div>
-        </div>
+        </Link>
 
         <div className="px-4 pt-3 font-mono text-[9px] font-bold uppercase tracking-[0.25em] text-[#444]">Workspaces</div>
 
@@ -106,13 +213,12 @@ export default function WorkspacePage() {
             const active = ws._id === workspaceId;
             const count = ws._id === workspaceId ? tickets.length : "--";
             return (
-              <button
+              <Link
                 key={ws._id}
-                type="button"
+                href={`/workspace/${ws._id}`}
                 className={`flex w-full items-center justify-between border-b border-[#222] px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.08em] transition ${
                   active ? "bg-white font-extrabold text-black" : "text-[#888] hover:bg-[#161616]"
                 }`}
-                onClick={() => router.push(`/workspace/${ws._id}`)}
               >
                 <span className="flex items-center gap-2 truncate">
                   <span
@@ -124,7 +230,7 @@ export default function WorkspacePage() {
                 <span className={`ml-2 font-mono text-[10px] font-extrabold ${active ? "text-[#FF3B00]" : "text-[#555]"}`}>
                   {count}
                 </span>
-              </button>
+              </Link>
             );
           })}
         </div>
@@ -180,10 +286,6 @@ export default function WorkspacePage() {
             >
               List
             </button>
-            <div className="ml-2 hidden items-center gap-2 border border-[#222] px-3 py-1.5 md:flex">
-              <span className="h-[6px] w-[6px] bg-[#FF3B00]" />
-              <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#666]">Live</span>
-            </div>
             <UserMenu />
           </div>
         </header>

@@ -169,22 +169,14 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="border-b border-border/80 bg-card/60 px-4 py-4 md:px-6">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="kb-chip">Live Index</div>
-            <div className="kb-chip">Auth: Connected</div>
-            <div className="kb-chip">
-              {filteredWorkspaces.length} / {workspaces?.length ?? 0} Visible
-            </div>
-          </div>
-
-          {isCreating && (
+        {isCreating && (
+          <section className="border-b border-border/80 bg-card/60 px-4 py-4 md:px-6">
             <form
               onSubmit={(event) => {
                 event.preventDefault();
                 handleCreate();
               }}
-              className="mt-4 flex flex-col gap-3 md:flex-row"
+              className="flex flex-col gap-3 md:flex-row"
             >
               <Input
                 placeholder="Workspace name"
@@ -200,8 +192,8 @@ export default function Home() {
                 Cancel
               </Button>
             </form>
-          )}
-        </section>
+          </section>
+        )}
 
         <section className="border-b border-border/70 bg-background/70 px-4 py-4 md:px-6">
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_220px_auto] xl:items-end">
