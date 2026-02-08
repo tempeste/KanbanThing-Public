@@ -39,13 +39,26 @@ async function hashKey(key: string): Promise<string> {
 export default function WorkspaceSettingsPage() {
   const params = useParams();
   const workspaceId = params.id as Id<"workspaces">;
-  const { data: session } = useSession();
+  const { data: session, isPending: isSessionPending } = useSession();
   const userId = session?.user?.id;
+  const canQueryWorkspace = Boolean(userId);
 
-  const workspace = useQuery(api.workspaces.get, { id: workspaceId });
-  const apiKeys = useQuery(api.apiKeys.list, { workspaceId });
-  const docsVersions = useQuery(api.workspaces.listDocsVersions, { workspaceId });
-  const members = useQuery(api.workspaceMembers.listByWorkspace, { workspaceId });
+  const workspace = useQuery(
+    api.workspaces.get,
+    canQueryWorkspace ? { id: workspaceId } : "skip"
+  );
+  const apiKeys = useQuery(
+    api.apiKeys.list,
+    canQueryWorkspace ? { workspaceId } : "skip"
+  );
+  const docsVersions = useQuery(
+    api.workspaces.listDocsVersions,
+    canQueryWorkspace ? { workspaceId } : "skip"
+  );
+  const members = useQuery(
+    api.workspaceMembers.listByWorkspace,
+    canQueryWorkspace ? { workspaceId } : "skip"
+  );
   const currentMembership = useQuery(
     api.workspaceMembers.getMembership,
     userId ? { workspaceId, betterAuthUserId: userId } : "skip"
@@ -246,6 +259,31 @@ export default function WorkspaceSettingsPage() {
       setIsSavingPrefix(false);
     }
   };
+
+  if (isSessionPending) {
+    return (
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
+          <div className="kb-label">Loading workspace settings...</div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!session?.user) {
+    return (
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 text-center md:min-h-[calc(100vh-3rem)]">
+          <div>
+            <h1 className="text-2xl font-bold mb-4">Access required</h1>
+            <Link href="/login">
+              <Button>Sign In</Button>
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   if (workspace === undefined || apiKeys === undefined || docsVersions === undefined) {
     return (

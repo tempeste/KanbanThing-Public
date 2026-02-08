@@ -1,6 +1,71 @@
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { authComponent } from "./auth";
+import type { Id } from "./_generated/dataModel";
+
+type AccessCtx = MutationCtx | QueryCtx;
+
+const requireAuthenticatedUserId = async (ctx: AccessCtx) => {
+  const authUser = await authComponent.getAuthUser(ctx);
+  if (!authUser) {
+    throw new Error("Unauthorized");
+  }
+  return authUser._id;
+};
+
+const getWorkspaceMembership = async (
+  ctx: AccessCtx,
+  workspaceId: Id<"workspaces">,
+  betterAuthUserId: string
+) =>
+  ctx.db
+    .query("workspaceMembers")
+    .withIndex("by_workspace_user", (q) =>
+      q.eq("workspaceId", workspaceId).eq("betterAuthUserId", betterAuthUserId)
+    )
+    .first();
+
+const requireWorkspaceMember = async (
+  ctx: AccessCtx,
+  workspaceId: Id<"workspaces">
+) => {
+  const authUserId = await requireAuthenticatedUserId(ctx);
+  const membership = await getWorkspaceMembership(ctx, workspaceId, authUserId);
+  if (!membership) {
+    throw new Error("Unauthorized");
+  }
+  return { authUserId, membership };
+};
+
+const requireWorkspaceManager = async (
+  ctx: AccessCtx,
+  workspaceId: Id<"workspaces">
+) => {
+  const { authUserId, membership } = await requireWorkspaceMember(ctx, workspaceId);
+  if (membership.role !== "owner" && membership.role !== "admin") {
+    throw new Error("Unauthorized");
+  }
+  return { authUserId, membership };
+};
+
+const requireSelfOrWorkspaceManager = async (
+  ctx: AccessCtx,
+  workspaceId: Id<"workspaces">,
+  targetUserId: string
+) => {
+  const authUserId = await requireAuthenticatedUserId(ctx);
+  if (authUserId === targetUserId) {
+    return authUserId;
+  }
+
+  const callerMembership = await getWorkspaceMembership(ctx, workspaceId, authUserId);
+  if (!callerMembership || (callerMembership.role !== "owner" && callerMembership.role !== "admin")) {
+    throw new Error("Unauthorized");
+  }
+
+  return authUserId;
+};
 
 export const add = mutation({
   args: {
@@ -9,13 +74,10 @@ export const add = mutation({
     role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
   },
   handler: async (ctx, args) => {
+    await requireWorkspaceManager(ctx, args.workspaceId);
+
     // Check if membership already exists
-    const existing = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_workspace_user", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("betterAuthUserId", args.betterAuthUserId)
-      )
-      .first();
+    const existing = await getWorkspaceMembership(ctx, args.workspaceId, args.betterAuthUserId);
 
     if (existing) {
       throw new Error("User is already a member of this workspace");
@@ -36,12 +98,9 @@ export const remove = mutation({
     betterAuthUserId: v.string(),
   },
   handler: async (ctx, args) => {
-    const membership = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_workspace_user", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("betterAuthUserId", args.betterAuthUserId)
-      )
-      .first();
+    await requireWorkspaceManager(ctx, args.workspaceId);
+
+    const membership = await getWorkspaceMembership(ctx, args.workspaceId, args.betterAuthUserId);
 
     if (!membership) {
       throw new Error("Membership not found");
@@ -71,12 +130,9 @@ export const updateRole = mutation({
     role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
   },
   handler: async (ctx, args) => {
-    const membership = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_workspace_user", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("betterAuthUserId", args.betterAuthUserId)
-      )
-      .first();
+    await requireWorkspaceManager(ctx, args.workspaceId);
+
+    const membership = await getWorkspaceMembership(ctx, args.workspaceId, args.betterAuthUserId);
 
     if (!membership) {
       throw new Error("Membership not found");
@@ -102,6 +158,7 @@ export const updateRole = mutation({
 export const listByWorkspace = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
+    await requireWorkspaceMember(ctx, args.workspaceId);
     return await ctx.db
       .query("workspaceMembers")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
@@ -112,6 +169,10 @@ export const listByWorkspace = query({
 export const listByUser = query({
   args: { betterAuthUserId: v.string() },
   handler: async (ctx, args) => {
+    const authUserId = await requireAuthenticatedUserId(ctx);
+    if (authUserId !== args.betterAuthUserId) {
+      throw new Error("Unauthorized");
+    }
     return await ctx.db
       .query("workspaceMembers")
       .withIndex("by_user", (q) => q.eq("betterAuthUserId", args.betterAuthUserId))
@@ -125,12 +186,8 @@ export const hasAccess = query({
     betterAuthUserId: v.string(),
   },
   handler: async (ctx, args) => {
-    const membership = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_workspace_user", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("betterAuthUserId", args.betterAuthUserId)
-      )
-      .first();
+    await requireSelfOrWorkspaceManager(ctx, args.workspaceId, args.betterAuthUserId);
+    const membership = await getWorkspaceMembership(ctx, args.workspaceId, args.betterAuthUserId);
 
     return membership !== null;
   },
@@ -142,12 +199,8 @@ export const canManage = query({
     betterAuthUserId: v.string(),
   },
   handler: async (ctx, args) => {
-    const membership = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_workspace_user", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("betterAuthUserId", args.betterAuthUserId)
-      )
-      .first();
+    await requireSelfOrWorkspaceManager(ctx, args.workspaceId, args.betterAuthUserId);
+    const membership = await getWorkspaceMembership(ctx, args.workspaceId, args.betterAuthUserId);
 
     if (!membership) return false;
     return membership.role === "owner" || membership.role === "admin";
@@ -160,12 +213,8 @@ export const getMembership = query({
     betterAuthUserId: v.string(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_workspace_user", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("betterAuthUserId", args.betterAuthUserId)
-      )
-      .first();
+    await requireSelfOrWorkspaceManager(ctx, args.workspaceId, args.betterAuthUserId);
+    return await getWorkspaceMembership(ctx, args.workspaceId, args.betterAuthUserId);
   },
 });
 

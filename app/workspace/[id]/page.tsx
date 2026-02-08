@@ -23,14 +23,54 @@ export default function WorkspacePage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const workspaceId = params.id as Id<"workspaces">;
-  const { data: session } = useSession();
+  const { data: session, isPending: isSessionPending } = useSession();
   const userId = session?.user?.id;
+  const canQueryWorkspace = Boolean(userId);
 
-  const workspace = useQuery(api.workspaces.get, { id: workspaceId });
-  const tickets = useQuery(api.tickets.list, { workspaceId });
+  const workspace = useQuery(
+    api.workspaces.get,
+    canQueryWorkspace ? { id: workspaceId } : "skip"
+  );
+  const tickets = useQuery(
+    api.tickets.list,
+    canQueryWorkspace ? { workspaceId } : "skip"
+  );
   const userWorkspaces = useQuery(api.workspaces.listForUser, userId ? {} : "skip") ?? [];
   const tabParam = searchParams.get("tab");
   const activeTab = tabParam === "list" || tabParam === "board" ? tabParam : "board";
+
+  if (isSessionPending) {
+    return (
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
+          <div className="kb-label">Loading workspace...</div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!session?.user) {
+    return (
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-6 md:min-h-[calc(100vh-3rem)]">
+          <div className="kb-panel kb-anim w-full max-w-xl p-8">
+            <div className="mb-3 kb-label">Access Required</div>
+            <h1 className="kb-title mb-2">
+              KANBAN<span className="text-primary">THING</span>
+            </h1>
+            <p className="mb-8 text-sm text-muted-foreground">
+              Sign in to access this workspace.
+            </p>
+            <Link href="/login" className="block">
+              <Button className="w-full" size="lg">
+                Sign In
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   if (workspace === undefined || tickets === undefined) {
     const loadingWorkspaces = userWorkspaces.slice(0, 6);
