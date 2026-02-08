@@ -286,6 +286,12 @@ export default function WorkspacePage() {
             >
               List
             </button>
+            <Link
+              href={`/workspace/${workspaceId}/settings`}
+              className="ml-2 hidden border border-[#333] px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#666] transition hover:border-[#555] hover:text-[#c8c8c8] md:inline-flex"
+            >
+              Settings
+            </Link>
             <UserMenu />
           </div>
         </header>
