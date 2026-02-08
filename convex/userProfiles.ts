@@ -10,6 +10,20 @@ export const syncFromAuth = mutation({
     image: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error("Unauthorized");
+    }
+
+    if (authUser._id !== args.betterAuthUserId) {
+      throw new Error("Unauthorized");
+    }
+
+    const email = authUser.email ?? args.email;
+    if (!email) {
+      throw new Error("Email is required");
+    }
+
     const existing = await ctx.db
       .query("userProfiles")
       .withIndex("by_betterAuthUserId", (q) =>
@@ -17,13 +31,15 @@ export const syncFromAuth = mutation({
       )
       .first();
 
-    const normalizedEmail = args.email.toLowerCase();
+    const normalizedEmail = email.toLowerCase();
+    const name = authUser.name ?? args.name;
+    const image = authUser.image ?? args.image;
 
     if (existing) {
       await ctx.db.patch(existing._id, {
         email: normalizedEmail,
-        name: args.name,
-        image: args.image,
+        name,
+        image,
         lastSyncedAt: Date.now(),
       });
       return existing._id;
@@ -32,8 +48,8 @@ export const syncFromAuth = mutation({
     return await ctx.db.insert("userProfiles", {
       betterAuthUserId: args.betterAuthUserId,
       email: normalizedEmail,
-      name: args.name,
-      image: args.image,
+      name,
+      image,
       lastSyncedAt: Date.now(),
     });
   },
