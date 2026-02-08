@@ -26,93 +26,111 @@ export default function WorkspacePage() {
 
   if (workspace === undefined || tickets === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 md:min-h-[calc(100vh-3rem)]">
+          <div className="kb-label">Loading workspace state...</div>
+        </div>
+      </main>
     );
   }
 
   if (workspace === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Workspace not found</h1>
-          <Link href="/">
-            <Button>Go Home</Button>
-          </Link>
+      <main className="min-h-screen p-4 md:p-6">
+        <div className="kb-shell flex min-h-[calc(100vh-2rem)] items-center justify-center p-8 text-center md:min-h-[calc(100vh-3rem)]">
+          <div>
+            <h1 className="kb-title mb-3">Workspace Not Found</h1>
+            <Link href="/">
+              <Button>Go Home</Button>
+            </Link>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
+
   const workspacePrefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
+  const doneCount = tickets.filter((ticket) => ticket.status === "done").length;
+  const inProgressCount = tickets.filter((ticket) => ticket.status === "in_progress").length;
+  const unclaimedCount = tickets.filter((ticket) => ticket.status === "unclaimed").length;
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+    <main className="min-h-screen p-4 md:p-6">
+      <div className="kb-shell kb-scroll min-h-[calc(100vh-2rem)] overflow-hidden md:min-h-[calc(100vh-3rem)]">
+        <header className="kb-header border-b-2 border-primary/45 px-4 py-4 md:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
               <Link href="/">
                 <Button variant="ghost" size="icon">
-                  <ArrowLeft className="w-5 h-5" />
+                  <ArrowLeft className="h-4 w-4" />
                 </Button>
               </Link>
               <div>
-                <h1 className="text-2xl font-bold">{workspace.name}</h1>
-                <p className="text-sm text-muted-foreground">
-                  {tickets.length} issue{tickets.length !== 1 ? "s" : ""}
+                <div className="kb-label mb-1">Workspace {workspacePrefix}</div>
+                <h1 className="kb-title text-2xl md:text-3xl">{workspace.name}</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {tickets.length} issue{tickets.length !== 1 ? "s" : ""} tracked in real time.
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+
+            <div className="flex items-center gap-2">
               <Link href={`/workspace/${workspaceId}/settings`}>
                 <Button variant="outline">
-                  <Settings className="w-4 h-4 mr-2" />
+                  <Settings className="h-4 w-4" />
                   Settings
                 </Button>
               </Link>
               <UserMenu />
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto px-6 py-6">
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => {
-            const params = new URLSearchParams(searchParams.toString());
-            params.set("tab", value);
-            router.replace(`/workspace/${workspaceId}?${params.toString()}`);
-          }}
-          className="w-full"
-        >
-          <TabsList className="mb-6">
-            <TabsTrigger value="board" className="gap-2">
-              <LayoutGrid className="w-4 h-4" />
-              Board
-            </TabsTrigger>
-            <TabsTrigger value="list" className="gap-2">
-              <List className="w-4 h-4" />
-              List
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="board">
-            <KanbanBoard
-              workspaceId={workspaceId}
-              tickets={tickets}
-              workspacePrefix={workspacePrefix}
-            />
-          </TabsContent>
-          <TabsContent value="list">
-            <TicketTable
-              workspaceId={workspaceId}
-              tickets={tickets}
-              workspacePrefix={workspacePrefix}
-            />
-          </TabsContent>
-        </Tabs>
-      </main>
-    </div>
+        <section className="border-b border-border/80 bg-card/60 px-4 py-4 md:px-6">
+          <div className="flex flex-wrap gap-2">
+            <div className="kb-chip">Unclaimed: {unclaimedCount}</div>
+            <div className="kb-chip">In Progress: {inProgressCount}</div>
+            <div className="kb-chip">Done: {doneCount}</div>
+          </div>
+        </section>
+
+        <section className="p-4 md:p-6">
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              const params = new URLSearchParams(searchParams.toString());
+              params.set("tab", value);
+              router.replace(`/workspace/${workspaceId}?${params.toString()}`);
+            }}
+            className="w-full"
+          >
+            <TabsList className="mb-6">
+              <TabsTrigger value="board" className="gap-2">
+                <LayoutGrid className="h-4 w-4" />
+                Board
+              </TabsTrigger>
+              <TabsTrigger value="list" className="gap-2">
+                <List className="h-4 w-4" />
+                List
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="board">
+              <KanbanBoard
+                workspaceId={workspaceId}
+                tickets={tickets}
+                workspacePrefix={workspacePrefix}
+              />
+            </TabsContent>
+            <TabsContent value="list">
+              <TicketTable
+                workspaceId={workspaceId}
+                tickets={tickets}
+                workspacePrefix={workspacePrefix}
+              />
+            </TabsContent>
+          </Tabs>
+        </section>
+      </div>
+    </main>
   );
 }

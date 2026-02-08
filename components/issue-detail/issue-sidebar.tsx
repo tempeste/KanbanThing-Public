@@ -28,12 +28,12 @@ export function IssueSidebar({
 }: IssueSidebarProps) {
   return (
     <aside className="space-y-4">
-      <Card className="p-4 space-y-3 bg-card/40">
+      <Card className="space-y-4 p-4">
         <div>
-          <div className="text-xs text-muted-foreground">Status</div>
-          <IssueStatusBadge status={ticket.status} className="mt-1" />
+          <div className="kb-label mb-2">Status</div>
+          <IssueStatusBadge status={ticket.status} className="mb-2" />
           <select
-            className="mt-2 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+            className="mt-1 flex h-10 w-full border border-input bg-background/70 px-3 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             value={ticket.status}
             onChange={(event) => onStatusChange(event.target.value as IssueStatus)}
           >
@@ -44,8 +44,9 @@ export function IssueSidebar({
             ))}
           </select>
         </div>
+
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Assignee</div>
+          <div className="kb-label mb-2">Assignee</div>
           <AssigneePicker
             workspaceId={workspaceId}
             ticketId={ticket._id}
@@ -54,39 +55,42 @@ export function IssueSidebar({
             currentOwnerDisplayName={ticket.ownerDisplayName}
           />
         </div>
-        <div>
-          <div className="text-xs text-muted-foreground">Created</div>
-          <div className="text-sm">{new Date(ticket.createdAt).toLocaleString()}</div>
-        </div>
-        <div>
-          <div className="text-xs text-muted-foreground">Updated</div>
-          <div className="text-sm">{new Date(ticket.updatedAt).toLocaleString()}</div>
+
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <div className="kb-label mb-1">Created</div>
+            <div>{new Date(ticket.createdAt).toLocaleString()}</div>
+          </div>
+          <div>
+            <div className="kb-label mb-1">Updated</div>
+            <div>{new Date(ticket.updatedAt).toLocaleString()}</div>
+          </div>
         </div>
       </Card>
 
-      <Card className="p-4 space-y-2 bg-card/40">
-        <div className="text-xs text-muted-foreground">Project Docs</div>
+      <Card className="space-y-2 p-4">
+        <div className="kb-label">Project Docs</div>
         <Button variant="outline" size="sm" asChild>
-          <Link href={`/workspace/${workspaceId}/settings`}>Open project docs</Link>
+          <Link href={`/workspace/${workspaceId}/settings`}>Open Workspace Settings</Link>
         </Button>
       </Card>
 
-      <Card className="p-4 bg-card/40">
-        <div className="text-xs text-muted-foreground">Sub-issue progress</div>
+      <Card className="space-y-3 p-4">
+        <div className="kb-label">Sub-issue Progress</div>
         {progressTotal > 0 ? (
           <>
-            <div className="mt-2 flex items-center justify-between text-sm">
+            <div className="flex items-center justify-between text-sm">
               <span>
                 {progressDone}/{progressTotal} done
               </span>
-              <span>{progressPct}%</span>
+              <span className="font-mono text-xs tracking-[0.12em]">{progressPct}%</span>
             </div>
-            <div className="mt-2 h-2 rounded-full bg-muted">
-              <div className="h-2 rounded-full bg-primary" style={{ width: `${progressPct}%` }} />
+            <div className="h-2 border border-border/70 bg-background/70">
+              <div className="h-full bg-primary" style={{ width: `${progressPct}%` }} />
             </div>
           </>
         ) : (
-          <div className="mt-2 text-sm text-muted-foreground">No sub-issues yet.</div>
+          <div className="text-sm text-muted-foreground">No sub-issues yet.</div>
         )}
       </Card>
     </aside>

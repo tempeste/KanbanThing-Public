@@ -8,17 +8,17 @@ export const STATUS_META = {
   unclaimed: {
     label: "Unclaimed",
     Icon: Circle,
-    colorClass: "bg-unclaimed/20 text-unclaimed",
+    colorClass: "border-unclaimed/45 bg-unclaimed/10 text-unclaimed",
   },
   in_progress: {
     label: "In Progress",
     Icon: Clock,
-    colorClass: "bg-in-progress/20 text-in-progress",
+    colorClass: "border-in-progress/45 bg-in-progress/10 text-in-progress",
   },
   done: {
     label: "Done",
     Icon: CheckCircle2,
-    colorClass: "bg-done/20 text-done",
+    colorClass: "border-done/45 bg-done/10 text-done",
   },
 } as const;
 
@@ -41,7 +41,14 @@ export function IssueStatusBadge({
   const iconClass = size === "md" ? "w-4 h-4" : "w-3 h-3";
 
   return (
-    <Badge variant="outline" className={cn("gap-1", colorClass, className)}>
+    <Badge
+      variant="outline"
+      className={cn(
+        "gap-1 font-mono text-[10px] uppercase tracking-[0.12em]",
+        colorClass,
+        className
+      )}
+    >
       <Icon className={iconClass} />
       {label}
     </Badge>
