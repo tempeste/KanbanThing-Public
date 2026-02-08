@@ -34,10 +34,7 @@ function AccountPageContent() {
   const [newPassword, setNewPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  const fetchAccounts = useCallback(async (setLoading = false) => {
-    if (setLoading) {
-      setIsLoadingAccounts(true);
-    }
+  const fetchAccounts = useCallback(async () => {
     try {
       const accounts = await authClient.listAccounts();
       if (accounts.data) {
@@ -46,21 +43,23 @@ function AccountPageContent() {
     } catch {
       console.error("Failed to fetch linked accounts");
     } finally {
-      if (setLoading) {
-        setIsLoadingAccounts(false);
-      }
+      setIsLoadingAccounts(false);
     }
   }, []);
 
   useEffect(() => {
     if (session?.user) {
-      fetchAccounts(true);
+      fetchAccounts();
     }
   }, [fetchAccounts, session?.user]);
 
-  useEffect(() => {
-    setName(session?.user?.name ?? "");
-  }, [session?.user?.name]);
+  // Sync name from session during render
+  const [prevSessionName, setPrevSessionName] = useState<string | null | undefined>(undefined);
+  const sessionName = session?.user?.name;
+  if (sessionName !== prevSessionName) {
+    setPrevSessionName(sessionName);
+    setName(sessionName ?? "");
+  }
 
   if (isPending) {
     return (

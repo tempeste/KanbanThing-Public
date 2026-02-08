@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -32,13 +32,15 @@ export default function NewTicketPage() {
   const [parentId, setParentId] = useState<Id<"tickets"> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    if (!parentFromQuery || !tickets) return;
+  // Sync parentId from query param during render
+  const [syncedParentQuery, setSyncedParentQuery] = useState<string | null>(null);
+  if (parentFromQuery && tickets && parentFromQuery !== syncedParentQuery) {
+    setSyncedParentQuery(parentFromQuery);
     const match = tickets.find((ticket) => ticket._id === parentFromQuery);
     if (match) {
       setParentId(match._id);
     }
-  }, [parentFromQuery, tickets]);
+  }
 
   const workspacePrefix = useMemo(() => {
     if (!workspace) return "";
