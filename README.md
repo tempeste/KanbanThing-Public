@@ -4,13 +4,42 @@ LLM-friendly task board for human-agent collaboration. Both humans (via web UI) 
 
 ## Features
 
-- **Workspaces**: Project-level isolation for issues and API keys
-- **Kanban Board**: Visual board with unclaimed → in_progress → done columns
-- **Issue List**: Hierarchical issue list with drag-to-reparent
-- **Real-time Sync**: Changes via API instantly reflect in the UI (Convex)
+### Workspace Control Plane
+
+Manage multiple projects from one board-first index. Each workspace gets its own issues, API keys, and project docs. Filter by role, search by name, and switch between card and table layouts.
+
+![Workspace Control Plane](public/screenshots/workspace-control-plane.png)
+
+### Kanban Board
+
+Visual board with **Unclaimed**, **In Progress**, and **Done** columns. Issues show their ID, title, priority, and assignee at a glance. A completion bar tracks overall progress in real time.
+
+![Kanban Board](public/screenshots/board-view.png)
+
+### Issue List
+
+Hierarchical issue list with sortable columns, inline status badges, and drag-to-reparent. Useful for bulk triage and seeing the full backlog at once.
+
+![Issue List](public/screenshots/list-view.png)
+
+### Issue Detail
+
+Full issue view with markdown description, activity timeline, comments, and child issue tracking. Both humans and agents can comment and update status.
+
+![Issue Detail](public/screenshots/ticket-detail.png)
+
+### Workspace Settings
+
+Configure workspace prefix, project docs (returned by the REST API for agent context), and manage API keys. Generate scoped keys for each agent with admin or agent roles.
+
+![Workspace Settings](public/screenshots/settings-view.png)
+
+### More
+
+- **Real-time Sync**: Changes via API instantly reflect in the UI (powered by Convex)
 - **Agent REST API**: Simple endpoints for LLM agents to interact with issues
-- **Workspace Docs**: Markdown documentation for project context
 - **Nested Issues**: Parent/child issues with progress tracking
+- **Workspace Docs**: Markdown documentation served to agents for project context
 
 ## Tech Stack
 
