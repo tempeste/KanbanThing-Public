@@ -157,6 +157,22 @@ export const removeWithCleanup = mutation({
       .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
       .collect();
     for (const ticket of tickets) {
+      const comments = await ctx.db
+        .query("ticketComments")
+        .withIndex("by_ticket_createdAt", (q) => q.eq("ticketId", ticket._id))
+        .collect();
+      for (const comment of comments) {
+        await ctx.db.delete(comment._id);
+      }
+
+      const activities = await ctx.db
+        .query("ticketActivities")
+        .withIndex("by_ticket_createdAt", (q) => q.eq("ticketId", ticket._id))
+        .collect();
+      for (const activity of activities) {
+        await ctx.db.delete(activity._id);
+      }
+
       await ctx.db.delete(ticket._id);
     }
 
@@ -176,6 +192,15 @@ export const removeWithCleanup = mutation({
       .collect();
     for (const m of memberships) {
       await ctx.db.delete(m._id);
+    }
+
+    // Delete docs history
+    const docsVersions = await ctx.db
+      .query("workspaceDocsVersions")
+      .withIndex("by_workspace_createdAt", (q) => q.eq("workspaceId", args.id))
+      .collect();
+    for (const version of docsVersions) {
+      await ctx.db.delete(version._id);
     }
 
     // Delete workspace

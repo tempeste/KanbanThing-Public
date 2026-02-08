@@ -26,7 +26,7 @@ export async function GET(
       return jsonError("Issue not found", 404);
     }
 
-    return Response.json(serializeTicket(ticket));
+    return Response.json({ ticket: serializeTicket(ticket) });
   } catch (error) {
     if (isInvalidConvexIdError(error)) {
       return jsonError("Issue not found", 404);

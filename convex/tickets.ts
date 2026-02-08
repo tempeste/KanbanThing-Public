@@ -540,7 +540,7 @@ export const assign = mutation({
 
     // If assigning to unclaimed ticket, set status to in_progress
     if (ticket.status === "unclaimed") {
-      updates.status = "in_progress";
+      await applyStatusChange(ctx, ticket, "in_progress");
     }
 
     await ctx.db.patch(args.id, updates);
@@ -602,7 +602,7 @@ export const unassign = mutation({
     // Only reset to unclaimed if currently in_progress
     // Keep "done" status when unassigning completed tickets
     if (ticket.status === "in_progress") {
-      updates.status = "unclaimed";
+      await applyStatusChange(ctx, ticket, "unclaimed");
     }
 
     await ctx.db.patch(args.id, updates);

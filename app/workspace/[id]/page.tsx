@@ -198,13 +198,18 @@ export default function WorkspacePage() {
   }
 
   const workspacePrefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
-  const doneCount = tickets.filter((ticket) => ticket.status === "done").length;
-  const inProgressCount = tickets.filter((ticket) => ticket.status === "in_progress").length;
-  const unclaimedCount = tickets.filter((ticket) => ticket.status === "unclaimed").length;
-  const completionPct = tickets.length === 0 ? 0 : Math.round((doneCount / tickets.length) * 100);
-  const completionDoneWidth = tickets.length === 0 ? 0 : Math.round((doneCount / tickets.length) * 100);
+  const activeTickets = tickets.filter((ticket) => !(ticket.archived ?? false));
+  const doneCount = activeTickets.filter((ticket) => ticket.status === "done").length;
+  const inProgressCount = activeTickets.filter((ticket) => ticket.status === "in_progress").length;
+  const unclaimedCount = activeTickets.filter((ticket) => ticket.status === "unclaimed").length;
+  const completionPct =
+    activeTickets.length === 0 ? 0 : Math.round((doneCount / activeTickets.length) * 100);
+  const completionDoneWidth =
+    activeTickets.length === 0 ? 0 : Math.round((doneCount / activeTickets.length) * 100);
   const completionInProgressWidth =
-    tickets.length === 0 ? 0 : Math.round((inProgressCount / tickets.length) * 100);
+    activeTickets.length === 0
+      ? 0
+      : Math.round((inProgressCount / activeTickets.length) * 100);
   const onlineAgents = new Set(
     tickets
       .filter((ticket) => ticket.ownerType === "agent")
@@ -251,7 +256,7 @@ export default function WorkspacePage() {
         <div className="kb-scroll mt-2 flex-1 overflow-y-auto">
           {sidebarWorkspaces.map((ws) => {
             const active = ws._id === workspaceId;
-            const count = ws._id === workspaceId ? tickets.length : "--";
+            const count = ws._id === workspaceId ? activeTickets.length : "--";
             return (
               <Link
                 key={ws._id}
@@ -292,7 +297,9 @@ export default function WorkspacePage() {
             <h1 className="truncate font-sans text-[28px] font-semibold tracking-[0.04em] text-white md:text-[30px]">
               {workspace.name.toUpperCase()}
             </h1>
-            <span className="hidden font-mono text-[11px] text-[#555] md:inline">{tickets.length} ISSUES</span>
+            <span className="hidden font-mono text-[11px] text-[#555] md:inline">
+              {activeTickets.length} ISSUES
+            </span>
             <span className="hidden h-4 w-px bg-[#333] md:inline" />
             <span className="hidden font-mono text-[10px] uppercase tracking-[0.1em] text-[#333] md:inline">
               {workspacePrefix}-001
