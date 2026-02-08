@@ -343,7 +343,7 @@ export default function TicketDetailPage() {
   return (
     <div className="min-h-full">
       <header className="border-b border-border/60 bg-card/50 sticky top-0 z-10">
-          <div className="flex items-center justify-between px-4 py-2.5 md:px-6">
+          <div className="flex items-center justify-between pl-12 pr-4 py-2.5 md:px-6">
             {/* Left: back + breadcrumb */}
             <div className="flex items-center gap-1.5 min-w-0">
               <Link

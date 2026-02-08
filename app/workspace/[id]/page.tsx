@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
@@ -25,16 +25,15 @@ export default function WorkspacePage() {
   const router = useRouter();
   const workspaceId = params.id as Id<"workspaces">;
   const { data: session, isPending: isSessionPending } = useSession();
-  const userId = session?.user?.id;
-  const canQueryWorkspace = Boolean(userId);
+  const { isAuthenticated } = useConvexAuth();
 
   const workspace = useQuery(
     api.workspaces.get,
-    canQueryWorkspace ? { id: workspaceId } : "skip"
+    isAuthenticated ? { id: workspaceId } : "skip"
   );
   const tickets = useQuery(
     api.tickets.listSummaries,
-    canQueryWorkspace ? { workspaceId } : "skip"
+    isAuthenticated ? { workspaceId } : "skip"
   );
   const tabParam = searchParams.get("tab");
   const activeTab = tabParam === "list" || tabParam === "board" ? tabParam : "board";
@@ -72,7 +71,7 @@ export default function WorkspacePage() {
   if (workspace === undefined || tickets === undefined) {
     return (
       <div className="flex h-full flex-col overflow-hidden">
-        <header className="flex h-16 items-center justify-between border-b-2 border-b-border bg-card px-4 md:px-7">
+        <header className="flex h-16 items-center justify-between border-b-2 border-b-border bg-card pl-12 pr-4 md:px-7">
           <div className="flex min-w-0 items-center gap-3">
             <div className="h-8 w-52 animate-pulse bg-muted" />
             <div className="hidden h-3 w-16 animate-pulse bg-muted md:block" />
@@ -167,9 +166,9 @@ export default function WorkspacePage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex h-16 items-center justify-between border-b-2 border-b-border bg-card px-4 md:px-7">
+      <header className="flex h-16 items-center justify-between border-b-2 border-b-border bg-card pl-12 pr-4 md:px-7">
         <div className="flex min-w-0 items-center gap-3">
-          <h1 className="truncate font-sans text-[28px] font-semibold tracking-[0.04em] text-foreground md:text-[30px]">
+          <h1 className="truncate font-sans text-[22px] font-semibold tracking-[0.04em] text-foreground md:text-[30px]">
             {workspace.name.toUpperCase()}
           </h1>
           <span className="hidden font-mono text-[11px] text-muted-foreground/70 md:inline">
@@ -189,7 +188,7 @@ export default function WorkspacePage() {
               params.set("tab", "board");
               router.replace(`/workspace/${workspaceId}?${params.toString()}`);
             }}
-            className={`border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-colors ${
+            className={`border px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] transition-colors md:px-3 md:py-1.5 md:text-[10px] ${
               activeTab === "board" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"
             }`}
           >
@@ -202,7 +201,7 @@ export default function WorkspacePage() {
               params.set("tab", "list");
               router.replace(`/workspace/${workspaceId}?${params.toString()}`);
             }}
-            className={`border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-colors ${
+            className={`border px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] transition-colors md:px-3 md:py-1.5 md:text-[10px] ${
               activeTab === "list" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"
             }`}
           >
@@ -218,32 +217,44 @@ export default function WorkspacePage() {
         </div>
       </header>
 
-      <div className="flex h-10 items-center gap-8 border-b border-b-muted bg-background px-4 md:px-7">
-        <div className="flex items-center gap-2">
+      <div className="flex h-10 items-center gap-4 border-b border-b-muted bg-background px-4 md:gap-8 md:px-7">
+        <div className="hidden items-center gap-2 md:flex">
           <span className="h-2 w-2" style={{ background: STATUS_ACCENTS.unclaimed }} />
           <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/70">Unclaimed</span>
           <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.unclaimed }}>
             {unclaimedCount}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="hidden items-center gap-2 md:flex">
           <span className="h-2 w-2" style={{ background: STATUS_ACCENTS.in_progress }} />
           <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/70">In Progress</span>
           <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.in_progress }}>
             {inProgressCount}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="hidden items-center gap-2 md:flex">
           <span className="h-2 w-2" style={{ background: STATUS_ACCENTS.done }} />
           <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/70">Done</span>
           <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.done }}>
             {doneCount}
           </span>
         </div>
-        <div className="ml-auto flex items-center gap-3">
+        {/* Mobile: compact status counts */}
+        <div className="flex items-center gap-3 md:hidden">
+          <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.unclaimed }}>
+            {unclaimedCount}
+          </span>
+          <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.in_progress }}>
+            {inProgressCount}
+          </span>
+          <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.done }}>
+            {doneCount}
+          </span>
+        </div>
+        <div className="ml-auto flex items-center gap-2 md:gap-3">
           <Link
             href={`/workspace/${workspaceId}/tickets/new`}
-            className="hidden border border-border px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground/80 md:inline-flex"
+            className="border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground/80"
           >
             + New
           </Link>

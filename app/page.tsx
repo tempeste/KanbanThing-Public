@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -24,9 +24,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
   const { data: session, isPending: isSessionPending } = useSession();
+  const { isAuthenticated } = useConvexAuth();
   const userId = session?.user?.id;
 
-  const workspaces = useQuery(api.workspaces.listForUser, userId ? {} : "skip");
+  const workspaces = useQuery(api.workspaces.listForUser, isAuthenticated ? {} : "skip");
 
   const createWorkspace = useMutation(api.workspaces.createWithOwner);
   const deleteWorkspace = useMutation(api.workspaces.removeWithCleanup);
