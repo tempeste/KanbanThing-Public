@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { validateApiKey, getConvexClient } from "@/lib/api-auth";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { serializeTicket } from "@/lib/api-serializers";
+import { serializeTicket, serializeTicketSummary } from "@/lib/api-serializers";
 import {
   getTicketSafe,
   isInvalidConvexIdError,
@@ -18,6 +18,12 @@ export async function GET(request: NextRequest) {
 
     const convex = getConvexClient();
     const { searchParams } = new URL(request.url);
+    const fieldsParam = searchParams.get("fields")?.trim() ?? "full";
+    if (fieldsParam !== "full" && fieldsParam !== "summary") {
+      return jsonError("Invalid fields", 400);
+    }
+    const useSummaryFields = fieldsParam === "summary";
+
     const statusParam = searchParams.get("status");
     const status = statusParam?.trim() || null;
     if (status && !TICKET_STATUS_VALUES.includes(status as (typeof TICKET_STATUS_VALUES)[number])) {
@@ -52,32 +58,79 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      tickets = await convex.query(api.tickets.listByParent, {
-        workspaceId: auth.workspaceId,
-        parentId: parentId as Id<"tickets"> | null,
-        limit,
-        agentApiKeyId: auth.apiKeyId,
-      });
       if (status) {
-        tickets = tickets.filter((ticket) => ticket.status === status);
+        tickets = useSummaryFields
+          ? await convex.query(api.tickets.listSummariesByParentAndStatus, {
+              workspaceId: auth.workspaceId,
+              parentId: parentId as Id<"tickets"> | null,
+              status: status as "unclaimed" | "in_progress" | "done",
+              limit,
+              agentApiKeyId: auth.apiKeyId,
+            })
+          : await convex.query(api.tickets.listByParentAndStatus, {
+              workspaceId: auth.workspaceId,
+              parentId: parentId as Id<"tickets"> | null,
+              status: status as "unclaimed" | "in_progress" | "done",
+              limit,
+              agentApiKeyId: auth.apiKeyId,
+            });
+      } else {
+        tickets = useSummaryFields
+          ? await convex.query(api.tickets.listSummariesByParent, {
+              workspaceId: auth.workspaceId,
+              parentId: parentId as Id<"tickets"> | null,
+              limit,
+              agentApiKeyId: auth.apiKeyId,
+            })
+          : await convex.query(api.tickets.listByParent, {
+              workspaceId: auth.workspaceId,
+              parentId: parentId as Id<"tickets"> | null,
+              limit,
+              agentApiKeyId: auth.apiKeyId,
+            });
       }
     } else if (status) {
-      tickets = await convex.query(api.tickets.listByStatus, {
-        workspaceId: auth.workspaceId,
-        status: status as "unclaimed" | "in_progress" | "done",
-        limit,
-        agentApiKeyId: auth.apiKeyId,
-      });
+      tickets = useSummaryFields
+        ? await convex.query(api.tickets.listSummariesByStatus, {
+            workspaceId: auth.workspaceId,
+            status: status as "unclaimed" | "in_progress" | "done",
+            limit,
+            agentApiKeyId: auth.apiKeyId,
+          })
+        : await convex.query(api.tickets.listByStatus, {
+            workspaceId: auth.workspaceId,
+            status: status as "unclaimed" | "in_progress" | "done",
+            limit,
+            agentApiKeyId: auth.apiKeyId,
+          });
     } else {
-      tickets = await convex.query(api.tickets.list, {
-        workspaceId: auth.workspaceId,
-        limit,
-        agentApiKeyId: auth.apiKeyId,
+      tickets = useSummaryFields
+        ? await convex.query(api.tickets.listSummaries, {
+            workspaceId: auth.workspaceId,
+            limit,
+            agentApiKeyId: auth.apiKeyId,
+          })
+        : await convex.query(api.tickets.list, {
+            workspaceId: auth.workspaceId,
+            limit,
+            agentApiKeyId: auth.apiKeyId,
+          });
+    }
+
+    if (useSummaryFields) {
+      return Response.json({
+        tickets: tickets.map((ticket) =>
+          serializeTicketSummary(
+            ticket as Parameters<typeof serializeTicketSummary>[0]
+          )
+        ),
       });
     }
 
     return Response.json({
-      tickets: tickets.map(serializeTicket),
+      tickets: tickets.map((ticket) =>
+        serializeTicket(ticket as Parameters<typeof serializeTicket>[0])
+      ),
     });
   } catch (error) {
     if (isInvalidConvexIdError(error)) {
