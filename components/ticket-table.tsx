@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
 import { TicketTableRow } from "@/components/ticket-table-row";
 import { IssueStatus } from "@/components/issue-status";
 
@@ -17,6 +15,7 @@ interface TicketTableProps {
   workspaceId: Id<"workspaces">;
   tickets: Ticket[];
   workspacePrefix: string;
+  compact?: boolean;
 }
 
 const getOrderValue = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
@@ -308,89 +307,91 @@ export function TicketTable({ workspaceId, tickets, workspacePrefix }: TicketTab
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h2 className="kb-title text-xl">Issue List</h2>
-          <p className="text-sm text-muted-foreground">Drag to reorder and nest. Expand/collapse hierarchies inline.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button asChild>
-            <Link href={`/workspace/${workspaceId}/tickets/new`}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              New Issue
-            </Link>
-          </Button>
-          <Button variant="outline" onClick={() => setShowArchived((prev) => !prev)}>
-            {showArchived ? "Hide Archived" : "Show Archived"}
-          </Button>
-        </div>
+    <div className="kb-scroll h-full overflow-auto">
+      <div className="sticky top-0 z-10 hidden border-b-2 border-[#222] bg-[#0d0d0d] px-7 py-2 md:grid md:grid-cols-[90px_minmax(0,1fr)_170px_120px_110px] md:items-center">
+        {["ID", "TITLE", "ASSIGNEE", "STATUS", "ACTIONS"].map((header) => (
+          <span
+            key={header}
+            className={`font-mono text-[9px] font-extrabold tracking-[0.2em] text-[#444] ${
+              header === "ACTIONS" ? "text-right" : ""
+            }`}
+          >
+            {header}
+          </span>
+        ))}
       </div>
 
-      <div className="kb-panel overflow-hidden">
-        <div className="hidden border-b border-border/80 bg-card/65 px-4 py-3 md:grid md:grid-cols-[minmax(0,1fr)_150px_180px_140px] md:gap-4">
-          <div className="kb-label">Issue</div>
-          <div className="kb-label">Status</div>
-          <div className="kb-label">Owner</div>
-          <div className="kb-label text-right">Actions</div>
-        </div>
+      <div className="divide-y divide-[#1a1a1a]">
+        {treeRows.length === 0 && (
+          <div className="px-7 py-10 font-mono text-xs uppercase tracking-[0.12em] text-[#666]">No issues yet.</div>
+        )}
 
-        <div className="divide-y divide-border/70">
-          {treeRows.length === 0 && (
-            <div className="px-4 py-8 text-sm text-muted-foreground">No issues yet.</div>
-          )}
+        {treeRows.map(({ ticket, depth }) => {
+          const hasChildren = (ticket.childCount ?? 0) > 0;
+          const isCollapsed = collapsed.has(ticket._id);
+          const parentTicket = ticket.parentId ? ticketsById.get(ticket.parentId) : null;
+          const dragClass =
+            dragOverId === ticket._id
+              ? dragOverPosition === "inside"
+                ? "bg-[#171717]"
+                : dragOverPosition === "above"
+                ? "border-t-2 border-t-[#FF3B00]"
+                : "border-b-2 border-b-[#FF3B00]"
+              : "";
 
-          {treeRows.map(({ ticket, depth }) => {
-            const hasChildren = (ticket.childCount ?? 0) > 0;
-            const isCollapsed = collapsed.has(ticket._id);
-            const parentTicket = ticket.parentId ? ticketsById.get(ticket.parentId) : null;
-            const dragClass =
-              dragOverId === ticket._id
-                ? dragOverPosition === "inside"
-                  ? "bg-accent/35 ring-1 ring-primary/35"
-                  : dragOverPosition === "above"
-                  ? "border-t-2 border-primary/70"
-                  : "border-b-2 border-primary/70"
-                : "";
+          return (
+            <TicketTableRow
+              key={ticket._id}
+              ticket={ticket}
+              workspaceId={workspaceId}
+              workspacePrefix={workspacePrefix}
+              parentTicket={parentTicket}
+              depth={depth}
+              hasChildren={hasChildren}
+              isCollapsed={isCollapsed}
+              dragClass={dragClass}
+              onToggleCollapse={() => toggleCollapsed(ticket._id)}
+              onDragStart={(event) => handleDragStart(event, ticket._id)}
+              onDragOver={(event) => {
+                event.preventDefault();
+                const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                const offset = event.clientY - rect.top;
+                const threshold = rect.height * 0.25;
+                let position: "above" | "below" | "inside" = "inside";
+                if (offset < threshold) position = "above";
+                else if (offset > rect.height - threshold) position = "below";
+                setDragOverId(ticket._id);
+                setDragOverPosition(position);
+              }}
+              onDragLeave={() => {
+                setDragOverId(null);
+                setDragOverPosition(null);
+              }}
+              onDrop={(event) => handleDrop(event, ticket)}
+              onClick={(event) => handleRowClick(event, ticket._id)}
+              onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
+              onStatusChange={(status) => handleStatusChange(ticket._id, status)}
+              onArchiveToggle={() => handleArchiveToggle(ticket._id, !(ticket.archived ?? false))}
+              onDelete={() => handleDelete(ticket._id)}
+            />
+          );
+        })}
+      </div>
 
-            return (
-              <TicketTableRow
-                key={ticket._id}
-                ticket={ticket}
-                workspaceId={workspaceId}
-                workspacePrefix={workspacePrefix}
-                parentTicket={parentTicket}
-                depth={depth}
-                hasChildren={hasChildren}
-                isCollapsed={isCollapsed}
-                dragClass={dragClass}
-                onToggleCollapse={() => toggleCollapsed(ticket._id)}
-                onDragStart={(event) => handleDragStart(event, ticket._id)}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                  const offset = event.clientY - rect.top;
-                  const threshold = rect.height * 0.25;
-                  let position: "above" | "below" | "inside" = "inside";
-                  if (offset < threshold) position = "above";
-                  else if (offset > rect.height - threshold) position = "below";
-                  setDragOverId(ticket._id);
-                  setDragOverPosition(position);
-                }}
-                onDragLeave={() => {
-                  setDragOverId(null);
-                  setDragOverPosition(null);
-                }}
-                onDrop={(event) => handleDrop(event, ticket)}
-                onClick={(event) => handleRowClick(event, ticket._id)}
-                onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
-                onStatusChange={(status) => handleStatusChange(ticket._id, status)}
-                onArchiveToggle={() => handleArchiveToggle(ticket._id, !(ticket.archived ?? false))}
-                onDelete={() => handleDelete(ticket._id)}
-              />
-            );
-          })}
-        </div>
+      <div className="px-7 py-3">
+        <Link
+          href={`/workspace/${workspaceId}/tickets/new?tab=list`}
+          className="inline-flex border border-[#333] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#666] transition hover:border-[#555] hover:text-[#bbb]"
+        >
+          New Issue
+        </Link>
+        <button
+          type="button"
+          onClick={() => setShowArchived((prev) => !prev)}
+          className="ml-2 inline-flex border border-[#333] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#666] transition hover:border-[#555] hover:text-[#bbb]"
+        >
+          {showArchived ? "Hide Archived" : "Show Archived"}
+        </button>
       </div>
     </div>
   );

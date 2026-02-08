@@ -1,15 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus } from "lucide-react";
-import { IssueStatusBadge, IssueStatus } from "@/components/issue-status";
+import { IssueStatus } from "@/components/issue-status";
 import { TicketCard } from "@/components/ticket-card";
 import { useSession } from "@/lib/auth-client";
 
@@ -26,20 +23,15 @@ interface KanbanBoardProps {
   workspaceId: Id<"workspaces">;
   tickets: Ticket[];
   workspacePrefix: string;
+  compact?: boolean;
 }
 
 const getOrderValue = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
 const STATUS_COLUMNS: Status[] = ["unclaimed", "in_progress", "done"];
-const STATUS_BORDER_CLASS: Record<Status, string> = {
-  unclaimed: "border-unclaimed/45",
-  in_progress: "border-in-progress/45",
-  done: "border-done/45",
-};
-
-const STATUS_COLUMN_RING: Record<Status, string> = {
-  unclaimed: "ring-unclaimed/35",
-  in_progress: "ring-in-progress/35",
-  done: "ring-done/35",
+const STATUS_META: Record<Status, { label: string; accent: string }> = {
+  unclaimed: { label: "UNCLAIMED", accent: "#FF3B00" },
+  in_progress: { label: "IN PROGRESS", accent: "#FFB800" },
+  done: { label: "DONE", accent: "#00FF94" },
 };
 
 export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoardProps) {
@@ -52,7 +44,7 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
     userId ? { betterAuthUserId: userId } : "skip"
   );
 
-  const [showArchived, setShowArchived] = useState(false);
+  const showArchived = false;
   const [dragOverTicketId, setDragOverTicketId] = useState<Id<"tickets"> | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<"above" | "below" | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<Status | null>(null);
@@ -316,196 +308,185 @@ export function KanbanBoard({ workspaceId, tickets, workspacePrefix }: KanbanBoa
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h2 className="kb-title text-xl">Board</h2>
-          <p className="text-sm text-muted-foreground">Drag issues across status lanes. Changes sync live.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button asChild>
-            <Link href={`/workspace/${workspaceId}/tickets/new`}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              New Issue
-            </Link>
-          </Button>
-          <Button variant="outline" onClick={() => setShowArchived((prev) => !prev)}>
-            {showArchived ? "Hide Archived" : "Show Archived"}
-          </Button>
-        </div>
-      </div>
+    <div className="flex h-full min-h-0 overflow-hidden">
+      {STATUS_COLUMNS.map((status, index) => {
+        const statusMeta = STATUS_META[status];
+        const countLabel = (ticketsByStatus[status]?.length ?? 0).toString().padStart(2, "0");
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        {STATUS_COLUMNS.map((status) => {
-          return (
-            <section
-              key={status}
-              className={`kb-panel flex min-h-[540px] flex-col ${
-                dragOverStatus === status ? `ring-2 ${STATUS_COLUMN_RING[status]}` : ""
-              }`}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragOverStatus(status);
-              }}
-              onDragLeave={() => setDragOverStatus(null)}
-              onDrop={async (event) => {
-                event.preventDefault();
-                const ticketId = event.dataTransfer.getData("application/x-ticket-id") as Id<"tickets">;
-                if (!ticketId) return;
+        return (
+          <section
+            key={status}
+            className={`flex min-h-0 flex-1 flex-col border-[#222] ${
+              index < STATUS_COLUMNS.length - 1 ? "border-r" : ""
+            } ${dragOverStatus === status ? "bg-white/[0.02]" : ""}`}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragOverStatus(status);
+            }}
+            onDragLeave={() => setDragOverStatus(null)}
+            onDrop={async (event) => {
+              event.preventDefault();
+              const ticketId = event.dataTransfer.getData("application/x-ticket-id") as Id<"tickets">;
+              if (!ticketId) return;
 
-                const originalStatus = draggedTicketRef.current?.status;
-                const shouldAutoAssign =
-                  originalStatus === "unclaimed" &&
-                  status === "in_progress" &&
-                  Boolean(userId);
-                const shouldClearOwner = status === "unclaimed";
-                if (shouldAutoAssign && userId) {
-                  const displayName = userProfile?.name || userProfile?.email || userId;
-                  applyOptimisticOwner(ticketId, {
-                    ownerId: userId,
-                    ownerType: "user",
-                    ownerDisplayName: displayName,
-                  });
+              const originalStatus = draggedTicketRef.current?.status;
+              const shouldAutoAssign =
+                originalStatus === "unclaimed" &&
+                status === "in_progress" &&
+                Boolean(userId);
+              const shouldClearOwner = status === "unclaimed";
+              if (shouldAutoAssign && userId) {
+                const displayName = userProfile?.name || userProfile?.email || userId;
+                applyOptimisticOwner(ticketId, {
+                  ownerId: userId,
+                  ownerType: "user",
+                  ownerDisplayName: displayName,
+                });
+              }
+
+              try {
+                if (dragOverTicketId && dragOverPosition && dragOverTicketId !== ticketId) {
+                  const order = calculateDropOrder(status, dragOverTicketId, dragOverPosition, ticketId);
+                  if (order === null) return;
+                  applyOptimisticMove(ticketId, status, order);
+                  if (shouldClearOwner) {
+                    applyOptimisticOwner(ticketId, null);
+                  }
+                  await moveTicket({ id: ticketId, status, order });
+                } else {
+                  const columnTickets = ticketsByStatus[status] ?? [];
+                  const lastTicket = columnTickets[columnTickets.length - 1];
+                  const draggedTicket = tickets.find((ticket) => ticket._id === ticketId);
+                  const order = lastTicket
+                    ? getOrderValue(lastTicket) + 1000
+                    : draggedTicket
+                    ? getOrderValue(draggedTicket)
+                    : 0;
+                  applyOptimisticMove(ticketId, status, order);
+                  if (shouldClearOwner) {
+                    applyOptimisticOwner(ticketId, null);
+                  }
+                  await moveTicket({ id: ticketId, status, order });
                 }
 
-                try {
-                  if (dragOverTicketId && dragOverPosition && dragOverTicketId !== ticketId) {
-                    const order = calculateDropOrder(status, dragOverTicketId, dragOverPosition, ticketId);
-                    if (order === null) return;
-                    applyOptimisticMove(ticketId, status, order);
-                    if (shouldClearOwner) {
-                      applyOptimisticOwner(ticketId, null);
-                    }
-                    await moveTicket({ id: ticketId, status, order });
-                  } else {
-                    const columnTickets = ticketsByStatus[status] ?? [];
-                    const lastTicket = columnTickets[columnTickets.length - 1];
-                    const draggedTicket = tickets.find((ticket) => ticket._id === ticketId);
-                    const order = lastTicket
-                      ? getOrderValue(lastTicket) + 1000
-                      : draggedTicket
-                      ? getOrderValue(draggedTicket)
-                      : 0;
-                    applyOptimisticMove(ticketId, status, order);
-                    if (shouldClearOwner) {
-                      applyOptimisticOwner(ticketId, null);
-                    }
-                    await moveTicket({ id: ticketId, status, order });
-                  }
-
-                  if (originalStatus) {
-                    await applyStatusSideEffects(ticketId, originalStatus, status);
-                  }
-                } catch (error) {
-                  clearOptimisticMove(ticketId);
-                  clearOptimisticOwner(ticketId);
-                  console.error(error);
-                } finally {
-                  draggedTicketRef.current = null;
-                  setDragOverTicketId(null);
-                  setDragOverPosition(null);
-                  setDragOverStatus(null);
+                if (originalStatus) {
+                  await applyStatusSideEffects(ticketId, originalStatus, status);
                 }
-              }}
+              } catch (error) {
+                clearOptimisticMove(ticketId);
+                clearOptimisticOwner(ticketId);
+                console.error(error);
+              } finally {
+                draggedTicketRef.current = null;
+                setDragOverTicketId(null);
+                setDragOverPosition(null);
+                setDragOverStatus(null);
+              }
+            }}
+          >
+            <div
+              className="flex items-end justify-between border-b-2 px-4 pb-3 pt-4 md:px-5"
+              style={{ borderBottomColor: statusMeta.accent }}
             >
-              <div className="flex items-center justify-between border-b border-border/75 bg-card/70 px-4 py-3">
-                <IssueStatusBadge status={status} size="md" className={STATUS_BORDER_CLASS[status]} />
-                <span className="font-mono text-xs text-muted-foreground">
-                  {(ticketsByStatus[status]?.length ?? 0).toString().padStart(2, "0")}
-                </span>
-              </div>
+              <span className="font-mono text-[21px] font-extrabold tracking-[0.2em] text-white">
+                {statusMeta.label}
+              </span>
+              <span className="font-mono text-[40px] font-black leading-none" style={{ color: statusMeta.accent }}>
+                {countLabel}
+              </span>
+            </div>
 
-              <ScrollArea className="kb-scroll h-[calc(100vh-350px)] px-3 py-3">
-                <div className="space-y-3">
-                  {(ticketsByStatus[status] ?? []).map((ticket) => {
-                    const parentTicket = ticket.parentId ? ticketsById.get(ticket.parentId) : null;
+            <ScrollArea className="kb-scroll h-full px-3 py-3">
+              <div className="space-y-2.5 pb-4">
+                {(ticketsByStatus[status] ?? []).map((ticket) => {
+                  const parentTicket = ticket.parentId ? ticketsById.get(ticket.parentId) : null;
 
-                    return (
-                      <TicketCard
-                        key={ticket._id}
-                        ticket={ticket}
-                        workspaceId={workspaceId}
-                        workspacePrefix={workspacePrefix}
-                        parentTicket={parentTicket}
-                        isDragOver={dragOverTicketId === ticket._id}
-                        onDragStart={(event) => handleDragStart(event, ticket._id)}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                          const offset = event.clientY - rect.top;
-                          const position = offset < rect.height / 2 ? "above" : "below";
-                          setDragOverTicketId(ticket._id);
-                          setDragOverPosition(position);
-                        }}
-                        onDragLeave={() => {
-                          setDragOverTicketId(null);
-                          setDragOverPosition(null);
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          const draggedId = event.dataTransfer.getData("application/x-ticket-id") as Id<"tickets">;
-                          if (!draggedId || draggedId === ticket._id) return;
-                          if (!dragOverPosition) return;
-                          const originalStatus =
-                            draggedTicketRef.current?.id === draggedId
-                              ? draggedTicketRef.current.status
-                              : tickets.find((entry) => entry._id === draggedId)?.status;
-                          const shouldAutoAssign =
-                            originalStatus === "unclaimed" &&
-                            status === "in_progress" &&
-                            Boolean(userId);
-                          if (shouldAutoAssign && userId) {
-                            const displayName = userProfile?.name || userProfile?.email || userId;
-                            applyOptimisticOwner(draggedId, {
-                              ownerId: userId,
-                              ownerType: "user",
-                              ownerDisplayName: displayName,
-                            });
-                          }
-                          if (status === "unclaimed") {
-                            applyOptimisticOwner(draggedId, null);
-                          }
-                          const order = calculateDropOrder(status, ticket._id, dragOverPosition, draggedId);
-                          if (order === null) return;
-                          applyOptimisticMove(draggedId, status, order);
-                          moveTicket({ id: draggedId, status, order })
-                            .then(async () => {
-                              if (originalStatus) {
-                                await applyStatusSideEffects(draggedId, originalStatus, status);
-                              }
-                            })
-                            .catch((error) => {
-                              clearOptimisticMove(draggedId);
-                              clearOptimisticOwner(draggedId);
-                              console.error(error);
-                            });
-                          setDragOverTicketId(null);
-                          setDragOverPosition(null);
-                        }}
-                        onDragHandleEnd={() => {
-                          setDragOverTicketId(null);
-                          setDragOverPosition(null);
-                          setDragOverStatus(null);
-                        }}
-                        onClick={(event) => handleCardClick(event, ticket._id)}
-                        onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
-                        onStatusChange={(newStatus) => handleStatusChange(ticket._id, newStatus)}
-                        onArchiveToggle={() =>
-                          updateTicket({
-                            id: ticket._id,
-                            archived: !(ticket.archived ?? false),
-                          })
+                  return (
+                    <TicketCard
+                      key={ticket._id}
+                      ticket={ticket}
+                      workspaceId={workspaceId}
+                      workspacePrefix={workspacePrefix}
+                      parentTicket={parentTicket}
+                      accent={statusMeta.accent}
+                      isDragOver={dragOverTicketId === ticket._id}
+                      onDragStart={(event) => handleDragStart(event, ticket._id)}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                        const offset = event.clientY - rect.top;
+                        const position = offset < rect.height / 2 ? "above" : "below";
+                        setDragOverTicketId(ticket._id);
+                        setDragOverPosition(position);
+                      }}
+                      onDragLeave={() => {
+                        setDragOverTicketId(null);
+                        setDragOverPosition(null);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const draggedId = event.dataTransfer.getData("application/x-ticket-id") as Id<"tickets">;
+                        if (!draggedId || draggedId === ticket._id) return;
+                        if (!dragOverPosition) return;
+                        const originalStatus =
+                          draggedTicketRef.current?.id === draggedId
+                            ? draggedTicketRef.current.status
+                            : tickets.find((entry) => entry._id === draggedId)?.status;
+                        const shouldAutoAssign =
+                          originalStatus === "unclaimed" &&
+                          status === "in_progress" &&
+                          Boolean(userId);
+                        if (shouldAutoAssign && userId) {
+                          const displayName = userProfile?.name || userProfile?.email || userId;
+                          applyOptimisticOwner(draggedId, {
+                            ownerId: userId,
+                            ownerType: "user",
+                            ownerDisplayName: displayName,
+                          });
                         }
-                        onDelete={() => handleDelete(ticket._id)}
-                      />
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-            </section>
-          );
-        })}
-      </div>
+                        if (status === "unclaimed") {
+                          applyOptimisticOwner(draggedId, null);
+                        }
+                        const order = calculateDropOrder(status, ticket._id, dragOverPosition, draggedId);
+                        if (order === null) return;
+                        applyOptimisticMove(draggedId, status, order);
+                        moveTicket({ id: draggedId, status, order })
+                          .then(async () => {
+                            if (originalStatus) {
+                              await applyStatusSideEffects(draggedId, originalStatus, status);
+                            }
+                          })
+                          .catch((error) => {
+                            clearOptimisticMove(draggedId);
+                            clearOptimisticOwner(draggedId);
+                            console.error(error);
+                          });
+                        setDragOverTicketId(null);
+                        setDragOverPosition(null);
+                      }}
+                      onDragHandleEnd={() => {
+                        setDragOverTicketId(null);
+                        setDragOverPosition(null);
+                        setDragOverStatus(null);
+                      }}
+                      onClick={(event) => handleCardClick(event, ticket._id)}
+                      onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
+                      onStatusChange={(newStatus) => handleStatusChange(ticket._id, newStatus)}
+                      onArchiveToggle={() =>
+                        updateTicket({
+                          id: ticket._id,
+                          archived: !(ticket.archived ?? false),
+                        })
+                      }
+                      onDelete={() => handleDelete(ticket._id)}
+                    />
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </section>
+        );
+      })}
     </div>
   );
 }
