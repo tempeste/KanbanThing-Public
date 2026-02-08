@@ -108,8 +108,8 @@ export function AssigneePicker({
     syncProfiles({ betterAuthUserIds: missing }).catch(console.error);
   }, [members, profileMap, syncProfiles]);
 
-  useEffect(() => {
-    if (!optimisticOwner) return;
+  // Clear optimistic owner once server state catches up (render-time sync)
+  if (optimisticOwner) {
     const reachedServerState =
       currentOwnerId === optimisticOwner.ownerId &&
       currentOwnerType === optimisticOwner.ownerType &&
@@ -118,7 +118,7 @@ export function AssigneePicker({
     if (reachedServerState) {
       setOptimisticOwner(null);
     }
-  }, [optimisticOwner, currentOwnerId, currentOwnerType, currentOwnerDisplayName]);
+  }
 
   const handleAssign = async (memberId: string) => {
     setMutationError(null);

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
@@ -168,19 +168,23 @@ export default function TicketDetailPage() {
     return map;
   }, [actorProfiles]);
 
-  useEffect(() => {
-    if (!ticket || isEditing) return;
-    setTitle(ticket.title);
-    setDescription(ticket.description);
-    setParentId(ticket.parentId ?? null);
-  }, [ticket, isEditing]);
+  // Sync form state from ticket data during render (React-recommended pattern
+  // to avoid cascading renders from setState-in-useEffect).
+  const [syncedTicketKey, setSyncedTicketKey] = useState("");
+  const currentTicketKey = ticket && !isEditing ? `${ticket._id}:${ticket.updatedAt}` : "";
+  if (currentTicketKey && currentTicketKey !== syncedTicketKey) {
+    setSyncedTicketKey(currentTicketKey);
+    setTitle(ticket!.title);
+    setDescription(ticket!.description);
+    setParentId(ticket!.parentId ?? null);
+  } else if (!currentTicketKey && syncedTicketKey) {
+    setSyncedTicketKey("");
+  }
 
-  useEffect(() => {
-    if (!optimisticStatus) return;
-    if (ticket?.status === optimisticStatus) {
-      setOptimisticStatus(null);
-    }
-  }, [ticket?.status, optimisticStatus]);
+  // Clear optimistic status once server confirms
+  if (optimisticStatus && ticket?.status === optimisticStatus) {
+    setOptimisticStatus(null);
+  }
 
   if (
     workspace === undefined ||
