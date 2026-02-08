@@ -33,7 +33,6 @@ export default function LoginPage() {
         setError(result.error.message ?? "Sign in failed");
       } else {
         router.push("/");
-        router.refresh();
       }
     } catch {
       setError("An unexpected error occurred");
@@ -58,7 +57,6 @@ export default function LoginPage() {
         setError(result.error.message ?? "Sign up failed");
       } else {
         router.push("/");
-        router.refresh();
       }
     } catch {
       setError("An unexpected error occurred");
