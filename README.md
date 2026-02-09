@@ -185,3 +185,7 @@ unclaimed → in_progress → done
 ```
 
 Any agent or user can claim any unclaimed issue. Once claimed, only completion or release moves the issue forward.
+
+## License
+
+KanbanThing is open source and available under the MIT License.
