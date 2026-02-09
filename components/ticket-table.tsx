@@ -16,11 +16,15 @@ import { TicketTableRow } from "@/components/ticket-table-row";
 import { IssueStatus } from "@/components/issue-status";
 import {
   deriveChildrenByParent,
+  deriveSortedFlatRows,
   deriveTreeRows,
   deriveVisibleTickets,
   getTicketOrderValue,
+  SortColumn,
+  SortDirection,
 } from "@/lib/ticket-derivations";
 import { TicketSummary } from "@/lib/ticket-summary";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface TicketTableProps {
   workspaceId: Id<"workspaces">;
@@ -51,6 +55,7 @@ export function TicketTable({
   const [optimisticArchived, setOptimisticArchived] = useState<Map<string, boolean>>(
     new Map()
   );
+  const [sort, setSort] = useState<{ col: SortColumn; dir: SortDirection } | null>(null);
   const [colWidths, setColWidths] = useState({
     id: 160,
     assignee: 160,
@@ -156,13 +161,28 @@ export function TicketTable({
     () => deriveTreeRows(childrenByParent, collapsed),
     [childrenByParent, collapsed]
   );
+  const displayRows = useMemo(
+    () =>
+      sort
+        ? deriveSortedFlatRows(visibleTickets, sort.col, sort.dir)
+        : treeRows,
+    [sort, visibleTickets, treeRows]
+  );
 
   const rowVirtualizer = useVirtualizer({
-    count: treeRows.length,
+    count: displayRows.length,
     getScrollElement: () => listRef.current,
     estimateSize: () => 48,
     overscan: 12,
   });
+
+  const cycleSort = useCallback((col: SortColumn) => {
+    setSort((prev) => {
+      if (!prev || prev.col !== col) return { col, dir: "asc" };
+      if (prev.dir === "asc") return { col, dir: "desc" };
+      return null;
+    });
+  }, []);
 
   const flushDragState = useCallback(() => {
     dragRafRef.current = null;
@@ -411,24 +431,47 @@ export function TicketTable({
         style={{ gridTemplateColumns: gridTemplate }}
       >
         {([
-          { label: "ID", key: "id" as const },
-          { label: "TITLE", key: null },
-          { label: "ASSIGNEE", key: "assignee" as const },
-          { label: "STATUS", key: "status" as const },
-          { label: "ACTIONS", key: null },
+          { label: "ID", sortCol: "number" as SortColumn, resizeKey: "id" as const },
+          { label: "TITLE", sortCol: "title" as SortColumn, resizeKey: null },
+          { label: "ASSIGNEE", sortCol: "assignee" as SortColumn, resizeKey: "assignee" as const },
+          { label: "STATUS", sortCol: "status" as SortColumn, resizeKey: "status" as const },
+          { label: "ACTIONS", sortCol: null, resizeKey: null },
         ]).map((col) => (
           <div key={col.label} className="relative select-none">
             <span
-              className={`font-mono text-[9px] font-extrabold tracking-[0.2em] text-muted-foreground/60 ${
-                col.label === "ACTIONS" ? "block text-right" : ""
-              }`}
+              role={col.sortCol ? "button" : undefined}
+              tabIndex={col.sortCol ? 0 : undefined}
+              onClick={col.sortCol ? () => cycleSort(col.sortCol!) : undefined}
+              onKeyDown={
+                col.sortCol
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        cycleSort(col.sortCol!);
+                      }
+                    }
+                  : undefined
+              }
+              className={`inline-flex items-center gap-1 font-mono text-[9px] font-extrabold tracking-[0.2em] ${
+                col.label === "ACTIONS"
+                  ? "block w-full justify-end text-right text-muted-foreground/60"
+                  : col.sortCol
+                    ? "cursor-pointer text-muted-foreground/60 transition-colors hover:text-foreground/80"
+                    : "text-muted-foreground/60"
+              } ${sort?.col === col.sortCol ? "text-foreground/80" : ""}`}
             >
               {col.label}
+              {sort?.col === col.sortCol &&
+                (sort.dir === "asc" ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                ))}
             </span>
-            {col.key && (
+            {col.resizeKey && (
               <div
-                className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-primary/20"
-                onMouseDown={(e) => handleResizeStart(col.key!, e)}
+                className="absolute -right-1.5 top-0 z-10 h-full w-3 cursor-col-resize border-r border-border/50 transition-colors hover:border-primary/60 hover:bg-primary/20"
+                onMouseDown={(e) => handleResizeStart(col.resizeKey!, e)}
               />
             )}
           </div>
@@ -436,19 +479,19 @@ export function TicketTable({
       </div>
 
       <div ref={listRef} className="kb-scroll min-h-0 flex-1 overflow-auto">
-        {treeRows.length === 0 && (
+        {displayRows.length === 0 && (
           <div className="px-7 py-10 font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
             No issues yet.
           </div>
         )}
 
-        {treeRows.length > 0 && (
+        {displayRows.length > 0 && (
           <div
             className="relative divide-y divide-border/50"
             style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const { ticket, depth } = treeRows[virtualRow.index];
+              const { ticket, depth } = displayRows[virtualRow.index];
               const hasChildren = (ticket.childCount ?? 0) > 0;
               const isCollapsed = collapsed.has(ticket._id);
               const parentTicket = ticket.parentId

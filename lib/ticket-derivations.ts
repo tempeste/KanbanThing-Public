@@ -67,6 +67,48 @@ export const deriveTicketsByStatus = (tickets: TicketSummary[]) => {
   return grouped;
 };
 
+export type SortColumn = "number" | "title" | "assignee" | "status";
+export type SortDirection = "asc" | "desc";
+
+const STATUS_ORDER: Record<TicketStatus, number> = {
+  unclaimed: 0,
+  in_progress: 1,
+  done: 2,
+};
+
+export const deriveSortedFlatRows = (
+  tickets: TicketSummary[],
+  col: SortColumn,
+  dir: SortDirection
+): Array<{ ticket: TicketSummary; depth: number }> => {
+  const sorted = [...tickets].sort((a, b) => {
+    let cmp = 0;
+    switch (col) {
+      case "number":
+        cmp = (a.number ?? 0) - (b.number ?? 0);
+        break;
+      case "title":
+        cmp = (a.title ?? "").localeCompare(b.title ?? "", undefined, {
+          sensitivity: "base",
+        });
+        break;
+      case "assignee": {
+        const aName = a.ownerDisplayName ?? "";
+        const bName = b.ownerDisplayName ?? "";
+        if (!aName && bName) return 1;
+        if (aName && !bName) return -1;
+        cmp = aName.localeCompare(bName, undefined, { sensitivity: "base" });
+        break;
+      }
+      case "status":
+        cmp = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+        break;
+    }
+    return dir === "desc" ? -cmp : cmp;
+  });
+  return sorted.map((ticket) => ({ ticket, depth: 0 }));
+};
+
 export const deriveTreeRows = (
   childrenByParent: Map<Id<"tickets"> | "root", TicketSummary[]>,
   collapsed: ReadonlySet<string>
