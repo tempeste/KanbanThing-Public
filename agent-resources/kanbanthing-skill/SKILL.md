@@ -7,6 +7,12 @@ description: KanbanThing board operations for software agents. Use when you need
 
 Follow this workflow when working in a project connected to KanbanThing.
 
+## Setup
+
+Set these env vars (or pass inline with curl):
+- `KANBANTHING_API_KEY` — workspace-scoped API key (`sk_...`)
+- `KANBANTHING_URL` — base URL (default: `https://your-deployment-url`)
+
 ## Core Sequence
 
 1. Load project context with `GET /api/workspace/docs`.
@@ -15,6 +21,21 @@ Follow this workflow when working in a project connected to KanbanThing.
 4. Execute the requested code changes in the repository.
 5. Add progress notes or comments for visibility when needed.
 6. Complete the ticket with `POST /api/tickets/<ticket-id>/complete`.
+
+## Status Flow
+
+`backlog → unclaimed → in_progress → done`
+
+- **backlog**: Idea-phase tickets. Agents cannot claim backlog tickets directly — promote to unclaimed first.
+- **unclaimed**: Ready for work. Agents claim from here.
+- **in_progress**: Actively being worked on (auto-set by claim).
+- **done**: Completed (auto-set by complete).
+
+Non-standard transitions (e.g. `unclaimed → backlog`) require a `reason` field when called by agents.
+
+## Tags
+
+Tickets can have workspace-scoped tags (user-defined, with colors). Use `GET /api/tags` to list, and include tag IDs in `PATCH /api/tickets/:id` via the `tags` array field.
 
 ## Operational Rules
 
