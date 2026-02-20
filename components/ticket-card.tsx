@@ -58,7 +58,7 @@ export const TicketCard = memo(function TicketCard({
 
   return (
     <article
-      className={`group relative border-2 px-3.5 py-3 transition-[border-color,background-color,transform] duration-150 ${
+      className={`group relative overflow-hidden border-2 px-3.5 py-3 transition-[border-color,background-color,transform] duration-150 ${
         isArchived
           ? "border-border/60 bg-card/80 opacity-60 grayscale-[30%] hover:opacity-85 hover:grayscale-0"
           : "border-border bg-card hover:-translate-y-px hover:border-foreground/35 hover:bg-accent"
@@ -111,7 +111,7 @@ export const TicketCard = memo(function TicketCard({
           </div>
         </div>
 
-        <div className="flex items-start gap-2">
+        <div className="flex shrink-0 items-start gap-2">
           <span
             className="inline-flex border px-2 py-1 font-mono text-[10px] font-black uppercase tracking-[0.12em] text-black"
             style={{ backgroundColor: priorityColor, borderColor: priorityColor }}
