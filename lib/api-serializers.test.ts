@@ -36,4 +36,16 @@ describe("api serializers", () => {
     expect(serialized.childCount).toBe(2);
     expect(serialized.hasChildren).toBe(true);
   });
+
+  it("defaults priority to 'none' when undefined", () => {
+    const noPriority = { ...ticket, priority: undefined } as unknown as Doc<"tickets">;
+    expect(serializeTicket(noPriority).priority).toBe("none");
+    expect(serializeTicketSummary(noPriority).priority).toBe("none");
+  });
+
+  it("preserves explicit priority value", () => {
+    const withPriority = { ...ticket, priority: "urgent" } as unknown as Doc<"tickets">;
+    expect(serializeTicket(withPriority).priority).toBe("urgent");
+    expect(serializeTicketSummary(withPriority).priority).toBe("urgent");
+  });
 });

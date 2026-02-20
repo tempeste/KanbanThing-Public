@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Id } from "@/convex/_generated/dataModel";
 import {
   deriveChildrenByParent,
+  deriveSortedFlatRows,
   deriveTicketsByStatus,
   deriveTreeRows,
   deriveVisibleTickets,
@@ -17,7 +18,7 @@ const createTicket = (
   _id: overrides._id,
   workspaceId: w("w1"),
   title: overrides.title,
-  number: 1,
+  number: overrides.number ?? 1,
   parentId: overrides.parentId ?? null,
   order: overrides.order,
   archived: overrides.archived ?? false,
@@ -27,6 +28,7 @@ const createTicket = (
   ownerId: overrides.ownerId,
   ownerType: overrides.ownerType,
   ownerDisplayName: overrides.ownerDisplayName,
+  priority: overrides.priority,
   createdAt: overrides.createdAt ?? 1,
   updatedAt: overrides.updatedAt ?? 1,
 });
@@ -95,5 +97,115 @@ describe("ticket derivations", () => {
     expect(byStatus.unclaimed.map((ticket) => ticket._id)).toEqual([t("a")]);
     expect(byStatus.in_progress.map((ticket) => ticket._id)).toEqual([t("b")]);
     expect(byStatus.done.map((ticket) => ticket._id)).toEqual([t("c")]);
+  });
+
+  describe("board sort", () => {
+    const sortTickets: TicketSummary[] = [
+      createTicket({
+        _id: t("s1"),
+        title: "Zebra",
+        status: "unclaimed",
+        order: 30,
+        createdAt: 100,
+        priority: "low",
+      }),
+      createTicket({
+        _id: t("s2"),
+        title: "Apple",
+        status: "unclaimed",
+        order: 10,
+        createdAt: 300,
+        priority: "urgent",
+      }),
+      createTicket({
+        _id: t("s3"),
+        title: "Mango",
+        status: "unclaimed",
+        order: 20,
+        createdAt: 200,
+        priority: "low",
+      }),
+    ];
+
+    it("sorts by priority (urgent first, tiebreak by order)", () => {
+      const result = deriveTicketsByStatus(sortTickets, "priority");
+      const ids = result.unclaimed.map((t) => t._id);
+      expect(ids).toEqual([t("s2"), t("s3"), t("s1")]);
+    });
+
+    it("sorts by newest first", () => {
+      const result = deriveTicketsByStatus(sortTickets, "newest");
+      const ids = result.unclaimed.map((t) => t._id);
+      expect(ids).toEqual([t("s2"), t("s3"), t("s1")]);
+    });
+
+    it("sorts by oldest first", () => {
+      const result = deriveTicketsByStatus(sortTickets, "oldest");
+      const ids = result.unclaimed.map((t) => t._id);
+      expect(ids).toEqual([t("s1"), t("s3"), t("s2")]);
+    });
+
+    it("sorts by title alphabetically", () => {
+      const result = deriveTicketsByStatus(sortTickets, "title");
+      const ids = result.unclaimed.map((t) => t._id);
+      expect(ids).toEqual([t("s2"), t("s3"), t("s1")]);
+    });
+
+    it("sorts by manual order", () => {
+      const result = deriveTicketsByStatus(sortTickets, "order");
+      const ids = result.unclaimed.map((t) => t._id);
+      expect(ids).toEqual([t("s2"), t("s3"), t("s1")]);
+    });
+  });
+
+  describe("deriveSortedFlatRows", () => {
+    const flatTickets: TicketSummary[] = [
+      createTicket({
+        _id: t("f1"),
+        title: "Beta",
+        number: 2,
+        status: "done",
+        ownerDisplayName: "Zara",
+      }),
+      createTicket({
+        _id: t("f2"),
+        title: "Alpha",
+        number: 1,
+        status: "unclaimed",
+        ownerDisplayName: undefined,
+      }),
+      createTicket({
+        _id: t("f3"),
+        title: "Gamma",
+        number: 3,
+        status: "in_progress",
+        ownerDisplayName: "Ada",
+      }),
+    ];
+
+    it("sorts by number ascending", () => {
+      const rows = deriveSortedFlatRows(flatTickets, "number", "asc");
+      expect(rows.map((r) => r.ticket._id)).toEqual([t("f2"), t("f1"), t("f3")]);
+      expect(rows[0].depth).toBe(0);
+    });
+
+    it("sorts by title descending", () => {
+      const rows = deriveSortedFlatRows(flatTickets, "title", "desc");
+      expect(rows.map((r) => r.ticket._id)).toEqual([t("f3"), t("f1"), t("f2")]);
+    });
+
+    it("sorts by assignee with unassigned last", () => {
+      const rows = deriveSortedFlatRows(flatTickets, "assignee", "asc");
+      expect(rows.map((r) => r.ticket._id)).toEqual([t("f3"), t("f1"), t("f2")]);
+    });
+
+    it("sorts by status", () => {
+      const rows = deriveSortedFlatRows(flatTickets, "status", "asc");
+      expect(rows.map((r) => r.ticket.status)).toEqual([
+        "unclaimed",
+        "in_progress",
+        "done",
+      ]);
+    });
   });
 });
