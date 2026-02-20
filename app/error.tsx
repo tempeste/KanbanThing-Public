@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Error({
   error,
@@ -9,22 +9,26 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const retryCount = useRef(0);
+  const retrying = useRef(false);
+  const [showError, setShowError] = useState(false);
 
   useEffect(() => {
     console.error("Unhandled error:", error);
 
     // Auto-retry once — the TokenRefresher likely already refreshed auth,
     // so a quick reset is usually enough to recover silently.
-    if (retryCount.current < 1) {
-      retryCount.current++;
-      const timer = setTimeout(() => reset(), 500);
+    if (!retrying.current) {
+      retrying.current = true;
+      const timer = setTimeout(() => {
+        setShowError(true);
+        reset();
+      }, 500);
       return () => clearTimeout(timer);
     }
   }, [error, reset]);
 
   // Only shown if auto-retry didn't work
-  if (retryCount.current < 1) return null;
+  if (!showError) return null;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background text-foreground">

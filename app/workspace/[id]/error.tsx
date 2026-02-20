@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function WorkspaceError({
@@ -11,7 +11,8 @@ export default function WorkspaceError({
   reset: () => void;
 }) {
   const router = useRouter();
-  const retryCount = useRef(0);
+  const retrying = useRef(false);
+  const [showError, setShowError] = useState(false);
 
   const isAuthError =
     error.message?.includes("auth") ||
@@ -22,15 +23,18 @@ export default function WorkspaceError({
     console.error("Workspace error:", error);
 
     // Auto-retry once — the TokenRefresher likely already refreshed auth
-    if (retryCount.current < 1) {
-      retryCount.current++;
-      const timer = setTimeout(() => reset(), 500);
+    if (!retrying.current) {
+      retrying.current = true;
+      const timer = setTimeout(() => {
+        setShowError(true);
+        reset();
+      }, 500);
       return () => clearTimeout(timer);
     }
   }, [error, reset]);
 
   // Only shown if auto-retry didn't work
-  if (retryCount.current < 1) return null;
+  if (!showError) return null;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background text-foreground">

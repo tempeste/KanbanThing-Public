@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
@@ -46,7 +46,11 @@ type Ticket = Doc<"tickets">;
 const getOrderValue = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
 
 function RelativeTime({ timestamp }: { timestamp: number }) {
-  const now = Date.now();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const diff = now - timestamp;
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
@@ -246,7 +250,8 @@ export default function TicketDetailPage() {
   const formatStatusLabel = (status: string) =>
     STATUS_META[status as keyof typeof STATUS_META]?.label ?? status;
 
-  const formatActivity = (event: any) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const formatActivity = (event: { type: string; data?: Record<string, any> }) => {
     switch (event.type) {
       case "ticket_created":
         return "Created this issue";
