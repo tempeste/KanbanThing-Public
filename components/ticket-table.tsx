@@ -397,17 +397,36 @@ export function TicketTable({
     });
   };
 
-  const toggleSelect = useCallback((ticketId: Id<"tickets">) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(ticketId)) {
-        next.delete(ticketId);
+  const lastSelectedIndexRef = useRef<number | null>(null);
+
+  const toggleSelect = useCallback(
+    (ticketId: Id<"tickets">, shiftKey = false) => {
+      const currentIndex = displayRows.findIndex((r) => r.ticket._id === ticketId);
+      if (shiftKey && lastSelectedIndexRef.current !== null && currentIndex !== -1) {
+        const from = Math.min(lastSelectedIndexRef.current, currentIndex);
+        const to = Math.max(lastSelectedIndexRef.current, currentIndex);
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (let i = from; i <= to; i++) {
+            next.add(displayRows[i].ticket._id);
+          }
+          return next;
+        });
       } else {
-        next.add(ticketId);
+        setSelected((prev) => {
+          const next = new Set(prev);
+          if (next.has(ticketId)) {
+            next.delete(ticketId);
+          } else {
+            next.add(ticketId);
+          }
+          return next;
+        });
       }
-      return next;
-    });
-  }, []);
+      if (currentIndex !== -1) lastSelectedIndexRef.current = currentIndex;
+    },
+    [displayRows]
+  );
 
   const toggleSelectAll = useCallback(() => {
     if (selected.size === displayRows.length) {
@@ -416,6 +435,19 @@ export function TicketTable({
       setSelected(new Set(displayRows.map((row) => row.ticket._id)));
     }
   }, [selected.size, displayRows]);
+
+  const selectByStatus = useCallback(
+    (status: IssueStatus) => {
+      setSelected(
+        new Set(
+          displayRows
+            .filter((r) => r.ticket.status === status)
+            .map((r) => r.ticket._id)
+        )
+      );
+    },
+    [displayRows]
+  );
 
   const handleBulkArchive = async (archive: boolean) => {
     const ids = Array.from(selected);
@@ -517,8 +549,64 @@ export function TicketTable({
         className="hidden border-b-2 border-border bg-card px-7 py-2 md:grid md:items-center"
         style={{ gridTemplateColumns: gridTemplate }}
       >
+        {/* ID column with select-all checkbox + dropdown */}
+        <div className="relative flex items-center gap-2 select-none">
+          <div className="relative">
+            <input
+              type="checkbox"
+              checked={selected.size > 0 && selected.size === displayRows.length}
+              ref={(el) => {
+                if (el) el.indeterminate = selected.size > 0 && selected.size < displayRows.length;
+              }}
+              onChange={toggleSelectAll}
+              className="h-3.5 w-3.5 shrink-0 accent-primary"
+            />
+            <div className="group inline-block">
+              <button
+                type="button"
+                className="ml-0.5 inline-flex text-muted-foreground/60 hover:text-foreground/80"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </button>
+              <div className="absolute left-0 top-full z-20 mt-1 hidden min-w-[140px] border border-border bg-card py-1 shadow-lg group-focus-within:block hover:block">
+                {([
+                  { label: "Select all", action: () => toggleSelectAll() },
+                  { label: "Select none", action: () => setSelected(new Set()) },
+                  { label: "Unclaimed", action: () => selectByStatus("unclaimed") },
+                  { label: "In progress", action: () => selectByStatus("in_progress") },
+                  { label: "Done", action: () => selectByStatus("done") },
+                ] as const).map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={item.action}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={() => cycleSort("number")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); cycleSort("number"); }
+            }}
+            className={`inline-flex items-center gap-1 font-mono text-[9px] font-extrabold tracking-[0.2em] cursor-pointer text-muted-foreground/60 transition-colors hover:text-foreground/80 ${sort?.col === "number" ? "text-foreground/80" : ""}`}
+          >
+            ID
+            {sort?.col === "number" && (sort.dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+          </span>
+          <div
+            className="absolute -right-1.5 top-0 z-10 h-full w-3 cursor-col-resize border-r border-border/50 transition-colors hover:border-primary/60 hover:bg-primary/20"
+            onMouseDown={(e) => handleResizeStart("id", e)}
+          />
+        </div>
+        {/* Remaining columns */}
         {([
-          { label: "ID", sortCol: "number" as SortColumn, resizeKey: "id" as const },
           { label: "TITLE", sortCol: "title" as SortColumn, resizeKey: null },
           { label: "ASSIGNEE", sortCol: "assignee" as SortColumn, resizeKey: "assignee" as const },
           { label: "STATUS", sortCol: "status" as SortColumn, resizeKey: "status" as const },
@@ -596,6 +684,7 @@ export function TicketTable({
               return (
                 <div
                   key={ticket._id}
+                  data-index={virtualRow.index}
                   ref={rowVirtualizer.measureElement}
                   className="absolute left-0 top-0 w-full"
                   style={{ transform: `translateY(${virtualRow.start}px)` }}
@@ -610,7 +699,7 @@ export function TicketTable({
                     hasChildren={hasChildren}
                     isCollapsed={isCollapsed}
                     isSelected={selected.has(ticket._id)}
-                    onToggleSelect={() => toggleSelect(ticket._id)}
+                    onToggleSelect={(shiftKey: boolean) => toggleSelect(ticket._id, shiftKey)}
                     dragClass={dragClass}
                     onToggleCollapse={() => toggleCollapsed(ticket._id)}
                     onDragStart={(event) => handleDragStart(event, ticket._id)}

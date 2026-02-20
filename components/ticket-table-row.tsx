@@ -19,7 +19,7 @@ interface TicketTableRowProps {
   hasChildren: boolean;
   isCollapsed: boolean;
   isSelected: boolean;
-  onToggleSelect: () => void;
+  onToggleSelect: (shiftKey: boolean) => void;
   dragClass: string;
   gridTemplate: string;
   onToggleCollapse: () => void;
@@ -99,7 +99,7 @@ export const TicketTableRow = memo(function TicketTableRow({
         <input
           type="checkbox"
           checked={isSelected}
-          onChange={onToggleSelect}
+          onChange={(e) => onToggleSelect(e.nativeEvent instanceof MouseEvent ? e.nativeEvent.shiftKey : false)}
           className="mt-1 h-3.5 w-3.5 shrink-0 accent-primary"
         />
         <div
@@ -188,7 +188,7 @@ export const TicketTableRow = memo(function TicketTableRow({
           <input
             type="checkbox"
             checked={isSelected}
-            onChange={onToggleSelect}
+            onChange={(e) => onToggleSelect(e.nativeEvent instanceof MouseEvent ? e.nativeEvent.shiftKey : false)}
             className="h-3.5 w-3.5 shrink-0 accent-primary"
           />
           <button
