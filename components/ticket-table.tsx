@@ -605,6 +605,7 @@ export function TicketTable({
                 {([
                   { label: "Select all", action: () => toggleSelectAll() },
                   { label: "Select none", action: () => setSelected(new Set()) },
+                  { label: "Backlog", action: () => selectByStatus("backlog") },
                   { label: "Unclaimed", action: () => selectByStatus("unclaimed") },
                   { label: "In progress", action: () => selectByStatus("in_progress") },
                   { label: "Done", action: () => selectByStatus("done") },

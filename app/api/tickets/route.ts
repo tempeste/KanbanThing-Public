@@ -63,14 +63,14 @@ export async function GET(request: NextRequest) {
           ? await convex.query(api.tickets.listSummariesByParentAndStatus, {
               workspaceId: auth.workspaceId,
               parentId: parentId as Id<"tickets"> | null,
-              status: status as "unclaimed" | "in_progress" | "done",
+              status: status as "backlog" | "unclaimed" | "in_progress" | "done",
               limit,
               agentApiKeyId: auth.apiKeyId,
             })
           : await convex.query(api.tickets.listByParentAndStatus, {
               workspaceId: auth.workspaceId,
               parentId: parentId as Id<"tickets"> | null,
-              status: status as "unclaimed" | "in_progress" | "done",
+              status: status as "backlog" | "unclaimed" | "in_progress" | "done",
               limit,
               agentApiKeyId: auth.apiKeyId,
             });
@@ -93,13 +93,13 @@ export async function GET(request: NextRequest) {
       tickets = useSummaryFields
         ? await convex.query(api.tickets.listSummariesByStatus, {
             workspaceId: auth.workspaceId,
-            status: status as "unclaimed" | "in_progress" | "done",
+            status: status as "backlog" | "unclaimed" | "in_progress" | "done",
             limit,
             agentApiKeyId: auth.apiKeyId,
           })
         : await convex.query(api.tickets.listByStatus, {
             workspaceId: auth.workspaceId,
-            status: status as "unclaimed" | "in_progress" | "done",
+            status: status as "backlog" | "unclaimed" | "in_progress" | "done",
             limit,
             agentApiKeyId: auth.apiKeyId,
           });
@@ -157,6 +157,11 @@ export async function POST(request: NextRequest) {
       typeof body.priority === "string" && validPriorities.includes(body.priority)
         ? (body.priority as (typeof validPriorities)[number])
         : undefined;
+    const validStatuses = ["backlog", "unclaimed"] as const;
+    const createStatus =
+      typeof body.status === "string" && validStatuses.includes(body.status as typeof validStatuses[number])
+        ? (body.status as "backlog" | "unclaimed")
+        : undefined;
     const parentIdRaw = body.parentId;
     const parentId =
       parentIdRaw === undefined || parentIdRaw === null || parentIdRaw === ""
@@ -179,6 +184,7 @@ export async function POST(request: NextRequest) {
         description,
         parentId: parentId as Id<"tickets"> | null,
         ...(priority ? { priority } : {}),
+        ...(createStatus ? { status: createStatus } : {}),
         actor: {
           type: "agent",
           id: auth.apiKeyId,

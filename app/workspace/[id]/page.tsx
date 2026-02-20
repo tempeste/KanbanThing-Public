@@ -16,6 +16,7 @@ import { deriveVisibleTickets, type BoardSortOption } from "@/lib/ticket-derivat
 import { Search, X, Download } from "lucide-react";
 
 const STATUS_ACCENTS = {
+  backlog: "var(--backlog)",
   unclaimed: "var(--unclaimed)",
   in_progress: "var(--in-progress)",
   done: "var(--done)",
@@ -154,6 +155,7 @@ export default function WorkspacePage() {
   }
 
   const workspacePrefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
+  const backlogCount = visibleTickets.filter((ticket) => ticket.status === "backlog").length;
   const doneCount = visibleTickets.filter((ticket) => ticket.status === "done").length;
   const inProgressCount = visibleTickets.filter(
     (ticket) => ticket.status === "in_progress"
@@ -299,6 +301,15 @@ export default function WorkspacePage() {
       </header>
 
       <div className="flex h-10 items-center gap-4 border-b border-b-muted bg-background px-4 md:gap-8 md:px-7">
+        {backlogCount > 0 && (
+          <div className="hidden items-center gap-2 md:flex">
+            <span className="h-2 w-2" style={{ background: STATUS_ACCENTS.backlog }} />
+            <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/70">Backlog</span>
+            <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.backlog }}>
+              {backlogCount}
+            </span>
+          </div>
+        )}
         <div className="hidden items-center gap-2 md:flex">
           <span className="h-2 w-2" style={{ background: STATUS_ACCENTS.unclaimed }} />
           <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/70">Unclaimed</span>
@@ -322,6 +333,11 @@ export default function WorkspacePage() {
         </div>
         {/* Mobile: compact status counts */}
         <div className="flex items-center gap-3 md:hidden">
+          {backlogCount > 0 && (
+            <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.backlog }}>
+              {backlogCount}
+            </span>
+          )}
           <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.unclaimed }}>
             {unclaimedCount}
           </span>

@@ -32,6 +32,7 @@ export default function NewTicketPage() {
   const [description, setDescription] = useState("");
   const [parentId, setParentId] = useState<Id<"tickets"> | null>(null);
   const [priority, setPriority] = useState<TicketPriority>("none");
+  const [initialStatus, setInitialStatus] = useState<"unclaimed" | "backlog">("unclaimed");
   const [isSaving, setIsSaving] = useState(false);
 
   // Sync parentId from query param during render
@@ -59,6 +60,7 @@ export default function NewTicketPage() {
         description: description.trim(),
         parentId: parentId ?? null,
         ...(priority !== "none" ? { priority } : {}),
+        ...(initialStatus !== "unclaimed" ? { status: initialStatus } : {}),
       });
       router.push(`/workspace/${workspaceId}/tickets/${id}`);
     } finally {
@@ -162,6 +164,21 @@ export default function NewTicketPage() {
                       : PRIORITY_META[p].label}
                   </option>
                 ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="status" className="kb-label">
+                Initial Status
+              </Label>
+              <select
+                id="status"
+                value={initialStatus}
+                onChange={(event) => setInitialStatus(event.target.value as "unclaimed" | "backlog")}
+                className="flex h-10 w-full border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_option]:bg-background [&_option]:text-foreground"
+              >
+                <option value="unclaimed">Unclaimed</option>
+                <option value="backlog">Backlog</option>
               </select>
             </div>
 

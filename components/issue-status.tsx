@@ -2,9 +2,14 @@
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Circle, Clock } from "lucide-react";
+import { CheckCircle2, Circle, Clock, Inbox } from "lucide-react";
 
 export const STATUS_META = {
+  backlog: {
+    label: "Backlog",
+    Icon: Inbox,
+    colorClass: "border-backlog/45 bg-backlog/10 text-backlog",
+  },
   unclaimed: {
     label: "Unclaimed",
     Icon: Circle,

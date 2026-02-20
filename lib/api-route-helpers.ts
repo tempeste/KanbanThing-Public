@@ -13,7 +13,7 @@ const INVALID_ID_ERROR_PATTERNS = [
 
 const LEAKY_ERROR_PATTERNS = ["Request ID", "convex/", "[Request ID:"] as const;
 
-export const TICKET_STATUS_VALUES = ["unclaimed", "in_progress", "done"] as const;
+export const TICKET_STATUS_VALUES = ["backlog", "unclaimed", "in_progress", "done"] as const;
 
 export const jsonError = (
   error: string,

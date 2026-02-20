@@ -90,10 +90,15 @@ describe("ticket derivations", () => {
     ]);
   });
 
-  it("groups visible tickets by status", () => {
-    const visible = deriveVisibleTickets(tickets, false);
+  it("groups visible tickets by status including backlog", () => {
+    const withBacklog = [
+      ...tickets,
+      createTicket({ _id: t("bl"), title: "Backlog Idea", status: "backlog", order: 1, createdAt: 1 }),
+    ];
+    const visible = deriveVisibleTickets(withBacklog, false);
     const byStatus = deriveTicketsByStatus(visible);
 
+    expect(byStatus.backlog.map((ticket) => ticket._id)).toEqual([t("bl")]);
     expect(byStatus.unclaimed.map((ticket) => ticket._id)).toEqual([t("a")]);
     expect(byStatus.in_progress.map((ticket) => ticket._id)).toEqual([t("b")]);
     expect(byStatus.done.map((ticket) => ticket._id)).toEqual([t("c")]);
@@ -199,9 +204,14 @@ describe("ticket derivations", () => {
       expect(rows.map((r) => r.ticket._id)).toEqual([t("f3"), t("f1"), t("f2")]);
     });
 
-    it("sorts by status", () => {
-      const rows = deriveSortedFlatRows(flatTickets, "status", "asc");
+    it("sorts by status with backlog first", () => {
+      const withBacklog = [
+        ...flatTickets,
+        createTicket({ _id: t("f0"), title: "Idea", number: 0, status: "backlog" }),
+      ];
+      const rows = deriveSortedFlatRows(withBacklog, "status", "asc");
       expect(rows.map((r) => r.ticket.status)).toEqual([
+        "backlog",
         "unclaimed",
         "in_progress",
         "done",

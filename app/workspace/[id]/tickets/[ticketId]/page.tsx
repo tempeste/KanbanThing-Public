@@ -230,10 +230,10 @@ export default function TicketDetailPage() {
   const effectiveTicket = {
     ...ticket,
     status: effectiveStatus,
-    ownerId: effectiveStatus === "unclaimed" ? undefined : ticket.ownerId,
-    ownerType: effectiveStatus === "unclaimed" ? undefined : ticket.ownerType,
+    ownerId: effectiveStatus === "unclaimed" || effectiveStatus === "backlog" ? undefined : ticket.ownerId,
+    ownerType: effectiveStatus === "unclaimed" || effectiveStatus === "backlog" ? undefined : ticket.ownerType,
     ownerDisplayName:
-      effectiveStatus === "unclaimed" ? undefined : ticket.ownerDisplayName,
+      effectiveStatus === "unclaimed" || effectiveStatus === "backlog" ? undefined : ticket.ownerDisplayName,
   };
 
   const formatActorName = (

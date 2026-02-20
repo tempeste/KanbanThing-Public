@@ -41,6 +41,7 @@ export default defineSchema({
     order: v.optional(v.number()),
     archived: v.optional(v.boolean()),
     status: v.union(
+      v.literal("backlog"),
       v.literal("unclaimed"),
       v.literal("in_progress"),
       v.literal("done")

@@ -68,13 +68,17 @@ export const TicketTableRow = memo(function TicketTableRow({
       ? "var(--done)"
       : ticket.status === "in_progress"
         ? "var(--in-progress)"
-        : "var(--unclaimed)";
+        : ticket.status === "backlog"
+          ? "var(--backlog)"
+          : "var(--unclaimed)";
   const statusLabel =
     ticket.status === "done"
       ? "DONE"
       : ticket.status === "in_progress"
         ? "IN PROGRESS"
-        : "UNCLAIMED";
+        : ticket.status === "backlog"
+          ? "BACKLOG"
+          : "UNCLAIMED";
   const ownerLabel = ticket.ownerDisplayName || ticket.ownerId || "\u2014";
 
   return (

@@ -40,8 +40,10 @@ interface KanbanBoardProps {
   compact?: boolean;
 }
 
-const STATUS_COLUMNS: Status[] = ["unclaimed", "in_progress", "done"];
+const ALL_STATUSES: Status[] = ["backlog", "unclaimed", "in_progress", "done"];
+const DEFAULT_VISIBLE = new Set<Status>(["unclaimed", "in_progress", "done"]);
 const STATUS_META: Record<Status, { label: string; accent: string }> = {
+  backlog: { label: "BACKLOG", accent: "var(--backlog)" },
   unclaimed: { label: "UNCLAIMED", accent: "var(--unclaimed)" },
   in_progress: { label: "IN PROGRESS", accent: "var(--in-progress)" },
   done: { label: "DONE", accent: "var(--done)" },
@@ -84,9 +86,14 @@ export function KanbanBoard({
     status: Status | null;
   } | null>(null);
 
-  const unclaimedColumnRef = useRef<HTMLDivElement | null>(null);
-  const inProgressColumnRef = useRef<HTMLDivElement | null>(null);
-  const doneColumnRef = useRef<HTMLDivElement | null>(null);
+  const [visibleStatuses, setVisibleStatuses] = useState<Set<Status>>(DEFAULT_VISIBLE);
+
+  const columnRefs = useRef<Record<Status, HTMLDivElement | null>>({
+    backlog: null,
+    unclaimed: null,
+    in_progress: null,
+    done: null,
+  });
 
   const moveTicket = useMutation(api.tickets.move);
   const assignTicket = useMutation(api.tickets.assign);
@@ -121,8 +128,8 @@ export function KanbanBoard({
 
       if (override === null) {
         const ownerCleared = !ticket.ownerId && !ticket.ownerType;
-        const statusUnclaimed = ticket.status === "unclaimed";
-        if (ownerCleared || statusUnclaimed) {
+        const statusUnowned = ticket.status === "unclaimed" || ticket.status === "backlog";
+        if (ownerCleared || statusUnowned) {
           next.delete(ticket._id);
         }
         continue;
@@ -179,36 +186,50 @@ export function KanbanBoard({
     [visibleTickets, sortBy]
   );
 
+  const backlogVirtualizer = useVirtualizer({
+    count: ticketsByStatus.backlog?.length ?? 0,
+    getScrollElement: () => columnRefs.current.backlog,
+    estimateSize: () => 120,
+    overscan: 10,
+  });
   const unclaimedVirtualizer = useVirtualizer({
     count: ticketsByStatus.unclaimed.length,
-    getScrollElement: () => unclaimedColumnRef.current,
+    getScrollElement: () => columnRefs.current.unclaimed,
     estimateSize: () => 120,
     overscan: 10,
   });
   const inProgressVirtualizer = useVirtualizer({
     count: ticketsByStatus.in_progress.length,
-    getScrollElement: () => inProgressColumnRef.current,
+    getScrollElement: () => columnRefs.current.in_progress,
     estimateSize: () => 120,
     overscan: 10,
   });
   const doneVirtualizer = useVirtualizer({
     count: ticketsByStatus.done.length,
-    getScrollElement: () => doneColumnRef.current,
+    getScrollElement: () => columnRefs.current.done,
     estimateSize: () => 120,
     overscan: 10,
   });
 
-  const getColumnRef = (status: Status) => {
-    if (status === "unclaimed") return unclaimedColumnRef;
-    if (status === "in_progress") return inProgressColumnRef;
-    return doneColumnRef;
+  const virtualizerMap = {
+    backlog: backlogVirtualizer,
+    unclaimed: unclaimedVirtualizer,
+    in_progress: inProgressVirtualizer,
+    done: doneVirtualizer,
   };
 
-  const getColumnVirtualizer = (status: Status) => {
-    if (status === "unclaimed") return unclaimedVirtualizer;
-    if (status === "in_progress") return inProgressVirtualizer;
-    return doneVirtualizer;
-  };
+  const toggleColumnVisibility = useCallback((status: Status) => {
+    setVisibleStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        if (next.size <= 1) return prev;
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  }, []);
 
   const flushDragState = useCallback(() => {
     dragRafRef.current = null;
@@ -334,7 +355,7 @@ export function KanbanBoard({
       }
     }
 
-    if (nextStatus === "unclaimed") {
+    if (nextStatus === "unclaimed" || nextStatus === "backlog") {
       applyOptimisticOwner(ticketId, null);
     }
   };
@@ -362,7 +383,7 @@ export function KanbanBoard({
       });
     }
 
-    if (status === "unclaimed") {
+    if (status === "unclaimed" || status === "backlog") {
       applyOptimisticOwner(ticketId, null);
     }
 
@@ -434,23 +455,43 @@ export function KanbanBoard({
     [router, workspaceId]
   );
 
+  const displayedStatuses = ALL_STATUSES.filter((s) => visibleStatuses.has(s));
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex items-center gap-1.5 border-b border-border/60 px-4 py-2">
+        <span className="kb-label mr-1">Columns</span>
+        {ALL_STATUSES.map((s) => {
+          const active = visibleStatuses.has(s);
+          return (
+            <button
+              key={s}
+              onClick={() => toggleColumnVisibility(s)}
+              className={`rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors ${
+                active
+                  ? "border-foreground/20 bg-foreground/5 text-foreground"
+                  : "border-transparent bg-transparent text-muted-foreground/50 hover:text-muted-foreground"
+              }`}
+            >
+              {STATUS_META[s].label}
+            </button>
+          );
+        })}
+      </div>
       <div className="kb-scroll flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto md:snap-none md:overflow-x-hidden">
-        {STATUS_COLUMNS.map((status, index) => {
+        {displayedStatuses.map((status, index) => {
         const statusMeta = STATUS_META[status];
         const countLabel = (ticketsByStatus[status]?.length ?? 0)
           .toString()
           .padStart(2, "0");
-        const columnRef = getColumnRef(status);
-        const virtualizer = getColumnVirtualizer(status);
+        const virtualizer = virtualizerMap[status];
         const columnTickets = ticketsByStatus[status] ?? [];
 
           return (
             <section
             key={status}
             className={`flex min-h-0 min-w-[85vw] shrink-0 snap-center flex-col border-border md:min-w-0 md:flex-1 ${
-              index < STATUS_COLUMNS.length - 1 ? "border-r" : ""
+              index < displayedStatuses.length - 1 ? "border-r" : ""
             } ${dragOverStatus === status ? "bg-white/[0.02]" : ""}`}
             onDragOver={(event) => {
               event.preventDefault();
@@ -498,7 +539,7 @@ export function KanbanBoard({
               </span>
             </div>
 
-            <div ref={columnRef} className="kb-scroll h-full overflow-auto px-3 py-3">
+            <div ref={(el) => { columnRefs.current[status] = el; }} className="kb-scroll h-full overflow-auto px-3 py-3">
               {columnTickets.length === 0 && (
                 <div className="pt-4 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">
                   No issues

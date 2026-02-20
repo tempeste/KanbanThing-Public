@@ -2,7 +2,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { TicketStatus, TicketSummary } from "@/lib/ticket-summary";
 import { type TicketPriority } from "@/lib/priority";
 
-const STATUSES: TicketStatus[] = ["unclaimed", "in_progress", "done"];
+const STATUSES: TicketStatus[] = ["backlog", "unclaimed", "in_progress", "done"];
 
 export const getTicketOrderValue = (ticket: Pick<TicketSummary, "order" | "createdAt">) =>
   ticket.order ?? ticket.createdAt;
@@ -109,9 +109,10 @@ export type SortColumn = "number" | "title" | "assignee" | "status";
 export type SortDirection = "asc" | "desc";
 
 const STATUS_ORDER: Record<TicketStatus, number> = {
-  unclaimed: 0,
-  in_progress: 1,
-  done: 2,
+  backlog: 0,
+  unclaimed: 1,
+  in_progress: 2,
+  done: 3,
 };
 
 export const deriveSortedFlatRows = (

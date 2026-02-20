@@ -1,4 +1,4 @@
-export type TicketStatus = "unclaimed" | "in_progress" | "done";
+export type TicketStatus = "backlog" | "unclaimed" | "in_progress" | "done";
 export type TransitionClass = "standard" | "non_standard";
 
 export const getTransitionClass = (
@@ -9,6 +9,7 @@ export const getTransitionClass = (
     return "standard";
   }
   if (
+    (from === "backlog" && to === "unclaimed") ||
     (from === "unclaimed" && to === "in_progress") ||
     (from === "in_progress" && to === "done")
   ) {

@@ -11,6 +11,7 @@ import {
 } from "./statusPolicy";
 
 const Status = v.union(
+  v.literal("backlog"),
   v.literal("unclaimed"),
   v.literal("in_progress"),
   v.literal("done")
@@ -389,6 +390,7 @@ export const create = mutation({
     description: v.string(),
     parentId: v.optional(v.union(v.id("tickets"), v.null())),
     priority: v.optional(Priority),
+    status: v.optional(v.union(v.literal("backlog"), v.literal("unclaimed"))),
     actor: v.optional(actorValidator),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
@@ -431,7 +433,7 @@ export const create = mutation({
       parentId,
       order: now,
       archived: parent ? (parent.archived ?? false) : false,
-      status: "unclaimed",
+      status: args.status ?? "unclaimed",
       priority: args.priority ?? "none",
       childCount: 0,
       childDoneCount: 0,
@@ -595,7 +597,7 @@ const applyStatusChange = async (
     status,
     updatedAt: Date.now(),
   };
-  if (status === "unclaimed") {
+  if (status === "unclaimed" || status === "backlog") {
     updates.ownerId = undefined;
     updates.ownerType = undefined;
     updates.ownerDisplayName = undefined;
@@ -746,6 +748,9 @@ export const assign = mutation({
     if (args.agentApiKeyId && args.ownerType !== "agent") {
       throw new Error("Agent API assignments must use ownerType \"agent\"");
     }
+    if (ticket.status === "backlog") {
+      throw new Error("Cannot assign a backlog ticket. Promote to unclaimed first.");
+    }
 
     const prevOwner = {
       ownerId: ticket.ownerId ?? null,
@@ -894,7 +899,7 @@ export const updateStatus = mutation({
         actor: args.actor,
       });
     }
-    if (args.status === "unclaimed" && (prevOwner.ownerId || prevOwner.ownerType)) {
+    if ((args.status === "unclaimed" || args.status === "backlog") && (prevOwner.ownerId || prevOwner.ownerType)) {
       await logTicketActivity(ctx, {
         workspaceId: ticket.workspaceId,
         ticketId: ticket._id,
@@ -955,7 +960,7 @@ export const move = mutation({
         actor: args.actor,
       });
     }
-    if (args.status === "unclaimed" && (prevOwner.ownerId || prevOwner.ownerType)) {
+    if ((args.status === "unclaimed" || args.status === "backlog") && (prevOwner.ownerId || prevOwner.ownerType)) {
       await logTicketActivity(ctx, {
         workspaceId: ticket.workspaceId,
         ticketId: ticket._id,
