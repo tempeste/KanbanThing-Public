@@ -8,6 +8,7 @@ import { formatTicketNumber } from "@/lib/utils";
 import { IssueStatus } from "@/components/issue-status";
 import { TicketActionsMenu } from "@/components/ticket-actions-menu";
 import { TicketSummary } from "@/lib/ticket-summary";
+import { PRIORITY_META, type TicketPriority } from "@/lib/priority";
 
 interface TicketTableRowProps {
   ticket: TicketSummary;
@@ -56,6 +57,8 @@ export const TicketTableRow = memo(function TicketTableRow({
   const progressTotal = ticket.childCount ?? 0;
   const progressDone = ticket.childDoneCount ?? 0;
   const isArchived = ticket.archived ?? false;
+  const priority = (ticket.priority ?? "none") as TicketPriority;
+  const priorityMeta = PRIORITY_META[priority];
   const statusAccent =
     ticket.status === "done"
       ? "var(--done)"
@@ -125,6 +128,11 @@ export const TicketTableRow = memo(function TicketTableRow({
             <span className="font-bold" style={{ color: statusAccent }}>
               {statusLabel}
             </span>
+            {priority !== "none" && (
+              <span className="font-bold" style={{ color: priorityMeta.color }}>
+                {priorityMeta.shortLabel}
+              </span>
+            )}
             {ticket.ownerId && (
               <span className="flex items-center gap-1">
                 {ticket.ownerType === "agent" ? (
@@ -251,11 +259,21 @@ export const TicketTableRow = memo(function TicketTableRow({
           )}
         </div>
 
-        <div
-          className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.1em]"
-          style={{ color: statusAccent }}
-        >
-          {statusLabel}
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.1em]"
+            style={{ color: statusAccent }}
+          >
+            {statusLabel}
+          </span>
+          {priority !== "none" && (
+            <span
+              className="inline-flex shrink-0 border px-1.5 py-0.5 font-mono text-[9px] font-black uppercase tracking-[0.08em] text-black"
+              style={{ backgroundColor: priorityMeta.color, borderColor: priorityMeta.color }}
+            >
+              {priorityMeta.shortLabel}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-1.5">

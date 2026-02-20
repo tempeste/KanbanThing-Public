@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import { IssueStatus, STATUS_META } from "@/components/issue-status";
 import { AssigneePicker } from "@/components/assignee-picker";
+import { PRIORITY_META, PRIORITY_ORDER, type TicketPriority } from "@/lib/priority";
 import { ExternalLink } from "lucide-react";
 
 type Ticket = Doc<"tickets">;
@@ -15,6 +16,7 @@ interface IssueSidebarProps {
   progressTotal: number;
   progressPct: number;
   onStatusChange: (status: IssueStatus) => void;
+  onPriorityChange: (priority: TicketPriority) => void;
 }
 
 export function IssueSidebar({
@@ -24,6 +26,7 @@ export function IssueSidebar({
   progressTotal,
   progressPct,
   onStatusChange,
+  onPriorityChange,
 }: IssueSidebarProps) {
   return (
     <aside className="space-y-0 lg:sticky lg:top-6 lg:self-start">
@@ -39,6 +42,24 @@ export function IssueSidebar({
             {Object.entries(STATUS_META).map(([status, config]) => (
               <option key={status} value={status}>
                 {config.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Priority */}
+        <div className="px-4 py-3">
+          <div className="kb-label mb-2">Priority</div>
+          <select
+            className="flex h-8 w-full border border-input bg-background/70 px-2.5 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+            value={ticket.priority ?? "none"}
+            onChange={(event) => onPriorityChange(event.target.value as TicketPriority)}
+          >
+            {PRIORITY_ORDER.map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY_META[p].shortLabel !== "—"
+                  ? `${PRIORITY_META[p].shortLabel} — ${PRIORITY_META[p].label}`
+                  : PRIORITY_META[p].label}
               </option>
             ))}
           </select>

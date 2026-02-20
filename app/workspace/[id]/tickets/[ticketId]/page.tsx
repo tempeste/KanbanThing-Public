@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { formatTicketNumber, generateWorkspacePrefix } from "@/lib/utils";
 import { IssueStatusBadge, STATUS_META, IssueStatus } from "@/components/issue-status";
+import { PRIORITY_META, type TicketPriority } from "@/lib/priority";
 import { SubIssuesCard } from "@/components/issue-detail/sub-issues-card";
 import { IssueSidebar } from "@/components/issue-detail/issue-sidebar";
 import { ArchivedBadge } from "@/components/archived-badge";
@@ -279,6 +280,8 @@ export default function TicketDetailPage() {
               return "parent";
             case "archived":
               return "archive status";
+            case "priority":
+              return "priority";
             default:
               return field;
           }
@@ -450,6 +453,17 @@ export default function TicketDetailPage() {
                     {ticketNumber}
                   </span>
                   <IssueStatusBadge status={effectiveStatus} />
+                  {ticket.priority && ticket.priority !== "none" && (
+                    <span
+                      className="inline-flex border px-1.5 py-0.5 font-mono text-[10px] font-black uppercase tracking-[0.1em] text-black"
+                      style={{
+                        backgroundColor: PRIORITY_META[ticket.priority].color,
+                        borderColor: PRIORITY_META[ticket.priority].color,
+                      }}
+                    >
+                      {PRIORITY_META[ticket.priority].shortLabel}
+                    </span>
+                  )}
                   {progressTotal > 0 && (
                     <Badge variant="outline" className="text-[10px] font-mono">
                       {progressDone}/{progressTotal}
@@ -764,6 +778,14 @@ export default function TicketDetailPage() {
                   status,
                 }).catch((error) => {
                   setOptimisticStatus(null);
+                  console.error(error);
+                });
+              }}
+              onPriorityChange={(priority: TicketPriority) => {
+                updateTicket({
+                  id: ticket._id,
+                  priority,
+                }).catch((error) => {
                   console.error(error);
                 });
               }}

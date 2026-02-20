@@ -15,6 +15,13 @@ const Status = v.union(
   v.literal("in_progress"),
   v.literal("done")
 );
+const Priority = v.union(
+  v.literal("none"),
+  v.literal("low"),
+  v.literal("medium"),
+  v.literal("high"),
+  v.literal("urgent")
+);
 const MAX_TITLE_LENGTH = 300;
 const MAX_DESCRIPTION_LENGTH = 20_000;
 const MAX_LIST_LIMIT = 500;
@@ -36,6 +43,7 @@ const toTicketSummary = (ticket: {
   order?: number;
   archived?: boolean;
   status: TicketStatus;
+  priority?: "none" | "low" | "medium" | "high" | "urgent";
   childCount: number;
   childDoneCount: number;
   ownerId?: string;
@@ -52,6 +60,7 @@ const toTicketSummary = (ticket: {
   order: ticket.order,
   archived: ticket.archived,
   status: ticket.status,
+  priority: ticket.priority,
   childCount: ticket.childCount,
   childDoneCount: ticket.childDoneCount,
   ownerId: ticket.ownerId,
@@ -379,6 +388,7 @@ export const create = mutation({
     title: v.string(),
     description: v.string(),
     parentId: v.optional(v.union(v.id("tickets"), v.null())),
+    priority: v.optional(Priority),
     actor: v.optional(actorValidator),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
@@ -422,6 +432,7 @@ export const create = mutation({
       order: now,
       archived: parent ? (parent.archived ?? false) : false,
       status: "unclaimed",
+      priority: args.priority ?? "none",
       childCount: 0,
       childDoneCount: 0,
       createdAt: now,
@@ -450,13 +461,14 @@ export const update = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     parentId: v.optional(v.union(v.id("tickets"), v.null())),
+    priority: v.optional(Priority),
     order: v.optional(v.number()),
     archived: v.optional(v.boolean()),
     actor: v.optional(actorValidator),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
-    const { id, parentId, archived, actor, agentApiKeyId, ...updates } = args;
+    const { id, parentId, priority, archived, actor, agentApiKeyId, ...updates } = args;
     const ticket = await ctx.db.get(id);
     if (!ticket) {
       throw new Error("Ticket not found");
@@ -496,6 +508,9 @@ export const update = mutation({
     if (args.order !== undefined && args.order !== ticket.order) {
       changes.order = { from: ticket.order ?? null, to: args.order };
     }
+    if (priority !== undefined && priority !== (ticket.priority ?? "none")) {
+      changes.priority = { from: ticket.priority ?? "none", to: priority };
+    }
 
     await ensureValidParent(ctx, ticket.workspaceId, id, nextParentId ?? null);
     const nextParent = nextParentId ? await ctx.db.get(nextParentId) : null;
@@ -533,6 +548,7 @@ export const update = mutation({
     await ctx.db.patch(id, {
       ...updates,
       parentId: nextParentId ?? null,
+      ...(priority !== undefined ? { priority } : {}),
       archived: nextArchived,
       updatedAt: Date.now(),
     });

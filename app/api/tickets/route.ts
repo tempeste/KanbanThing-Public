@@ -152,6 +152,11 @@ export async function POST(request: NextRequest) {
 
     const title = body.title.trim();
     const description = typeof body.description === "string" ? body.description : "";
+    const validPriorities = ["none", "low", "medium", "high", "urgent"] as const;
+    const priority =
+      typeof body.priority === "string" && validPriorities.includes(body.priority)
+        ? (body.priority as (typeof validPriorities)[number])
+        : undefined;
     const parentIdRaw = body.parentId;
     const parentId =
       parentIdRaw === undefined || parentIdRaw === null || parentIdRaw === ""
@@ -173,6 +178,7 @@ export async function POST(request: NextRequest) {
         title,
         description,
         parentId: parentId as Id<"tickets"> | null,
+        ...(priority ? { priority } : {}),
         actor: {
           type: "agent",
           id: auth.apiKeyId,

@@ -8,6 +8,7 @@ import { formatTicketNumber } from "@/lib/utils";
 import { IssueStatus } from "@/components/issue-status";
 import { TicketActionsMenu } from "@/components/ticket-actions-menu";
 import { TicketSummary } from "@/lib/ticket-summary";
+import { PRIORITY_META, type TicketPriority } from "@/lib/priority";
 
 interface TicketCardProps {
   ticket: TicketSummary;
@@ -51,8 +52,8 @@ export const TicketCard = memo(function TicketCard({
   const progressDone = ticket.childDoneCount ?? 0;
   const isArchived = ticket.archived ?? false;
   const progressPct = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : 0;
-  const priorityLabel = ticket.status === "done" ? "P0" : ticket.status === "in_progress" ? "P1" : "P2";
-  const priorityColor = ticket.status === "done" ? "var(--unclaimed)" : ticket.status === "in_progress" ? "var(--in-progress)" : "var(--muted-foreground)";
+  const priority = (ticket.priority ?? "none") as TicketPriority;
+  const priorityMeta = PRIORITY_META[priority];
   const ownerLabel = ticket.ownerDisplayName || ticket.ownerId || "";
   const ownerIsAgent = ticket.ownerType === "agent";
 
@@ -112,12 +113,14 @@ export const TicketCard = memo(function TicketCard({
         </div>
 
         <div className="flex shrink-0 items-start gap-2">
-          <span
-            className="inline-flex border px-2 py-1 font-mono text-[10px] font-black uppercase tracking-[0.12em] text-black"
-            style={{ backgroundColor: priorityColor, borderColor: priorityColor }}
-          >
-            {priorityLabel}
-          </span>
+          {priority !== "none" && (
+            <span
+              className="inline-flex border px-2 py-1 font-mono text-[10px] font-black uppercase tracking-[0.12em] text-black"
+              style={{ backgroundColor: priorityMeta.color, borderColor: priorityMeta.color }}
+            >
+              {priorityMeta.shortLabel}
+            </span>
+          )}
           <div className="opacity-0 transition-opacity group-hover:opacity-100">
             <TicketActionsMenu
               isArchived={isArchived}

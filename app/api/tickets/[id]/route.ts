@@ -64,6 +64,7 @@ export async function PATCH(
       title?: string;
       description?: string;
       parentId?: Id<"tickets"> | null;
+      priority?: "none" | "low" | "medium" | "high" | "urgent";
       archived?: boolean;
       order?: number;
     } = {};
@@ -90,6 +91,14 @@ export async function PATCH(
       } else {
         return jsonError("Invalid parentId", 400);
       }
+    }
+
+    if (body.priority !== undefined) {
+      const validPriorities = ["none", "low", "medium", "high", "urgent"];
+      if (typeof body.priority !== "string" || !validPriorities.includes(body.priority)) {
+        return jsonError("Invalid priority", 400);
+      }
+      updates.priority = body.priority as typeof updates.priority;
     }
 
     if (body.archived !== undefined) {

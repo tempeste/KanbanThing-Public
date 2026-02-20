@@ -14,6 +14,7 @@ import { Card } from "@/components/ui/card";
 import { Markdown } from "@/components/markdown";
 import { ArrowLeft, Plus } from "lucide-react";
 import { formatTicketNumber, generateWorkspacePrefix } from "@/lib/utils";
+import { PRIORITY_META, PRIORITY_ORDER, type TicketPriority } from "@/lib/priority";
 
 export default function NewTicketPage() {
   const params = useParams();
@@ -30,6 +31,7 @@ export default function NewTicketPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [parentId, setParentId] = useState<Id<"tickets"> | null>(null);
+  const [priority, setPriority] = useState<TicketPriority>("none");
   const [isSaving, setIsSaving] = useState(false);
 
   // Sync parentId from query param during render
@@ -56,6 +58,7 @@ export default function NewTicketPage() {
         title: title.trim(),
         description: description.trim(),
         parentId: parentId ?? null,
+        ...(priority !== "none" ? { priority } : {}),
       });
       router.push(`/workspace/${workspaceId}/tickets/${id}`);
     } finally {
@@ -137,6 +140,26 @@ export default function NewTicketPage() {
                 {tickets.map((ticket) => (
                   <option key={ticket._id} value={ticket._id}>
                     {formatTicketNumber(workspacePrefix, ticket.number) ?? "--"} · {ticket.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="priority" className="kb-label">
+                Priority
+              </Label>
+              <select
+                id="priority"
+                value={priority}
+                onChange={(event) => setPriority(event.target.value as TicketPriority)}
+                className="flex h-10 w-full border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_option]:bg-background [&_option]:text-foreground"
+              >
+                {PRIORITY_ORDER.map((p) => (
+                  <option key={p} value={p}>
+                    {PRIORITY_META[p].shortLabel !== "—"
+                      ? `${PRIORITY_META[p].shortLabel} — ${PRIORITY_META[p].label}`
+                      : PRIORITY_META[p].label}
                   </option>
                 ))}
               </select>

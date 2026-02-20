@@ -47,6 +47,13 @@ export default defineSchema({
     ),
     childCount: v.number(),
     childDoneCount: v.number(),
+    priority: v.optional(v.union(
+      v.literal("none"),
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent")
+    )),
     ownerId: v.optional(v.string()),
     ownerType: v.optional(v.union(v.literal("user"), v.literal("agent"))),
     ownerDisplayName: v.optional(v.string()), // Cached display name for UI
