@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -73,6 +73,8 @@ export function TicketTable({
     id: Id<"tickets"> | null;
     position: DragOverPosition;
   } | null>(null);
+
+  const workspaceTags = useQuery(api.tags.list, { workspaceId });
 
   const updateStatus = useMutation(api.tickets.updateStatus);
   const updateTicket = useMutation(api.tickets.update);
@@ -729,6 +731,7 @@ export function TicketTable({
                     ticket={ticket}
                     workspaceId={workspaceId}
                     workspacePrefix={workspacePrefix}
+                    workspaceTags={workspaceTags}
                     gridTemplate={gridTemplate}
                     parentTicket={parentTicket}
                     depth={depth}

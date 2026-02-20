@@ -86,6 +86,8 @@ export function KanbanBoard({
     status: Status | null;
   } | null>(null);
 
+  const workspaceTags = useQuery(api.tags.list, { workspaceId });
+
   const [visibleStatuses, setVisibleStatuses] = useState<Set<Status>>(DEFAULT_VISIBLE);
 
   const columnRefs = useRef<Record<Status, HTMLDivElement | null>>({
@@ -569,6 +571,7 @@ export function KanbanBoard({
                           ticket={ticket}
                           workspaceId={workspaceId}
                           workspacePrefix={workspacePrefix}
+                          workspaceTags={workspaceTags}
                           parentTicket={parentTicket}
                           accent={statusMeta.accent}
                           isDragOver={dragOverTicketId === ticket._id}

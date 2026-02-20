@@ -7,6 +7,7 @@ type TicketSummary = Pick<
   | "number"
   | "status"
   | "priority"
+  | "tags"
   | "ownerId"
   | "ownerType"
   | "ownerDisplayName"
@@ -26,6 +27,7 @@ export const serializeTicket = (t: Doc<"tickets">) => ({
   number: t.number ?? null,
   status: t.status,
   priority: t.priority ?? "none",
+  tags: t.tags ?? [],
   ownerId: t.ownerId ?? null,
   ownerType: t.ownerType ?? null,
   ownerDisplayName: t.ownerDisplayName ?? null,
@@ -45,6 +47,7 @@ export const serializeTicketSummary = (t: TicketSummary) => ({
   number: t.number ?? null,
   status: t.status,
   priority: t.priority ?? "none",
+  tags: t.tags ?? [],
   ownerId: t.ownerId ?? null,
   ownerType: t.ownerType ?? null,
   ownerDisplayName: t.ownerDisplayName ?? null,

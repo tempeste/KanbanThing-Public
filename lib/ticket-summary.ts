@@ -13,6 +13,7 @@ export type TicketSummary = Pick<
   | "archived"
   | "status"
   | "priority"
+  | "tags"
   | "childCount"
   | "childDoneCount"
   | "ownerId"

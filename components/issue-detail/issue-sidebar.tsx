@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import { IssueStatus, STATUS_META } from "@/components/issue-status";
 import { AssigneePicker } from "@/components/assignee-picker";
+import { TagPicker } from "@/components/tag-picker";
 import { PRIORITY_META, PRIORITY_ORDER, type TicketPriority } from "@/lib/priority";
 import { ExternalLink } from "lucide-react";
 
@@ -74,6 +75,16 @@ export function IssueSidebar({
             currentOwnerId={ticket.ownerId}
             currentOwnerType={ticket.ownerType}
             currentOwnerDisplayName={ticket.ownerDisplayName}
+          />
+        </div>
+
+        {/* Tags */}
+        <div className="px-4 py-3">
+          <div className="kb-label mb-2">Tags</div>
+          <TagPicker
+            workspaceId={workspaceId}
+            ticketId={ticket._id}
+            currentTags={ticket.tags ?? []}
           />
         </div>
 

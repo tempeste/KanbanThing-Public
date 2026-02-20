@@ -45,6 +45,7 @@ const toTicketSummary = (ticket: {
   archived?: boolean;
   status: TicketStatus;
   priority?: "none" | "low" | "medium" | "high" | "urgent";
+  tags?: Id<"workspaceTags">[];
   childCount: number;
   childDoneCount: number;
   ownerId?: string;
@@ -62,6 +63,7 @@ const toTicketSummary = (ticket: {
   archived: ticket.archived,
   status: ticket.status,
   priority: ticket.priority,
+  tags: ticket.tags,
   childCount: ticket.childCount,
   childDoneCount: ticket.childDoneCount,
   ownerId: ticket.ownerId,
@@ -464,13 +466,14 @@ export const update = mutation({
     description: v.optional(v.string()),
     parentId: v.optional(v.union(v.id("tickets"), v.null())),
     priority: v.optional(Priority),
+    tags: v.optional(v.array(v.id("workspaceTags"))),
     order: v.optional(v.number()),
     archived: v.optional(v.boolean()),
     actor: v.optional(actorValidator),
     agentApiKeyId: v.optional(v.id("apiKeys")),
   },
   handler: async (ctx, args) => {
-    const { id, parentId, priority, archived, actor, agentApiKeyId, ...updates } = args;
+    const { id, parentId, priority, tags, archived, actor, agentApiKeyId, ...updates } = args;
     const ticket = await ctx.db.get(id);
     if (!ticket) {
       throw new Error("Ticket not found");
@@ -551,6 +554,7 @@ export const update = mutation({
       ...updates,
       parentId: nextParentId ?? null,
       ...(priority !== undefined ? { priority } : {}),
+      ...(tags !== undefined ? { tags } : {}),
       archived: nextArchived,
       updatedAt: Date.now(),
     });

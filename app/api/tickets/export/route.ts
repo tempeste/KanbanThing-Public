@@ -11,6 +11,7 @@ const CSV_COLUMNS = [
   "description",
   "status",
   "priority",
+  "tags",
   "ownerId",
   "ownerType",
   "ownerDisplayName",

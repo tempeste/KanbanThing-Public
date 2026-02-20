@@ -65,6 +65,7 @@ export async function PATCH(
       description?: string;
       parentId?: Id<"tickets"> | null;
       priority?: "none" | "low" | "medium" | "high" | "urgent";
+      tags?: Id<"workspaceTags">[];
       archived?: boolean;
       order?: number;
     } = {};
@@ -106,6 +107,13 @@ export async function PATCH(
         return jsonError("Invalid archived flag", 400);
       }
       updates.archived = body.archived;
+    }
+
+    if (body.tags !== undefined) {
+      if (!Array.isArray(body.tags) || !body.tags.every((t: unknown) => typeof t === "string")) {
+        return jsonError("Invalid tags", 400);
+      }
+      updates.tags = body.tags as Id<"workspaceTags">[];
     }
 
     if (body.order !== undefined) {

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { memo } from "react";
-import { Id } from "@/convex/_generated/dataModel";
+import { Doc, Id } from "@/convex/_generated/dataModel";
 import { Bot, GripVertical, User } from "lucide-react";
+import { TagPills } from "@/components/tag-picker";
 import { formatTicketNumber } from "@/lib/utils";
 import { IssueStatus } from "@/components/issue-status";
 import { TicketActionsMenu } from "@/components/ticket-actions-menu";
@@ -14,6 +15,7 @@ interface TicketCardProps {
   ticket: TicketSummary;
   workspaceId: Id<"workspaces">;
   workspacePrefix: string;
+  workspaceTags?: Doc<"workspaceTags">[];
   parentTicket?: TicketSummary | null;
   accent: string;
   isDragOver: boolean;
@@ -33,6 +35,7 @@ export const TicketCard = memo(function TicketCard({
   ticket,
   workspaceId,
   workspacePrefix,
+  workspaceTags,
   parentTicket,
   accent,
   isDragOver,
@@ -131,6 +134,12 @@ export const TicketCard = memo(function TicketCard({
           </div>
         </div>
       </div>
+
+      {(ticket.tags?.length ?? 0) > 0 && (
+        <div className="mb-2">
+          <TagPills tags={ticket.tags} workspaceTags={workspaceTags} />
+        </div>
+      )}
 
       <div className="flex items-end justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">

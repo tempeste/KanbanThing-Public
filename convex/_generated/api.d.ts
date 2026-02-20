@@ -16,6 +16,7 @@ import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
 import type * as prefix from "../prefix.js";
 import type * as statusPolicy from "../statusPolicy.js";
+import type * as tags from "../tags.js";
 import type * as ticketActivities from "../ticketActivities.js";
 import type * as ticketComments from "../ticketComments.js";
 import type * as tickets from "../tickets.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   prefix: typeof prefix;
   statusPolicy: typeof statusPolicy;
+  tags: typeof tags;
   ticketActivities: typeof ticketActivities;
   ticketComments: typeof ticketComments;
   tickets: typeof tickets;

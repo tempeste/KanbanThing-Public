@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { generateWorkspacePrefix } from "@/lib/utils";
 import { useSession } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { TagManager } from "@/components/tag-manager";
 
 function generateApiKey(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -819,6 +820,21 @@ export default function WorkspaceSettingsPage() {
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Hash className="h-5 w-5 text-primary" />
+              Tags
+            </CardTitle>
+            <CardDescription>
+              Create custom tags to categorize tickets. Tags are workspace-wide and can be assigned to any ticket.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TagManager workspaceId={workspaceId} />
+          </CardContent>
+        </Card>
 
         <Card className="border-destructive/40">
           <CardHeader>

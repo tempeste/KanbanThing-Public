@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { memo } from "react";
-import { Id } from "@/convex/_generated/dataModel";
+import { Doc, Id } from "@/convex/_generated/dataModel";
 import { Bot, ChevronDown, ChevronRight, GripVertical, Plus, User } from "lucide-react";
+import { TagPills } from "@/components/tag-picker";
 import { formatTicketNumber } from "@/lib/utils";
 import { IssueStatus } from "@/components/issue-status";
 import { TicketActionsMenu } from "@/components/ticket-actions-menu";
@@ -14,6 +15,7 @@ interface TicketTableRowProps {
   ticket: TicketSummary;
   workspaceId: Id<"workspaces">;
   workspacePrefix: string;
+  workspaceTags?: Doc<"workspaceTags">[];
   parentTicket?: TicketSummary | null;
   depth: number;
   hasChildren: boolean;
@@ -38,6 +40,7 @@ export const TicketTableRow = memo(function TicketTableRow({
   ticket,
   workspaceId,
   workspacePrefix,
+  workspaceTags,
   parentTicket,
   depth,
   hasChildren,
@@ -170,6 +173,7 @@ export const TicketTableRow = memo(function TicketTableRow({
             )}
             {isArchived && <span>Archived</span>}
           </div>
+          <TagPills tags={ticket.tags} workspaceTags={workspaceTags} />
         </div>
 
         <TicketActionsMenu
@@ -233,7 +237,7 @@ export const TicketTableRow = memo(function TicketTableRow({
           >
             {ticket.title}
           </Link>
-          {(parentTicket || progressTotal > 0 || isArchived) && (
+          {(parentTicket || progressTotal > 0 || isArchived || (ticket.tags?.length ?? 0) > 0) && (
             <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
               {parentTicket && (
                 <span className="truncate">
@@ -250,6 +254,7 @@ export const TicketTableRow = memo(function TicketTableRow({
                 </span>
               )}
               {isArchived && <span>Archived</span>}
+              <TagPills tags={ticket.tags} workspaceTags={workspaceTags} />
             </div>
           )}
         </div>

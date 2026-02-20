@@ -58,6 +58,7 @@ export default defineSchema({
     ownerId: v.optional(v.string()),
     ownerType: v.optional(v.union(v.literal("user"), v.literal("agent"))),
     ownerDisplayName: v.optional(v.string()), // Cached display name for UI
+    tags: v.optional(v.array(v.id("workspaceTags"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_workspace", ["workspaceId"])
@@ -94,6 +95,14 @@ export default defineSchema({
     data: v.optional(v.any()),
     createdAt: v.number(),
   }).index("by_ticket_createdAt", ["ticketId", "createdAt"]),
+
+  workspaceTags: defineTable({
+    workspaceId: v.id("workspaces"),
+    name: v.string(),
+    color: v.string(),
+    order: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_workspace", ["workspaceId"]),
 
   workspaceDocsVersions: defineTable({
     workspaceId: v.id("workspaces"),
