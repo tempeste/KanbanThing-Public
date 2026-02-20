@@ -449,6 +449,35 @@ export function TicketTable({
     [displayRows]
   );
 
+  const selectByArchived = useCallback(
+    (archived: boolean) => {
+      setSelected(
+        new Set(
+          displayRows
+            .filter((r) => (r.ticket.archived ?? false) === archived)
+            .map((r) => r.ticket._id)
+        )
+      );
+    },
+    [displayRows]
+  );
+
+  const selectedHasArchived = useMemo(() => {
+    if (selected.size === 0) return false;
+    for (const row of displayRows) {
+      if (selected.has(row.ticket._id) && (row.ticket.archived ?? false)) return true;
+    }
+    return false;
+  }, [selected, displayRows]);
+
+  const selectedHasUnarchived = useMemo(() => {
+    if (selected.size === 0) return false;
+    for (const row of displayRows) {
+      if (selected.has(row.ticket._id) && !(row.ticket.archived ?? false)) return true;
+    }
+    return false;
+  }, [selected, displayRows]);
+
   const handleBulkArchive = async (archive: boolean) => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
@@ -518,22 +547,26 @@ export function TicketTable({
             {selected.size} selected
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleBulkArchive(true)}
-              className="inline-flex items-center gap-1.5 border border-border bg-card px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground"
-            >
-              <Archive className="h-3 w-3" />
-              Archive
-            </button>
-            <button
-              type="button"
-              onClick={() => handleBulkArchive(false)}
-              className="inline-flex items-center gap-1.5 border border-border bg-card px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground"
-            >
-              <ArchiveRestore className="h-3 w-3" />
-              Unarchive
-            </button>
+            {selectedHasUnarchived && (
+              <button
+                type="button"
+                onClick={() => handleBulkArchive(true)}
+                className="inline-flex items-center gap-1.5 border border-border bg-card px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground"
+              >
+                <Archive className="h-3 w-3" />
+                Archive
+              </button>
+            )}
+            {selectedHasArchived && (
+              <button
+                type="button"
+                onClick={() => handleBulkArchive(false)}
+                className="inline-flex items-center gap-1.5 border border-border bg-card px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground"
+              >
+                <ArchiveRestore className="h-3 w-3" />
+                Unarchive
+              </button>
+            )}
             <button
               type="button"
               onClick={handleBulkDelete}
@@ -575,6 +608,8 @@ export function TicketTable({
                   { label: "Unclaimed", action: () => selectByStatus("unclaimed") },
                   { label: "In progress", action: () => selectByStatus("in_progress") },
                   { label: "Done", action: () => selectByStatus("done") },
+                  { label: "Archived", action: () => selectByArchived(true) },
+                  { label: "Unarchived", action: () => selectByArchived(false) },
                 ] as const).map((item) => (
                   <button
                     key={item.label}
