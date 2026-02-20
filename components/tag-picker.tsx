@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
@@ -18,19 +18,44 @@ export function TagPicker({ workspaceId, ticketId, currentTags }: TagPickerProps
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Optimistic local state so rapid clicks don't clobber each other
+  const [localTags, setLocalTags] = useState(currentTags);
+  const localTagsRef = useRef(localTags);
+  localTagsRef.current = localTags;
+  const pendingRef = useRef(0);
+  const serverTagsRef = useRef(currentTags);
+
+  useEffect(() => {
+    serverTagsRef.current = currentTags;
+    if (pendingRef.current === 0) {
+      setLocalTags(currentTags);
+      localTagsRef.current = currentTags;
+    }
+  }, [currentTags]);
+
   const toggleTag = useCallback(
-    async (tagId: Id<"workspaceTags">) => {
-      const next = currentTags.includes(tagId)
-        ? currentTags.filter((t) => t !== tagId)
-        : [...currentTags, tagId];
-      await updateTicket({ id: ticketId, tags: next });
+    (tagId: Id<"workspaceTags">) => {
+      const current = localTagsRef.current;
+      const next = current.includes(tagId)
+        ? current.filter((t) => t !== tagId)
+        : [...current, tagId];
+      setLocalTags(next);
+      localTagsRef.current = next;
+      pendingRef.current++;
+      updateTicket({ id: ticketId, tags: next }).finally(() => {
+        pendingRef.current--;
+        if (pendingRef.current === 0) {
+          setLocalTags(serverTagsRef.current);
+          localTagsRef.current = serverTagsRef.current;
+        }
+      });
     },
-    [currentTags, ticketId, updateTicket]
+    [ticketId, updateTicket]
   );
 
   if (!tags) return null;
 
-  const selectedTags = tags.filter((t) => currentTags.includes(t._id));
+  const selectedTags = tags.filter((t) => localTags.includes(t._id));
 
   return (
     <div ref={containerRef} className="relative">
@@ -68,7 +93,7 @@ export function TagPicker({ workspaceId, ticketId, currentTags }: TagPickerProps
               </div>
             ) : (
               tags.map((tag) => {
-                const checked = currentTags.includes(tag._id);
+                const checked = localTags.includes(tag._id);
                 return (
                   <button
                     key={tag._id}
