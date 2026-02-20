@@ -43,6 +43,21 @@ export default function WorkspacePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [boardSort, setBoardSort] = useState<BoardSortOption>("order");
 
+  const allVisibleTickets = useMemo(
+    () => (tickets ? deriveVisibleTickets(tickets, showArchived) : []),
+    [tickets, showArchived]
+  );
+  const visibleTickets = useMemo(() => {
+    if (!searchQuery.trim()) return allVisibleTickets;
+    const q = searchQuery.trim().toLowerCase();
+    return allVisibleTickets.filter(
+      (ticket) =>
+        ticket.title.toLowerCase().includes(q) ||
+        (ticket.number != null && String(ticket.number).includes(q)) ||
+        (ticket.ownerDisplayName?.toLowerCase().includes(q))
+    );
+  }, [allVisibleTickets, searchQuery]);
+
   if (isSessionPending) {
     return (
       <div className="flex h-full flex-1 items-center justify-center">
@@ -139,17 +154,6 @@ export default function WorkspacePage() {
   }
 
   const workspacePrefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
-  const allVisibleTickets = deriveVisibleTickets(tickets, showArchived);
-  const visibleTickets = useMemo(() => {
-    if (!searchQuery.trim()) return allVisibleTickets;
-    const q = searchQuery.trim().toLowerCase();
-    return allVisibleTickets.filter(
-      (ticket) =>
-        ticket.title.toLowerCase().includes(q) ||
-        (ticket.number != null && String(ticket.number).includes(q)) ||
-        (ticket.ownerDisplayName?.toLowerCase().includes(q))
-    );
-  }, [allVisibleTickets, searchQuery]);
   const doneCount = visibleTickets.filter((ticket) => ticket.status === "done").length;
   const inProgressCount = visibleTickets.filter(
     (ticket) => ticket.status === "in_progress"
