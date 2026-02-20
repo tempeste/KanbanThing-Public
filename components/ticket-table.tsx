@@ -56,6 +56,9 @@ export function TicketTable({
     new Map()
   );
   const [selected, setSelected] = useState<Set<Id<"tickets">>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<IssueStatus>>(
+    new Set(["backlog", "unclaimed", "in_progress", "done"])
+  );
   const [sort, setSort] = useState<{ col: SortColumn; dir: SortDirection } | null>(null);
   const [colWidths, setColWidths] = useState({
     id: 160,
@@ -150,9 +153,16 @@ export function TicketTable({
     });
   }, [tickets, resolvedOptimisticMoves, resolvedOptimisticStatuses, resolvedOptimisticArchived]);
 
-  const visibleTickets = useMemo(
+  const allVisibleTickets = useMemo(
     () => deriveVisibleTickets(mergedTickets, showArchived),
     [mergedTickets, showArchived]
+  );
+  const visibleTickets = useMemo(
+    () =>
+      statusFilter.size === 4
+        ? allVisibleTickets
+        : allVisibleTickets.filter((t) => statusFilter.has(t.status)),
+    [allVisibleTickets, statusFilter]
   );
   const ticketsById = useMemo(
     () => new Map(visibleTickets.map((ticket) => [ticket._id, ticket])),
@@ -173,6 +183,19 @@ export function TicketTable({
         : treeRows,
     [sort, visibleTickets, treeRows]
   );
+
+  const toggleStatusFilter = useCallback((status: IssueStatus) => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        if (next.size <= 1) return prev;
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  }, []);
 
   const rowVirtualizer = useVirtualizer({
     count: displayRows.length,
@@ -580,6 +603,31 @@ export function TicketTable({
           </div>
         </div>
       )}
+      <div className="flex items-center gap-1.5 border-b border-border/60 px-4 py-2 md:px-7">
+        <span className="kb-label mr-1">Filter</span>
+        {(["backlog", "unclaimed", "in_progress", "done"] as IssueStatus[]).map((s) => {
+          const active = statusFilter.has(s);
+          const labels: Record<IssueStatus, string> = {
+            backlog: "BACKLOG",
+            unclaimed: "UNCLAIMED",
+            in_progress: "IN PROGRESS",
+            done: "DONE",
+          };
+          return (
+            <button
+              key={s}
+              onClick={() => toggleStatusFilter(s)}
+              className={`rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors ${
+                active
+                  ? "border-foreground/20 bg-foreground/5 text-foreground"
+                  : "border-transparent bg-transparent text-muted-foreground/50 hover:text-muted-foreground"
+              }`}
+            >
+              {labels[s]}
+            </button>
+          );
+        })}
+      </div>
       <div
         className="hidden border-b-2 border-border bg-card px-7 py-2 md:grid md:items-center"
         style={{ gridTemplateColumns: gridTemplate }}
