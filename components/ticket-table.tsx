@@ -24,7 +24,7 @@ import {
   SortDirection,
 } from "@/lib/ticket-derivations";
 import { TicketSummary } from "@/lib/ticket-summary";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Archive, ArchiveRestore, Trash2, X } from "lucide-react";
 
 interface TicketTableProps {
   workspaceId: Id<"workspaces">;
@@ -55,6 +55,7 @@ export function TicketTable({
   const [optimisticArchived, setOptimisticArchived] = useState<Map<string, boolean>>(
     new Map()
   );
+  const [selected, setSelected] = useState<Set<Id<"tickets">>>(new Set());
   const [sort, setSort] = useState<{ col: SortColumn; dir: SortDirection } | null>(null);
   const [colWidths, setColWidths] = useState({
     id: 160,
@@ -76,6 +77,8 @@ export function TicketTable({
   const updateStatus = useMutation(api.tickets.updateStatus);
   const updateTicket = useMutation(api.tickets.update);
   const deleteTicket = useMutation(api.tickets.remove);
+  const bulkArchive = useMutation(api.tickets.bulkArchive);
+  const bulkDelete = useMutation(api.tickets.bulkDelete);
 
   const resolvedOptimisticMoves = useMemo(() => {
     if (!optimisticMoves.size) return optimisticMoves;
@@ -394,6 +397,49 @@ export function TicketTable({
     });
   };
 
+  const toggleSelect = useCallback((ticketId: Id<"tickets">) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) {
+        next.delete(ticketId);
+      } else {
+        next.add(ticketId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selected.size === displayRows.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(displayRows.map((row) => row.ticket._id)));
+    }
+  }, [selected.size, displayRows]);
+
+  const handleBulkArchive = async (archive: boolean) => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    try {
+      await bulkArchive({ ids, archived: archive });
+      setSelected(new Set());
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} issue(s) and their sub-issues?`)) return;
+    try {
+      await bulkDelete({ ids });
+      setSelected(new Set());
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   const handleResizeStart = useCallback(
     (col: "id" | "assignee" | "status" | "actions", e: React.MouseEvent) => {
       e.preventDefault();
@@ -426,6 +472,47 @@ export function TicketTable({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 border-b-2 border-primary bg-primary/10 px-7 py-2">
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-foreground">
+            {selected.size} selected
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleBulkArchive(true)}
+              className="inline-flex items-center gap-1.5 border border-border bg-card px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground"
+            >
+              <Archive className="h-3 w-3" />
+              Archive
+            </button>
+            <button
+              type="button"
+              onClick={() => handleBulkArchive(false)}
+              className="inline-flex items-center gap-1.5 border border-border bg-card px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground"
+            >
+              <ArchiveRestore className="h-3 w-3" />
+              Unarchive
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              className="inline-flex items-center gap-1.5 border border-destructive/50 bg-card px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-destructive transition hover:bg-destructive/10"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
       <div
         className="hidden border-b-2 border-border bg-card px-7 py-2 md:grid md:items-center"
         style={{ gridTemplateColumns: gridTemplate }}
@@ -522,6 +609,8 @@ export function TicketTable({
                     depth={depth}
                     hasChildren={hasChildren}
                     isCollapsed={isCollapsed}
+                    isSelected={selected.has(ticket._id)}
+                    onToggleSelect={() => toggleSelect(ticket._id)}
                     dragClass={dragClass}
                     onToggleCollapse={() => toggleCollapsed(ticket._id)}
                     onDragStart={(event) => handleDragStart(event, ticket._id)}

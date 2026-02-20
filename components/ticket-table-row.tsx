@@ -18,6 +18,8 @@ interface TicketTableRowProps {
   depth: number;
   hasChildren: boolean;
   isCollapsed: boolean;
+  isSelected: boolean;
+  onToggleSelect: () => void;
   dragClass: string;
   gridTemplate: string;
   onToggleCollapse: () => void;
@@ -40,6 +42,8 @@ export const TicketTableRow = memo(function TicketTableRow({
   depth,
   hasChildren,
   isCollapsed,
+  isSelected,
+  onToggleSelect,
   dragClass,
   gridTemplate,
   onToggleCollapse,
@@ -92,6 +96,12 @@ export const TicketTableRow = memo(function TicketTableRow({
     >
       {/* ── Mobile ── */}
       <div className="flex items-start gap-2.5 px-4 py-2.5 md:hidden">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggleSelect}
+          className="mt-1 h-3.5 w-3.5 shrink-0 accent-primary"
+        />
         <div
           className="flex shrink-0 items-center gap-1 pt-0.5"
           style={{ paddingLeft: `${depth * 10}px` }}
@@ -175,6 +185,12 @@ export const TicketTableRow = memo(function TicketTableRow({
           className="flex min-w-0 items-center gap-2"
           style={{ paddingLeft: `${depth * 14}px` }}
         >
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={onToggleSelect}
+            className="h-3.5 w-3.5 shrink-0 accent-primary"
+          />
           <button
             type="button"
             className="inline-flex shrink-0 border border-border bg-card p-1 text-muted-foreground hover:text-foreground/80"

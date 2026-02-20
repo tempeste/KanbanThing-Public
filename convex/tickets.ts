@@ -1028,3 +1028,93 @@ export const remove = mutation({
     await deleteSubtree(ctx, ticket.workspaceId, ticket._id);
   },
 });
+
+export const bulkArchive = mutation({
+  args: {
+    ids: v.array(v.id("tickets")),
+    archived: v.boolean(),
+    actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
+  handler: async (ctx, args) => {
+    if (args.ids.length === 0) return;
+    if (args.ids.length > 100) throw new Error("Cannot bulk-archive more than 100 tickets");
+
+    const first = await ctx.db.get(args.ids[0]);
+    if (!first) throw new Error("Ticket not found");
+    await requireWorkspaceAccess(ctx, first.workspaceId, args.agentApiKeyId);
+
+    for (const id of args.ids) {
+      const ticket = await ctx.db.get(id);
+      if (!ticket || ticket.workspaceId !== first.workspaceId) continue;
+      const prevArchived = ticket.archived ?? false;
+      if (prevArchived === args.archived) continue;
+
+      const prevState = getCountedState(prevArchived, ticket.status);
+      const nextState = getCountedState(args.archived, ticket.status);
+
+      if (ticket.parentId) {
+        await applyCountsDelta(ctx, ticket.parentId, {
+          count: nextState.counted ? 1 : -1,
+          done: nextState.done ? 1 : prevState.done ? -1 : 0,
+        });
+      }
+
+      await ctx.db.patch(id, { archived: args.archived, updatedAt: Date.now() });
+      await cascadeArchive(ctx, ticket.workspaceId, id, args.archived);
+
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: id,
+        type: "ticket_updated",
+        data: { changes: { archived: { from: prevArchived, to: args.archived } } },
+        actor: args.actor,
+      });
+    }
+  },
+});
+
+export const bulkDelete = mutation({
+  args: {
+    ids: v.array(v.id("tickets")),
+    actor: v.optional(actorValidator),
+    agentApiKeyId: v.optional(v.id("apiKeys")),
+  },
+  handler: async (ctx, args) => {
+    if (args.ids.length === 0) return;
+    if (args.ids.length > 100) throw new Error("Cannot bulk-delete more than 100 tickets");
+
+    const first = await ctx.db.get(args.ids[0]);
+    if (!first) throw new Error("Ticket not found");
+    await requireWorkspaceAccess(ctx, first.workspaceId, args.agentApiKeyId);
+    if (args.agentApiKeyId) {
+      const apiKey = await ctx.db.get(args.agentApiKeyId);
+      const keyRole = apiKey?.role ?? "admin";
+      if (!apiKey || apiKey.workspaceId !== first.workspaceId || keyRole !== "admin") {
+        throw new Error("Unauthorized");
+      }
+    }
+
+    for (const id of args.ids) {
+      const ticket = await ctx.db.get(id);
+      if (!ticket || ticket.workspaceId !== first.workspaceId) continue;
+
+      await logTicketActivity(ctx, {
+        workspaceId: ticket.workspaceId,
+        ticketId: id,
+        type: "ticket_deleted",
+        data: { title: ticket.title },
+        actor: args.actor,
+      });
+
+      if (ticket.parentId && !(ticket.archived ?? false)) {
+        await applyCountsDelta(ctx, ticket.parentId, {
+          count: -1,
+          done: ticket.status === "done" ? -1 : 0,
+        });
+      }
+
+      await deleteSubtree(ctx, ticket.workspaceId, id);
+    }
+  },
+});
