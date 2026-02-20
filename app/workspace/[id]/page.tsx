@@ -13,7 +13,7 @@ import { generateWorkspacePrefix } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { useSession } from "@/lib/auth-client";
 import { deriveVisibleTickets, type BoardSortOption } from "@/lib/ticket-derivations";
-import { Search, X } from "lucide-react";
+import { Search, X, Download } from "lucide-react";
 
 const STATUS_ACCENTS = {
   unclaimed: "var(--unclaimed)",
@@ -168,6 +168,67 @@ export default function WorkspacePage() {
       ? 0
       : Math.round((inProgressCount / visibleTickets.length) * 100);
 
+  const exportTickets = (format: "json" | "csv") => {
+    if (!tickets) return;
+    let content: string;
+    let mimeType: string;
+    let filename: string;
+
+    if (format === "json") {
+      const data = tickets.map((t) => ({
+        id: t._id,
+        title: t.title,
+        number: t.number ?? null,
+        status: t.status,
+        priority: t.priority ?? "none",
+        ownerId: t.ownerId ?? null,
+        ownerType: t.ownerType ?? null,
+        ownerDisplayName: t.ownerDisplayName ?? null,
+        parentId: t.parentId ?? null,
+        order: t.order,
+        archived: t.archived ?? false,
+        childCount: t.childCount ?? 0,
+        childDoneCount: t.childDoneCount ?? 0,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+      }));
+      content = JSON.stringify({ tickets: data, exportedAt: new Date().toISOString() }, null, 2);
+      mimeType = "application/json";
+      filename = `${workspacePrefix}-tickets.json`;
+    } else {
+      const escapeCSV = (v: unknown) => {
+        if (v === null || v === undefined) return "";
+        const s = String(v);
+        return s.includes(",") || s.includes('"') || s.includes("\n")
+          ? `"${s.replace(/"/g, '""')}"`
+          : s;
+      };
+      const cols = ["id","number","title","status","priority","ownerId","ownerType","ownerDisplayName","parentId","archived","childCount","childDoneCount","createdAt","updatedAt"];
+      const header = cols.join(",");
+      const rows = tickets.map((t) => {
+        const vals: Record<string, unknown> = {
+          id: t._id, number: t.number ?? "", title: t.title, status: t.status,
+          priority: t.priority ?? "none", ownerId: t.ownerId ?? "", ownerType: t.ownerType ?? "",
+          ownerDisplayName: t.ownerDisplayName ?? "", parentId: t.parentId ?? "",
+          archived: t.archived ?? false, childCount: t.childCount ?? 0,
+          childDoneCount: t.childDoneCount ?? 0, createdAt: t.createdAt, updatedAt: t.updatedAt,
+        };
+        return cols.map((c) => escapeCSV(vals[c])).join(",");
+      });
+      content = [header, ...rows].join("\n");
+      mimeType = "text/csv";
+      filename = `${workspacePrefix}-tickets.csv`;
+    }
+
+    const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const toggleShowArchived = () => {
     const params = new URLSearchParams(searchParams.toString());
     if (showArchived) {
@@ -313,6 +374,25 @@ export default function WorkspacePage() {
           >
             {showArchived ? "Hide Archived" : "Show Archived"}
           </button>
+          <div className="hidden items-center md:flex">
+            <button
+              type="button"
+              onClick={() => exportTickets("json")}
+              className="inline-flex items-center gap-1 border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground/80"
+              title="Export as JSON"
+            >
+              <Download className="h-3 w-3" />
+              JSON
+            </button>
+            <button
+              type="button"
+              onClick={() => exportTickets("csv")}
+              className="inline-flex items-center gap-1 border border-l-0 border-border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground/80"
+              title="Export as CSV"
+            >
+              CSV
+            </button>
+          </div>
           <div className="hidden items-center gap-2 md:flex">
             <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground/60">Completion</span>
             <div className="relative h-1 w-[120px] bg-muted">
