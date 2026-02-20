@@ -19,6 +19,7 @@ import {
   deriveTicketsByStatus,
   deriveVisibleTickets,
   getTicketOrderValue,
+  type BoardSortOption,
 } from "@/lib/ticket-derivations";
 import { TicketSummary } from "@/lib/ticket-summary";
 
@@ -35,6 +36,7 @@ interface KanbanBoardProps {
   tickets: TicketSummary[];
   workspacePrefix: string;
   showArchived: boolean;
+  sortBy?: BoardSortOption;
   compact?: boolean;
 }
 
@@ -52,6 +54,7 @@ export function KanbanBoard({
   tickets,
   workspacePrefix,
   showArchived,
+  sortBy = "order",
 }: KanbanBoardProps) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -172,8 +175,8 @@ export function KanbanBoard({
     [visibleTickets]
   );
   const ticketsByStatus = useMemo(
-    () => deriveTicketsByStatus(visibleTickets),
-    [visibleTickets]
+    () => deriveTicketsByStatus(visibleTickets, sortBy),
+    [visibleTickets, sortBy]
   );
 
   const unclaimedVirtualizer = useVirtualizer({

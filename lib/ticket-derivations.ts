@@ -1,5 +1,6 @@
 import { Id } from "@/convex/_generated/dataModel";
 import { TicketStatus, TicketSummary } from "@/lib/ticket-summary";
+import { type TicketPriority } from "@/lib/priority";
 
 const STATUSES: TicketStatus[] = ["unclaimed", "in_progress", "done"];
 
@@ -51,7 +52,43 @@ export const deriveChildrenByParent = (tickets: TicketSummary[]) => {
   return childrenByParent;
 };
 
-export const deriveTicketsByStatus = (tickets: TicketSummary[]) => {
+export type BoardSortOption = "order" | "newest" | "oldest" | "title" | "priority";
+
+const PRIORITY_WEIGHT: Record<string, number> = {
+  urgent: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  none: 4,
+};
+
+const getBoardSortComparator = (sortBy: BoardSortOption) => {
+  switch (sortBy) {
+    case "newest":
+      return (a: TicketSummary, b: TicketSummary) => b.createdAt - a.createdAt;
+    case "oldest":
+      return (a: TicketSummary, b: TicketSummary) => a.createdAt - b.createdAt;
+    case "title":
+      return (a: TicketSummary, b: TicketSummary) =>
+        (a.title ?? "").localeCompare(b.title ?? "", undefined, { sensitivity: "base" });
+    case "priority":
+      return (a: TicketSummary, b: TicketSummary) => {
+        const pa = PRIORITY_WEIGHT[a.priority ?? "none"] ?? 4;
+        const pb = PRIORITY_WEIGHT[b.priority ?? "none"] ?? 4;
+        if (pa !== pb) return pa - pb;
+        return getTicketOrderValue(a) - getTicketOrderValue(b);
+      };
+    case "order":
+    default:
+      return (a: TicketSummary, b: TicketSummary) =>
+        getTicketOrderValue(a) - getTicketOrderValue(b);
+  }
+};
+
+export const deriveTicketsByStatus = (
+  tickets: TicketSummary[],
+  sortBy: BoardSortOption = "order"
+) => {
   const grouped = Object.fromEntries(
     STATUSES.map((status) => [status, [] as TicketSummary[]])
   ) as Record<TicketStatus, TicketSummary[]>;
@@ -60,8 +97,9 @@ export const deriveTicketsByStatus = (tickets: TicketSummary[]) => {
     grouped[ticket.status].push(ticket);
   }
 
+  const comparator = getBoardSortComparator(sortBy);
   for (const status of STATUSES) {
-    grouped[status].sort((a, b) => getTicketOrderValue(a) - getTicketOrderValue(b));
+    grouped[status].sort(comparator);
   }
 
   return grouped;

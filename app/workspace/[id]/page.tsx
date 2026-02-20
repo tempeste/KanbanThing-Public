@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useQuery, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -11,7 +12,8 @@ import { TicketTable } from "@/components/ticket-table";
 import { generateWorkspacePrefix } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { useSession } from "@/lib/auth-client";
-import { deriveVisibleTickets } from "@/lib/ticket-derivations";
+import { deriveVisibleTickets, type BoardSortOption } from "@/lib/ticket-derivations";
+import { Search, X } from "lucide-react";
 
 const STATUS_ACCENTS = {
   unclaimed: "var(--unclaimed)",
@@ -38,6 +40,8 @@ export default function WorkspacePage() {
   const tabParam = searchParams.get("tab");
   const activeTab = tabParam === "list" || tabParam === "board" ? tabParam : "board";
   const showArchived = searchParams.get("archived") === "1";
+  const [searchQuery, setSearchQuery] = useState("");
+  const [boardSort, setBoardSort] = useState<BoardSortOption>("order");
 
   if (isSessionPending) {
     return (
@@ -135,7 +139,17 @@ export default function WorkspacePage() {
   }
 
   const workspacePrefix = workspace.prefix ?? generateWorkspacePrefix(workspace.name);
-  const visibleTickets = deriveVisibleTickets(tickets, showArchived);
+  const allVisibleTickets = deriveVisibleTickets(tickets, showArchived);
+  const visibleTickets = useMemo(() => {
+    if (!searchQuery.trim()) return allVisibleTickets;
+    const q = searchQuery.trim().toLowerCase();
+    return allVisibleTickets.filter(
+      (ticket) =>
+        ticket.title.toLowerCase().includes(q) ||
+        (ticket.number != null && String(ticket.number).includes(q)) ||
+        (ticket.ownerDisplayName?.toLowerCase().includes(q))
+    );
+  }, [allVisibleTickets, searchQuery]);
   const doneCount = visibleTickets.filter((ticket) => ticket.status === "done").length;
   const inProgressCount = visibleTickets.filter(
     (ticket) => ticket.status === "in_progress"
@@ -172,7 +186,9 @@ export default function WorkspacePage() {
             {workspace.name.toUpperCase()}
           </h1>
           <span className="hidden font-mono text-[11px] text-muted-foreground/70 md:inline">
-            {visibleTickets.length} ISSUES
+            {searchQuery.trim()
+              ? `${visibleTickets.length}/${allVisibleTickets.length} ISSUES`
+              : `${visibleTickets.length} ISSUES`}
           </span>
           <span className="hidden h-4 w-px bg-border md:inline" />
           <span className="hidden font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/50 md:inline">
@@ -252,6 +268,38 @@ export default function WorkspacePage() {
           </span>
         </div>
         <div className="ml-auto flex items-center gap-2 md:gap-3">
+          <div className="relative flex items-center">
+            <Search className="absolute left-2 h-3 w-3 text-muted-foreground/50 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="h-6 w-28 border border-border bg-background/70 pl-6 pr-6 font-mono text-[10px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/50 focus:w-40 transition-all md:w-36 md:focus:w-48"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-1.5 text-muted-foreground/50 hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          {activeTab === "board" && (
+            <select
+              value={boardSort}
+              onChange={(event) => setBoardSort(event.target.value as BoardSortOption)}
+              className="h-6 border border-border bg-background/70 px-1.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground outline-none focus:border-primary/50"
+            >
+              <option value="order">Manual</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="title">Title</option>
+              <option value="priority">Priority</option>
+            </select>
+          )}
           <Link
             href={`/workspace/${workspaceId}/tickets/new`}
             className="border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground/80"
@@ -286,17 +334,18 @@ export default function WorkspacePage() {
         {activeTab === "board" ? (
           <KanbanBoard
             workspaceId={workspaceId}
-            tickets={tickets}
+            tickets={searchQuery.trim() ? visibleTickets : tickets}
             workspacePrefix={workspacePrefix}
-            showArchived={showArchived}
+            showArchived={searchQuery.trim() ? true : showArchived}
+            sortBy={boardSort}
             compact
           />
         ) : (
           <TicketTable
             workspaceId={workspaceId}
-            tickets={tickets}
+            tickets={searchQuery.trim() ? visibleTickets : tickets}
             workspacePrefix={workspacePrefix}
-            showArchived={showArchived}
+            showArchived={searchQuery.trim() ? true : showArchived}
             compact
           />
         )}
