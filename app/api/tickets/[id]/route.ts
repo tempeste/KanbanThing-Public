@@ -12,6 +12,7 @@ import {
   isInvalidConvexIdError,
   jsonError,
   sanitizeServerError,
+  TICKET_STATUS_VALUES,
 } from "@/lib/api-route-helpers";
 
 export async function GET(
@@ -123,21 +124,55 @@ export async function PATCH(
       updates.order = body.order;
     }
 
-    if (Object.keys(updates).length === 0) {
+    // Handle status change separately via updateStatus mutation
+    let statusChange: (typeof TICKET_STATUS_VALUES)[number] | undefined;
+    let statusReason: string | undefined;
+    if (body.status !== undefined) {
+      if (
+        typeof body.status !== "string" ||
+        !(TICKET_STATUS_VALUES as readonly string[]).includes(body.status)
+      ) {
+        return jsonError(
+          `Invalid status. Must be one of: ${TICKET_STATUS_VALUES.join(", ")}`,
+          400
+        );
+      }
+      statusChange = body.status as (typeof TICKET_STATUS_VALUES)[number];
+      if (body.reason !== undefined && typeof body.reason === "string") {
+        statusReason = body.reason.trim() || undefined;
+      }
+    }
+
+    if (Object.keys(updates).length === 0 && !statusChange) {
       return jsonError("No valid fields to update", 400);
     }
 
     try {
-      await convex.mutation(api.tickets.update, {
-        id: id as Id<"tickets">,
-        ...updates,
-        actor: {
-          type: "agent",
-          id: auth.apiKeyId,
-          displayName: auth.keyName,
-        },
-        agentApiKeyId: auth.apiKeyId,
-      });
+      if (Object.keys(updates).length > 0) {
+        await convex.mutation(api.tickets.update, {
+          id: id as Id<"tickets">,
+          ...updates,
+          actor: {
+            type: "agent",
+            id: auth.apiKeyId,
+            displayName: auth.keyName,
+          },
+          agentApiKeyId: auth.apiKeyId,
+        });
+      }
+      if (statusChange) {
+        await convex.mutation(api.tickets.updateStatus, {
+          id: id as Id<"tickets">,
+          status: statusChange as "backlog" | "unclaimed" | "in_progress" | "done",
+          reason: statusReason,
+          actor: {
+            type: "agent",
+            id: auth.apiKeyId,
+            displayName: auth.keyName,
+          },
+          agentApiKeyId: auth.apiKeyId,
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       if (message.includes("Invalid parent ticket") || isInvalidConvexIdError(error)) {
@@ -146,7 +181,8 @@ export async function PATCH(
       if (
         message.includes("Title is required") ||
         message.includes("Title cannot exceed") ||
-        message.includes("Description cannot exceed")
+        message.includes("Description cannot exceed") ||
+        message.includes("Reason is required for non-standard")
       ) {
         return jsonError(message, 400);
       }
