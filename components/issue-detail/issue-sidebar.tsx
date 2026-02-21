@@ -5,6 +5,7 @@ import { Doc, Id } from "@/convex/_generated/dataModel";
 import { IssueStatus, STATUS_META } from "@/components/issue-status";
 import { AssigneePicker } from "@/components/assignee-picker";
 import { TagPicker } from "@/components/tag-picker";
+import { DispatchTicketsButton } from "@/components/dispatch-tickets-button";
 import { PRIORITY_META, PRIORITY_ORDER, type TicketPriority } from "@/lib/priority";
 import { ExternalLink } from "lucide-react";
 
@@ -13,6 +14,7 @@ type Ticket = Doc<"tickets">;
 interface IssueSidebarProps {
   ticket: Ticket;
   workspaceId: Id<"workspaces">;
+  workspacePrefix: string;
   progressDone: number;
   progressTotal: number;
   progressPct: number;
@@ -23,6 +25,7 @@ interface IssueSidebarProps {
 export function IssueSidebar({
   ticket,
   workspaceId,
+  workspacePrefix,
   progressDone,
   progressTotal,
   progressPct,
@@ -87,6 +90,25 @@ export function IssueSidebar({
             currentTags={ticket.tags ?? []}
           />
         </div>
+
+        {ticket.status !== "done" && (
+          <div className="px-4 py-3">
+            <div className="kb-label mb-2">Dispatch</div>
+            <DispatchTicketsButton
+              workspaceId={workspaceId}
+              workspacePrefix={workspacePrefix}
+              tickets={[
+                {
+                  _id: ticket._id,
+                  number: ticket.number ?? undefined,
+                  title: ticket.title,
+                },
+              ]}
+              triggerLabel="Dispatch This Ticket"
+              triggerClassName="w-full"
+            />
+          </div>
+        )}
 
         {/* Progress */}
         {progressTotal > 0 && (

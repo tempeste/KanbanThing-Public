@@ -86,9 +86,9 @@ export const dispatchTickets = mutation({
 
       await ctx.db.patch(ticket._id, {
         status: "dispatched",
-        ownerId: undefined,
-        ownerType: undefined,
-        ownerDisplayName: undefined,
+        ownerId: `openclaw:${instance._id}`,
+        ownerType: "agent",
+        ownerDisplayName: instance.name,
         updatedAt: Date.now(),
       });
 
@@ -235,4 +235,3 @@ export const logCancellationAttempt = internalMutation({
     }
   },
 });
-

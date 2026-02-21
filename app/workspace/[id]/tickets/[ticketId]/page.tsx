@@ -768,6 +768,7 @@ export default function TicketDetailPage() {
             <IssueSidebar
               ticket={effectiveTicket}
               workspaceId={workspaceId}
+              workspacePrefix={workspacePrefix}
               progressDone={progressDone}
               progressTotal={progressTotal}
               progressPct={progressPct}
@@ -795,5 +796,4 @@ export default function TicketDetailPage() {
     </div>
   );
 }
-
 

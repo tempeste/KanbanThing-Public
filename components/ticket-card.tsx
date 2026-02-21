@@ -8,6 +8,7 @@ import { TagPills } from "@/components/tag-picker";
 import { formatTicketNumber } from "@/lib/utils";
 import { IssueStatus } from "@/components/issue-status";
 import { TicketActionsMenu } from "@/components/ticket-actions-menu";
+import { DispatchTicketsButton } from "@/components/dispatch-tickets-button";
 import { TicketSummary } from "@/lib/ticket-summary";
 import { PRIORITY_META, type TicketPriority } from "@/lib/priority";
 
@@ -29,6 +30,7 @@ interface TicketCardProps {
   onStatusChange: (status: IssueStatus) => void;
   onArchiveToggle: () => void;
   onDelete: () => void;
+  showDispatchButton?: boolean;
 }
 
 export const TicketCard = memo(function TicketCard({
@@ -49,6 +51,7 @@ export const TicketCard = memo(function TicketCard({
   onStatusChange,
   onArchiveToggle,
   onDelete,
+  showDispatchButton = false,
 }: TicketCardProps) {
   const ticketNumber = formatTicketNumber(workspacePrefix, ticket.number);
   const progressTotal = ticket.childCount ?? 0;
@@ -149,6 +152,21 @@ export const TicketCard = memo(function TicketCard({
             <span className="border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
               Archived
             </span>
+          )}
+          {showDispatchButton && ticket.status !== "done" && (
+            <DispatchTicketsButton
+              workspaceId={workspaceId}
+              workspacePrefix={workspacePrefix}
+              tickets={[
+                {
+                  _id: ticket._id,
+                  number: ticket.number ?? undefined,
+                  title: ticket.title,
+                },
+              ]}
+              triggerLabel="Dispatch"
+              triggerClassName="h-6 px-2 py-0 text-[9px] uppercase tracking-[0.08em]"
+            />
           )}
         </div>
 

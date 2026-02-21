@@ -13,6 +13,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { TicketTableRow } from "@/components/ticket-table-row";
+import { DispatchTicketsButton } from "@/components/dispatch-tickets-button";
 import { IssueStatus } from "@/components/issue-status";
 import {
   deriveChildrenByParent,
@@ -669,6 +670,19 @@ export function TicketTable({
             {selected.size} selected
           </span>
           <div className="ml-auto flex items-center gap-2">
+            <DispatchTicketsButton
+              workspaceId={workspaceId}
+              workspacePrefix={workspacePrefix}
+              tickets={Array.from(selected)
+                .map((ticketId) => ticketsById.get(ticketId))
+                .filter((ticket): ticket is NonNullable<typeof ticket> => Boolean(ticket))
+                .map((ticket) => ({
+                  _id: ticket._id,
+                  number: ticket.number ?? undefined,
+                  title: ticket.title,
+                }))}
+              triggerLabel="Dispatch"
+            />
             {selectedHasUnarchived && (
               <button
                 type="button"

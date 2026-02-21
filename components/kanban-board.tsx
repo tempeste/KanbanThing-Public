@@ -704,6 +704,7 @@ export function KanbanBoard({
                               })
                             }
                             onDelete={() => handleDelete(ticket._id)}
+                            showDispatchButton
                           />
                         </div>
                       );
@@ -788,6 +789,7 @@ export function KanbanBoard({
                               })
                             }
                             onDelete={() => handleDelete(ticket._id)}
+                            showDispatchButton
                           />
                         </div>
                       );
