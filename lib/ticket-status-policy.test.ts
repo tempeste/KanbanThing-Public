@@ -8,6 +8,9 @@ import {
 describe("ticket status policy", () => {
   it("classifies standard transitions", () => {
     expect(getTransitionClass("backlog", "unclaimed")).toBe("standard");
+    expect(getTransitionClass("unclaimed", "dispatched")).toBe("standard");
+    expect(getTransitionClass("dispatched", "in_progress")).toBe("standard");
+    expect(getTransitionClass("dispatched", "unclaimed")).toBe("standard");
     expect(getTransitionClass("unclaimed", "in_progress")).toBe("standard");
     expect(getTransitionClass("in_progress", "done")).toBe("standard");
     expect(getTransitionClass("done", "done")).toBe("standard");
@@ -16,7 +19,9 @@ describe("ticket status policy", () => {
   it("classifies non-standard transitions", () => {
     expect(getTransitionClass("backlog", "in_progress")).toBe("non_standard");
     expect(getTransitionClass("backlog", "done")).toBe("non_standard");
+    expect(getTransitionClass("backlog", "dispatched")).toBe("non_standard");
     expect(getTransitionClass("unclaimed", "done")).toBe("non_standard");
+    expect(getTransitionClass("dispatched", "done")).toBe("non_standard");
     expect(getTransitionClass("done", "unclaimed")).toBe("non_standard");
     expect(getTransitionClass("done", "in_progress")).toBe("non_standard");
     expect(getTransitionClass("in_progress", "unclaimed")).toBe("non_standard");

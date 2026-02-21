@@ -43,6 +43,7 @@ export default defineSchema({
     status: v.union(
       v.literal("backlog"),
       v.literal("unclaimed"),
+      v.literal("dispatched"),
       v.literal("in_progress"),
       v.literal("done")
     ),

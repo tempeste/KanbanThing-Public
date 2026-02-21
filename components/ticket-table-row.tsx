@@ -71,6 +71,8 @@ export const TicketTableRow = memo(function TicketTableRow({
   const statusAccent =
     ticket.status === "done"
       ? "var(--done)"
+      : ticket.status === "dispatched"
+        ? "var(--dispatched)"
       : ticket.status === "in_progress"
         ? "var(--in-progress)"
         : ticket.status === "backlog"
@@ -79,6 +81,8 @@ export const TicketTableRow = memo(function TicketTableRow({
   const statusLabel =
     ticket.status === "done"
       ? "DONE"
+      : ticket.status === "dispatched"
+        ? "DISPATCHED"
       : ticket.status === "in_progress"
         ? "IN PROGRESS"
         : ticket.status === "backlog"

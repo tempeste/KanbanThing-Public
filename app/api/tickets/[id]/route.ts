@@ -163,7 +163,7 @@ export async function PATCH(
       if (statusChange) {
         await convex.mutation(api.tickets.updateStatus, {
           id: id as Id<"tickets">,
-          status: statusChange as "backlog" | "unclaimed" | "in_progress" | "done",
+          status: statusChange as "backlog" | "unclaimed" | "dispatched" | "in_progress" | "done",
           reason: statusReason,
           actor: {
             type: "agent",

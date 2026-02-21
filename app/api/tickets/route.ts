@@ -63,14 +63,14 @@ export async function GET(request: NextRequest) {
           ? await convex.query(api.tickets.listSummariesByParentAndStatus, {
               workspaceId: auth.workspaceId,
               parentId: parentId as Id<"tickets"> | null,
-              status: status as "backlog" | "unclaimed" | "in_progress" | "done",
+              status: status as "backlog" | "unclaimed" | "dispatched" | "in_progress" | "done",
               limit,
               agentApiKeyId: auth.apiKeyId,
             })
           : await convex.query(api.tickets.listByParentAndStatus, {
               workspaceId: auth.workspaceId,
               parentId: parentId as Id<"tickets"> | null,
-              status: status as "backlog" | "unclaimed" | "in_progress" | "done",
+              status: status as "backlog" | "unclaimed" | "dispatched" | "in_progress" | "done",
               limit,
               agentApiKeyId: auth.apiKeyId,
             });
@@ -93,13 +93,13 @@ export async function GET(request: NextRequest) {
       tickets = useSummaryFields
         ? await convex.query(api.tickets.listSummariesByStatus, {
             workspaceId: auth.workspaceId,
-            status: status as "backlog" | "unclaimed" | "in_progress" | "done",
+            status: status as "backlog" | "unclaimed" | "dispatched" | "in_progress" | "done",
             limit,
             agentApiKeyId: auth.apiKeyId,
           })
         : await convex.query(api.tickets.listByStatus, {
             workspaceId: auth.workspaceId,
-            status: status as "backlog" | "unclaimed" | "in_progress" | "done",
+            status: status as "backlog" | "unclaimed" | "dispatched" | "in_progress" | "done",
             limit,
             agentApiKeyId: auth.apiKeyId,
           });

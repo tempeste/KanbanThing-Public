@@ -58,8 +58,9 @@ export function TicketTable({
   );
   const [selected, setSelected] = useState<Set<Id<"tickets">>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<IssueStatus>>(
-    new Set(["backlog", "unclaimed", "in_progress", "done"])
+    new Set(["backlog", "unclaimed", "dispatched", "in_progress", "done"])
   );
+  const allStatusCount = 5;
   const [sort, setSort] = useState<{ col: SortColumn; dir: SortDirection } | null>(null);
   const [colWidths, setColWidths] = useState({
     id: 160,
@@ -146,10 +147,18 @@ export function TicketTable({
         order: moveOverride ? moveOverride.order : ticket.order,
         status: statusOverride ?? ticket.status,
         archived: archivedOverride ?? ticket.archived,
-        ownerId: statusOverride === "unclaimed" ? undefined : ticket.ownerId,
-        ownerType: statusOverride === "unclaimed" ? undefined : ticket.ownerType,
+        ownerId:
+          statusOverride === "unclaimed" || statusOverride === "dispatched"
+            ? undefined
+            : ticket.ownerId,
+        ownerType:
+          statusOverride === "unclaimed" || statusOverride === "dispatched"
+            ? undefined
+            : ticket.ownerType,
         ownerDisplayName:
-          statusOverride === "unclaimed" ? undefined : ticket.ownerDisplayName,
+          statusOverride === "unclaimed" || statusOverride === "dispatched"
+            ? undefined
+            : ticket.ownerDisplayName,
       };
     });
   }, [tickets, resolvedOptimisticMoves, resolvedOptimisticStatuses, resolvedOptimisticArchived]);
@@ -160,10 +169,10 @@ export function TicketTable({
   );
   const visibleTickets = useMemo(
     () =>
-      statusFilter.size === 4
+      statusFilter.size === allStatusCount
         ? allVisibleTickets
         : allVisibleTickets.filter((t) => statusFilter.has(t.status)),
-    [allVisibleTickets, statusFilter]
+    [allVisibleTickets, statusFilter, allStatusCount]
   );
   const ticketsById = useMemo(
     () => new Map(visibleTickets.map((ticket) => [ticket._id, ticket])),
@@ -693,11 +702,12 @@ export function TicketTable({
       )}
       <div className="flex items-center gap-1.5 border-b border-border/60 px-4 py-2 md:px-7">
         <span className="kb-label mr-1">Filter</span>
-        {(["backlog", "unclaimed", "in_progress", "done"] as IssueStatus[]).map((s) => {
+        {(["backlog", "unclaimed", "dispatched", "in_progress", "done"] as IssueStatus[]).map((s) => {
           const active = statusFilter.has(s);
           const labels: Record<IssueStatus, string> = {
             backlog: "BACKLOG",
             unclaimed: "UNCLAIMED",
+            dispatched: "DISPATCHED",
             in_progress: "IN PROGRESS",
             done: "DONE",
           };
@@ -745,6 +755,7 @@ export function TicketTable({
                   { label: "Select none", action: () => setSelected(new Set()) },
                   { label: "Backlog", action: () => selectByStatus("backlog") },
                   { label: "Unclaimed", action: () => selectByStatus("unclaimed") },
+                  { label: "Dispatched", action: () => selectByStatus("dispatched") },
                   { label: "In progress", action: () => selectByStatus("in_progress") },
                   { label: "Done", action: () => selectByStatus("done") },
                   { label: "Archived", action: () => selectByArchived(true) },

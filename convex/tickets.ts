@@ -13,6 +13,7 @@ import {
 const Status = v.union(
   v.literal("backlog"),
   v.literal("unclaimed"),
+  v.literal("dispatched"),
   v.literal("in_progress"),
   v.literal("done")
 );
@@ -601,7 +602,7 @@ const applyStatusChange = async (
     status,
     updatedAt: Date.now(),
   };
-  if (status === "unclaimed" || status === "backlog") {
+  if (status === "unclaimed" || status === "backlog" || status === "dispatched") {
     updates.ownerId = undefined;
     updates.ownerType = undefined;
     updates.ownerDisplayName = undefined;
@@ -770,8 +771,8 @@ export const assign = mutation({
       updatedAt: Date.now(),
     };
 
-    // If assigning to unclaimed ticket, set status to in_progress
-    if (ticket.status === "unclaimed") {
+    // If assigning to unclaimed/dispatched ticket, set status to in_progress.
+    if (ticket.status === "unclaimed" || ticket.status === "dispatched") {
       await applyStatusChange(ctx, ticket, "in_progress");
     }
 
@@ -792,12 +793,12 @@ export const assign = mutation({
       actor: args.actor,
     });
 
-    if (prevStatus === "unclaimed") {
+    if (prevStatus === "unclaimed" || prevStatus === "dispatched") {
       await logTicketActivity(ctx, {
         workspaceId: ticket.workspaceId,
         ticketId: ticket._id,
         type: "ticket_status_changed",
-        data: { from: "unclaimed", to: "in_progress" },
+        data: { from: prevStatus, to: "in_progress" },
         actor: args.actor,
       });
     }
@@ -903,7 +904,12 @@ export const updateStatus = mutation({
         actor: args.actor,
       });
     }
-    if ((args.status === "unclaimed" || args.status === "backlog") && (prevOwner.ownerId || prevOwner.ownerType)) {
+    if (
+      (args.status === "unclaimed" ||
+        args.status === "backlog" ||
+        args.status === "dispatched") &&
+      (prevOwner.ownerId || prevOwner.ownerType)
+    ) {
       await logTicketActivity(ctx, {
         workspaceId: ticket.workspaceId,
         ticketId: ticket._id,
@@ -964,7 +970,12 @@ export const move = mutation({
         actor: args.actor,
       });
     }
-    if ((args.status === "unclaimed" || args.status === "backlog") && (prevOwner.ownerId || prevOwner.ownerType)) {
+    if (
+      (args.status === "unclaimed" ||
+        args.status === "backlog" ||
+        args.status === "dispatched") &&
+      (prevOwner.ownerId || prevOwner.ownerType)
+    ) {
       await logTicketActivity(ctx, {
         workspaceId: ticket.workspaceId,
         ticketId: ticket._id,

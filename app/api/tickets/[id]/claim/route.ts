@@ -33,7 +33,7 @@ export async function POST(
       return jsonError("Issue not found", 404);
     }
 
-    if (ticket.status !== "unclaimed") {
+    if (ticket.status !== "unclaimed" && ticket.status !== "dispatched") {
       return jsonError("Issue is not available to claim", 409, {
         currentStatus: ticket.status,
       });

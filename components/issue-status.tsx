@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Circle, Clock, Inbox } from "lucide-react";
+import { CheckCircle2, Circle, Clock, Inbox, Send } from "lucide-react";
 
 export const STATUS_META = {
   backlog: {
@@ -14,6 +14,11 @@ export const STATUS_META = {
     label: "Unclaimed",
     Icon: Circle,
     colorClass: "border-unclaimed/45 bg-unclaimed/10 text-unclaimed",
+  },
+  dispatched: {
+    label: "Dispatched",
+    Icon: Send,
+    colorClass: "border-dispatched/45 bg-dispatched/10 text-dispatched",
   },
   in_progress: {
     label: "In Progress",

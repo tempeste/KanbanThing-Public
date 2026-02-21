@@ -18,6 +18,7 @@ import { Search, X, Download } from "lucide-react";
 const STATUS_ACCENTS = {
   backlog: "var(--backlog)",
   unclaimed: "var(--unclaimed)",
+  dispatched: "var(--dispatched)",
   in_progress: "var(--in-progress)",
   done: "var(--done)",
 } as const;
@@ -159,6 +160,9 @@ export default function WorkspacePage() {
   const doneCount = visibleTickets.filter((ticket) => ticket.status === "done").length;
   const inProgressCount = visibleTickets.filter(
     (ticket) => ticket.status === "in_progress"
+  ).length;
+  const dispatchedCount = visibleTickets.filter(
+    (ticket) => ticket.status === "dispatched"
   ).length;
   const unclaimedCount = visibleTickets.filter(
     (ticket) => ticket.status === "unclaimed"
@@ -318,6 +322,13 @@ export default function WorkspacePage() {
           </span>
         </div>
         <div className="hidden items-center gap-2 md:flex">
+          <span className="h-2 w-2" style={{ background: STATUS_ACCENTS.dispatched }} />
+          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/70">Dispatched</span>
+          <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.dispatched }}>
+            {dispatchedCount}
+          </span>
+        </div>
+        <div className="hidden items-center gap-2 md:flex">
           <span className="h-2 w-2" style={{ background: STATUS_ACCENTS.in_progress }} />
           <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/70">In Progress</span>
           <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.in_progress }}>
@@ -340,6 +351,9 @@ export default function WorkspacePage() {
           )}
           <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.unclaimed }}>
             {unclaimedCount}
+          </span>
+          <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.dispatched }}>
+            {dispatchedCount}
           </span>
           <span className="font-mono text-[9px] font-extrabold" style={{ color: STATUS_ACCENTS.in_progress }}>
             {inProgressCount}

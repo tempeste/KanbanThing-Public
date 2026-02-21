@@ -41,11 +41,12 @@ interface KanbanBoardProps {
   compact?: boolean;
 }
 
-const ALL_STATUSES: Status[] = ["backlog", "unclaimed", "in_progress", "done"];
-const DEFAULT_VISIBLE = new Set<Status>(["unclaimed", "in_progress", "done"]);
+const ALL_STATUSES: Status[] = ["backlog", "unclaimed", "dispatched", "in_progress", "done"];
+const DEFAULT_VISIBLE = new Set<Status>(["unclaimed", "dispatched", "in_progress", "done"]);
 const STATUS_META: Record<Status, { label: string; accent: string }> = {
   backlog: { label: "BACKLOG", accent: "var(--backlog)" },
   unclaimed: { label: "UNCLAIMED", accent: "var(--unclaimed)" },
+  dispatched: { label: "DISPATCHED", accent: "var(--dispatched)" },
   in_progress: { label: "IN PROGRESS", accent: "var(--in-progress)" },
   done: { label: "DONE", accent: "var(--done)" },
 };
@@ -94,6 +95,7 @@ export function KanbanBoard({
   const columnRefs = useRef<Record<Status, HTMLDivElement | null>>({
     backlog: null,
     unclaimed: null,
+    dispatched: null,
     in_progress: null,
     done: null,
   });
@@ -131,7 +133,10 @@ export function KanbanBoard({
 
       if (override === null) {
         const ownerCleared = !ticket.ownerId && !ticket.ownerType;
-        const statusUnowned = ticket.status === "unclaimed" || ticket.status === "backlog";
+        const statusUnowned =
+          ticket.status === "unclaimed" ||
+          ticket.status === "backlog" ||
+          ticket.status === "dispatched";
         if (ownerCleared || statusUnowned) {
           next.delete(ticket._id);
         }
@@ -190,6 +195,7 @@ export function KanbanBoard({
   );
   const backlogTickets = ticketsByStatus.backlog ?? [];
   const unclaimedTickets = ticketsByStatus.unclaimed;
+  const dispatchedTickets = ticketsByStatus.dispatched;
   const inProgressTickets = ticketsByStatus.in_progress;
   const doneTickets = ticketsByStatus.done;
 
@@ -204,6 +210,13 @@ export function KanbanBoard({
     count: unclaimedTickets.length,
     getItemKey: (index) => unclaimedTickets[index]?._id ?? `unclaimed-${index}`,
     getScrollElement: () => columnRefs.current.unclaimed,
+    estimateSize: () => 120,
+    overscan: 10,
+  });
+  const dispatchedVirtualizer = useVirtualizer({
+    count: dispatchedTickets.length,
+    getItemKey: (index) => dispatchedTickets[index]?._id ?? `dispatched-${index}`,
+    getScrollElement: () => columnRefs.current.dispatched,
     estimateSize: () => 120,
     overscan: 10,
   });
@@ -225,6 +238,7 @@ export function KanbanBoard({
   const virtualizerMap = {
     backlog: backlogVirtualizer,
     unclaimed: unclaimedVirtualizer,
+    dispatched: dispatchedVirtualizer,
     in_progress: inProgressVirtualizer,
     done: doneVirtualizer,
   };
@@ -277,15 +291,18 @@ export function KanbanBoard({
   useEffect(() => {
     backlogVirtualizer.measure();
     unclaimedVirtualizer.measure();
+    dispatchedVirtualizer.measure();
     inProgressVirtualizer.measure();
     doneVirtualizer.measure();
   }, [
     backlogTickets,
     unclaimedTickets,
+    dispatchedTickets,
     inProgressTickets,
     doneTickets,
     backlogVirtualizer,
     unclaimedVirtualizer,
+    dispatchedVirtualizer,
     inProgressVirtualizer,
     doneVirtualizer,
   ]);
@@ -390,7 +407,11 @@ export function KanbanBoard({
       }
     }
 
-    if (nextStatus === "unclaimed" || nextStatus === "backlog") {
+    if (
+      nextStatus === "unclaimed" ||
+      nextStatus === "backlog" ||
+      nextStatus === "dispatched"
+    ) {
       applyOptimisticOwner(ticketId, null);
     }
   };
@@ -418,7 +439,7 @@ export function KanbanBoard({
       });
     }
 
-    if (status === "unclaimed" || status === "backlog") {
+    if (status === "unclaimed" || status === "backlog" || status === "dispatched") {
       applyOptimisticOwner(ticketId, null);
     }
 

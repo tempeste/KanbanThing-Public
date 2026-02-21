@@ -115,7 +115,7 @@ describe("GET /api/tickets", () => {
     mocks.query.mockResolvedValueOnce([]);
 
     const request = new NextRequest(
-      "http://localhost/api/tickets?fields=summary&parentId=root&status=done"
+      "http://localhost/api/tickets?fields=summary&parentId=root&status=dispatched"
     );
     const response = await GET(request);
     const payload = await response.json();
@@ -124,7 +124,7 @@ describe("GET /api/tickets", () => {
     expect(mocks.query).toHaveBeenCalledWith(api.tickets.listSummariesByParentAndStatus, {
       workspaceId: "workspace_1",
       parentId: null,
-      status: "done",
+      status: "dispatched",
       limit: undefined,
       agentApiKeyId: "key_1",
     });
