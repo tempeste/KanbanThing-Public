@@ -103,6 +103,7 @@ Common options:
 ### Authentication
 
 All API requests require an `X-API-Key` header.
+For stable agent identity across calls, send `X-Agent-Session-Id` (or `X-OpenClaw-Session-Id` for OpenClaw clients).
 
 - Workspace settings can create/revoke keys for humans.
 - API key lifecycle endpoints (`/api/api-keys`) require an **admin** API key.
@@ -153,6 +154,9 @@ curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"st
 # Assign / unassign
 curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"ownerId":"...","ownerType":"agent"}' http://localhost:3000/api/tickets/ISSUE_ID/assign
 curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/unassign
+
+# Session-scoped agent identity (OpenClaw-compatible)
+curl -X POST -H "X-API-Key: sk_..." -H "X-OpenClaw-Session-Id: openclaw-run-1" http://localhost:3000/api/tickets/ISSUE_ID/claim
 
 # Comments + activity
 curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"body":"Update..."}' http://localhost:3000/api/tickets/ISSUE_ID/comments

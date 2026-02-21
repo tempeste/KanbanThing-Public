@@ -667,6 +667,9 @@ export default function WorkspaceSettingsPage() {
                   {"curl -X POST -H \"X-API-Key: sk_...\" -H \"X-Agent-Session-Id: agent-A\" -H \"Content-Type: application/json\" -d '{}' /api/tickets/ISSUE_ID/assign"}
                 </p>
                 <p className="text-foreground">
+                  {"# OpenClaw alias: use X-OpenClaw-Session-Id instead of X-Agent-Session-Id"}
+                </p>
+                <p className="text-foreground">
                   {"curl -X POST -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/unassign"}
                 </p>
                 <p className="mt-2"># Comment + activity</p>

@@ -55,6 +55,39 @@ describe("api auth helpers", () => {
     });
   });
 
+  it("resolves to session principal when OpenClaw header is valid", () => {
+    const request = new Request("http://localhost/api/tickets", {
+      method: "POST",
+      headers: {
+        "X-OpenClaw-Session-Id": "openclaw.worker-7",
+      },
+    });
+
+    const principal = resolveAgentPrincipal(request, baseAuth as never);
+    expect(principal).toEqual({
+      ownerId: "session:openclaw.worker-7",
+      ownerType: "agent",
+      ownerDisplayName: "openclaw.worker-7",
+    });
+  });
+
+  it("prefers X-Agent-Session-Id over OpenClaw alias when both are present", () => {
+    const request = new Request("http://localhost/api/tickets", {
+      method: "POST",
+      headers: {
+        "X-Agent-Session-Id": "primary.agent",
+        "X-OpenClaw-Session-Id": "fallback.agent",
+      },
+    });
+
+    const principal = resolveAgentPrincipal(request, baseAuth as never);
+    expect(principal).toEqual({
+      ownerId: "session:primary.agent",
+      ownerType: "agent",
+      ownerDisplayName: "primary.agent",
+    });
+  });
+
   it("rejects invalid session ids", async () => {
     const request = new Request("http://localhost/api/tickets", {
       method: "POST",
@@ -69,7 +102,7 @@ describe("api auth helpers", () => {
     const response = principal as Response;
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "Invalid X-Agent-Session-Id",
+      error: "Invalid X-Agent-Session-Id or X-OpenClaw-Session-Id",
     });
   });
 
@@ -87,7 +120,7 @@ describe("api auth helpers", () => {
     const response = principal as Response;
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "Invalid X-Agent-Session-Id",
+      error: "Invalid X-Agent-Session-Id or X-OpenClaw-Session-Id",
     });
   });
 

@@ -27,6 +27,7 @@ export interface AgentPrincipal {
 
 const AGENT_SESSION_ID_MAX_LENGTH = 128;
 const AGENT_SESSION_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
+const OPENCLAW_SESSION_HEADER = "X-OpenClaw-Session-Id";
 const INVALID_API_KEY_WINDOW_MS = 60_000;
 const MAX_INVALID_API_KEY_ATTEMPTS = 30;
 
@@ -141,7 +142,9 @@ export function resolveAgentPrincipal(
   request: Request,
   auth: AuthResult
 ): AgentPrincipal | Response {
-  const rawSessionId = request.headers.get("X-Agent-Session-Id");
+  const rawSessionId =
+    request.headers.get("X-Agent-Session-Id") ??
+    request.headers.get(OPENCLAW_SESSION_HEADER);
   const sessionId = rawSessionId?.trim();
 
   if (sessionId) {
@@ -150,7 +153,7 @@ export function resolveAgentPrincipal(
       !AGENT_SESSION_ID_PATTERN.test(sessionId)
     ) {
       return new Response(
-        JSON.stringify({ error: "Invalid X-Agent-Session-Id" }),
+        JSON.stringify({ error: "Invalid X-Agent-Session-Id or X-OpenClaw-Session-Id" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
