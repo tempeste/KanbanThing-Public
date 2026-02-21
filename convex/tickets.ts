@@ -52,6 +52,12 @@ const toTicketSummary = (ticket: {
   ownerId?: string;
   ownerType?: "user" | "agent";
   ownerDisplayName?: string;
+  lastDispatchRunId?: string;
+  lastDispatchInstanceId?: Id<"openclawInstances">;
+  lastDispatchInstanceName?: string;
+  lastDispatchUserId?: string;
+  lastDispatchUserDisplayName?: string;
+  lastDispatchAt?: number;
   createdAt: number;
   updatedAt: number;
 }) => ({
@@ -70,6 +76,12 @@ const toTicketSummary = (ticket: {
   ownerId: ticket.ownerId,
   ownerType: ticket.ownerType,
   ownerDisplayName: ticket.ownerDisplayName,
+  lastDispatchRunId: ticket.lastDispatchRunId,
+  lastDispatchInstanceId: ticket.lastDispatchInstanceId,
+  lastDispatchInstanceName: ticket.lastDispatchInstanceName,
+  lastDispatchUserId: ticket.lastDispatchUserId,
+  lastDispatchUserDisplayName: ticket.lastDispatchUserDisplayName,
+  lastDispatchAt: ticket.lastDispatchAt,
   createdAt: ticket.createdAt,
   updatedAt: ticket.updatedAt,
 });

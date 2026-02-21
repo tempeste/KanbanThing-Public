@@ -128,7 +128,9 @@ export const executeDispatch = action({
 
       await ctx.runMutation(dispatchInternal.markDispatchSuccess, {
         workspaceId: args.workspaceId,
+        instanceId: args.instanceId,
         instanceName: args.instanceName,
+        userId: args.userId,
         userDisplayName: args.userDisplayName,
         runId: result.runId,
         snapshots: args.snapshots,
@@ -186,6 +188,8 @@ export const cancelDispatch = action({
       ticketIds: args.ticketIds,
       runId: args.runId,
       instanceName: instance.name,
+      userId,
+      userDisplayName: userId,
       ...(errorMessage ? { error: errorMessage } : {}),
     });
 

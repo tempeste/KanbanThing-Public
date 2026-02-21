@@ -288,6 +288,28 @@ export default function TicketDetailPage() {
         });
         return `Updated ${labels.join(", ")}`;
       }
+      case "ticket_dispatched": {
+        const instanceName = event.data?.instanceName;
+        const runId = event.data?.runId;
+        if (instanceName && runId) {
+          return `Dispatched via ${instanceName} (run: ${runId})`;
+        }
+        if (instanceName) {
+          return `Dispatched via ${instanceName}`;
+        }
+        return "Dispatched to OpenClaw";
+      }
+      case "ticket_dispatch_cancelled": {
+        const runId = event.data?.runId;
+        const instanceName = event.data?.instanceName;
+        if (instanceName && runId) {
+          return `Requested cancellation for run ${runId} on ${instanceName}`;
+        }
+        if (runId) {
+          return `Requested cancellation for run ${runId}`;
+        }
+        return "Requested dispatch cancellation";
+      }
       default:
         return event.type ?? "Activity";
     }
@@ -796,4 +818,3 @@ export default function TicketDetailPage() {
     </div>
   );
 }
-

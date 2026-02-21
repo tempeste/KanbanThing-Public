@@ -59,6 +59,12 @@ export default defineSchema({
     ownerId: v.optional(v.string()),
     ownerType: v.optional(v.union(v.literal("user"), v.literal("agent"))),
     ownerDisplayName: v.optional(v.string()), // Cached display name for UI
+    lastDispatchRunId: v.optional(v.string()),
+    lastDispatchInstanceId: v.optional(v.id("openclawInstances")),
+    lastDispatchInstanceName: v.optional(v.string()),
+    lastDispatchUserId: v.optional(v.string()),
+    lastDispatchUserDisplayName: v.optional(v.string()),
+    lastDispatchAt: v.optional(v.number()),
     tags: v.optional(v.array(v.id("workspaceTags"))),
     createdAt: v.number(),
     updatedAt: v.number(),

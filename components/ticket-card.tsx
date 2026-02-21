@@ -117,6 +117,15 @@ export const TicketCard = memo(function TicketCard({
                 {parentTicket.title}
               </div>
             )}
+            {ticket.status === "dispatched" && ticket.lastDispatchInstanceName && (
+              <div className="mt-2 line-clamp-1 font-mono text-[10px] uppercase tracking-[0.09em] text-muted-foreground/70">
+                Dispatched to{" "}
+                <span className="text-muted-foreground">
+                  {ticket.lastDispatchInstanceName}
+                </span>
+                {ticket.lastDispatchRunId ? ` • run ${ticket.lastDispatchRunId}` : ""}
+              </div>
+            )}
           </div>
         </div>
 

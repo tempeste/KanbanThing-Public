@@ -127,26 +127,41 @@ export const dispatchTickets = mutation({
 export const markDispatchSuccess = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
+    instanceId: v.id("openclawInstances"),
     instanceName: v.string(),
+    userId: v.string(),
     userDisplayName: v.string(),
     runId: v.optional(v.string()),
     snapshots: v.array(dispatchSnapshotValidator),
   },
   handler: async (ctx, args) => {
     for (const snapshot of args.snapshots) {
+      await ctx.db.patch(snapshot.ticketId, {
+        lastDispatchRunId: args.runId,
+        lastDispatchInstanceId: args.instanceId,
+        lastDispatchInstanceName: args.instanceName,
+        lastDispatchUserId: args.userId,
+        lastDispatchUserDisplayName: args.userDisplayName,
+        lastDispatchAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
       await logTicketActivity(ctx, {
         workspaceId: args.workspaceId,
         ticketId: snapshot.ticketId,
         type: "ticket_dispatched",
         data: {
           instanceName: args.instanceName,
-          dispatchedBy: args.userDisplayName,
+          instanceId: args.instanceId,
+          userId: args.userId,
+          userDisplayName: args.userDisplayName,
           runId: args.runId ?? null,
+          batchSize: args.snapshots.length,
         },
         actor: {
-          type: "system",
-          id: "openclaw-dispatch",
-          displayName: "OpenClaw Dispatch",
+          type: "user",
+          id: args.userId,
+          displayName: args.userDisplayName,
         },
       });
     }
@@ -210,6 +225,8 @@ export const logCancellationAttempt = internalMutation({
     ticketIds: v.array(v.id("tickets")),
     runId: v.string(),
     instanceName: v.string(),
+    userId: v.string(),
+    userDisplayName: v.optional(v.string()),
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -219,17 +236,16 @@ export const logCancellationAttempt = internalMutation({
       await logTicketActivity(ctx, {
         workspaceId: args.workspaceId,
         ticketId,
-        type: "ticket_dispatch_cancellation_requested",
+        type: "ticket_dispatch_cancelled",
         data: {
           runId: args.runId,
           instanceName: args.instanceName,
-          success: !args.error,
-          error: args.error ?? null,
+          ...(args.error ? { reason: args.error } : {}),
         },
         actor: {
-          type: "system",
-          id: "openclaw-dispatch",
-          displayName: "OpenClaw Dispatch",
+          type: "user",
+          id: args.userId,
+          displayName: args.userDisplayName,
         },
       });
     }

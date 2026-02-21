@@ -11,6 +11,12 @@ type TicketSummary = Pick<
   | "ownerId"
   | "ownerType"
   | "ownerDisplayName"
+  | "lastDispatchRunId"
+  | "lastDispatchInstanceId"
+  | "lastDispatchInstanceName"
+  | "lastDispatchUserId"
+  | "lastDispatchUserDisplayName"
+  | "lastDispatchAt"
   | "parentId"
   | "order"
   | "archived"
@@ -31,6 +37,12 @@ export const serializeTicket = (t: Doc<"tickets">) => ({
   ownerId: t.ownerId ?? null,
   ownerType: t.ownerType ?? null,
   ownerDisplayName: t.ownerDisplayName ?? null,
+  lastDispatchRunId: t.lastDispatchRunId ?? null,
+  lastDispatchInstanceId: t.lastDispatchInstanceId ?? null,
+  lastDispatchInstanceName: t.lastDispatchInstanceName ?? null,
+  lastDispatchUserId: t.lastDispatchUserId ?? null,
+  lastDispatchUserDisplayName: t.lastDispatchUserDisplayName ?? null,
+  lastDispatchAt: t.lastDispatchAt ?? null,
   parentId: t.parentId ?? null,
   order: t.order,
   archived: t.archived ?? false,
@@ -51,6 +63,12 @@ export const serializeTicketSummary = (t: TicketSummary) => ({
   ownerId: t.ownerId ?? null,
   ownerType: t.ownerType ?? null,
   ownerDisplayName: t.ownerDisplayName ?? null,
+  lastDispatchRunId: t.lastDispatchRunId ?? null,
+  lastDispatchInstanceId: t.lastDispatchInstanceId ?? null,
+  lastDispatchInstanceName: t.lastDispatchInstanceName ?? null,
+  lastDispatchUserId: t.lastDispatchUserId ?? null,
+  lastDispatchUserDisplayName: t.lastDispatchUserDisplayName ?? null,
+  lastDispatchAt: t.lastDispatchAt ?? null,
   parentId: t.parentId ?? null,
   order: t.order,
   archived: t.archived ?? false,

@@ -19,6 +19,12 @@ export type TicketSummary = Pick<
   | "ownerId"
   | "ownerType"
   | "ownerDisplayName"
+  | "lastDispatchRunId"
+  | "lastDispatchInstanceId"
+  | "lastDispatchInstanceName"
+  | "lastDispatchUserId"
+  | "lastDispatchUserDisplayName"
+  | "lastDispatchAt"
   | "createdAt"
   | "updatedAt"
 >;
