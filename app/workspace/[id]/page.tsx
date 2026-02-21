@@ -1,12 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery, useConvexAuth } from "convex/react";
+import { useQuery, useConvexAuth, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { KanbanBoard } from "@/components/kanban-board";
 import { TicketTable } from "@/components/ticket-table";
 import { generateWorkspacePrefix } from "@/lib/utils";
@@ -44,6 +52,17 @@ export default function WorkspacePage() {
   const showArchived = searchParams.get("archived") === "1";
   const [searchQuery, setSearchQuery] = useState("");
   const [boardSort, setBoardSort] = useState<BoardSortOption>("order");
+  const [isDispatchDialogOpen, setIsDispatchDialogOpen] = useState(false);
+  const [selectedDispatchIds, setSelectedDispatchIds] = useState<Set<string>>(new Set());
+  const [selectedInstanceId, setSelectedInstanceId] = useState("");
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const convexApi = api as any;
+  const openClawInstances = (useQuery(
+    convexApi.openclawInstances.list,
+    isAuthenticated ? {} : "skip"
+  ) ?? []) as Array<{ _id: string; name: string; url: string }>;
+  const dispatchTickets = useMutation(convexApi.openclawDispatch.dispatchTickets);
 
   const allVisibleTickets = useMemo(
     () => (tickets ? deriveVisibleTickets(tickets, showArchived) : []),
@@ -177,6 +196,42 @@ export default function WorkspacePage() {
     visibleTickets.length === 0
       ? 0
       : Math.round((inProgressCount / visibleTickets.length) * 100);
+  const dispatchableTickets = visibleTickets.filter((ticket) => ticket.status !== "done");
+  const selectedDispatchCount = selectedDispatchIds.size;
+
+  const toggleDispatchSelection = (ticketId: string) => {
+    setSelectedDispatchIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) {
+        next.delete(ticketId);
+      } else {
+        next.add(ticketId);
+      }
+      return next;
+    });
+  };
+
+  const handleDispatch = async () => {
+    if (!selectedInstanceId || selectedDispatchIds.size === 0) return;
+    setDispatchError(null);
+    setIsDispatching(true);
+    try {
+      await dispatchTickets({
+        workspaceId,
+        instanceId: selectedInstanceId,
+        ticketIds: Array.from(selectedDispatchIds),
+      });
+      setIsDispatchDialogOpen(false);
+      setSelectedDispatchIds(new Set());
+      setSelectedInstanceId("");
+    } catch (error) {
+      setDispatchError(
+        error instanceof Error ? error.message : "Failed to dispatch tickets"
+      );
+    } finally {
+      setIsDispatching(false);
+    }
+  };
 
   const exportTickets = (format: "json" | "csv") => {
     if (!tickets) return;
@@ -401,6 +456,128 @@ export default function WorkspacePage() {
           >
             + New
           </Link>
+          <Dialog open={isDispatchDialogOpen} onOpenChange={setIsDispatchDialogOpen}>
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                className="border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground/80"
+              >
+                Dispatch
+              </button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Dispatch Tickets to OpenClaw</DialogTitle>
+                <DialogDescription>
+                  Select tickets and target OpenClaw instance, then execute one batched dispatch.
+                </DialogDescription>
+              </DialogHeader>
+
+              {dispatchError ? (
+                <div className="rounded border border-destructive/45 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  {dispatchError}
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <label className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                  OpenClaw Instance
+                </label>
+                {openClawInstances.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No instances configured. Add one in{" "}
+                    <Link href={`/account?returnTo=/workspace/${workspaceId}`} className="underline">
+                      account settings
+                    </Link>
+                    .
+                  </p>
+                ) : (
+                  <select
+                    value={selectedInstanceId}
+                    onChange={(event) => setSelectedInstanceId(event.target.value)}
+                    className="h-9 w-full border border-border bg-background px-3 text-sm"
+                  >
+                    <option value="">Select instance...</option>
+                    {openClawInstances.map((instance) => (
+                      <option key={instance._id} value={instance._id}>
+                        {instance.name} ({instance.url})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                    Tickets ({selectedDispatchCount} selected)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedDispatchIds(
+                        selectedDispatchIds.size === dispatchableTickets.length
+                          ? new Set()
+                          : new Set(dispatchableTickets.map((ticket) => ticket._id))
+                      )
+                    }
+                    className="text-xs text-muted-foreground underline"
+                  >
+                    {selectedDispatchIds.size === dispatchableTickets.length
+                      ? "Clear all"
+                      : "Select all"}
+                  </button>
+                </div>
+                <div className="max-h-64 space-y-2 overflow-auto rounded border border-border p-2">
+                  {dispatchableTickets.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No dispatchable tickets in this view.</p>
+                  ) : (
+                    dispatchableTickets.map((ticket) => (
+                      <label
+                        key={ticket._id}
+                        className="flex items-start gap-2 rounded border border-border/60 p-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedDispatchIds.has(ticket._id)}
+                          onChange={() => toggleDispatchSelection(ticket._id)}
+                          className="mt-0.5 h-3.5 w-3.5 accent-primary"
+                        />
+                        <span className="text-sm">
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {workspacePrefix}-{ticket.number ?? "---"}
+                          </span>{" "}
+                          {ticket.title}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsDispatchDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleDispatch}
+                  disabled={
+                    isDispatching ||
+                    !selectedInstanceId ||
+                    selectedDispatchIds.size === 0 ||
+                    openClawInstances.length === 0
+                  }
+                >
+                  {isDispatching ? "Dispatching..." : "Execute Dispatch"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
           <button
             type="button"
             onClick={toggleShowArchived}
