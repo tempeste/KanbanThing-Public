@@ -20,9 +20,9 @@ interface TicketCardProps {
   accent: string;
   isDragOver: boolean;
   onDragStart: (event: React.DragEvent<HTMLElement>) => void;
-  onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
-  onDragLeave: () => void;
-  onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver: (event: React.DragEvent<HTMLElement>) => void;
+  onDragLeave: (event: React.DragEvent<HTMLElement>) => void;
+  onDrop: (event: React.DragEvent<HTMLElement>) => void;
   onDragHandleEnd: () => void;
   onClick: (event: React.MouseEvent<HTMLElement>) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;

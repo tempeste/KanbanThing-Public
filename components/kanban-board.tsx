@@ -187,27 +187,35 @@ export function KanbanBoard({
     () => deriveTicketsByStatus(visibleTickets, sortBy),
     [visibleTickets, sortBy]
   );
+  const backlogTickets = ticketsByStatus.backlog ?? [];
+  const unclaimedTickets = ticketsByStatus.unclaimed;
+  const inProgressTickets = ticketsByStatus.in_progress;
+  const doneTickets = ticketsByStatus.done;
 
   const backlogVirtualizer = useVirtualizer({
-    count: ticketsByStatus.backlog?.length ?? 0,
+    count: backlogTickets.length,
+    getItemKey: (index) => backlogTickets[index]?._id ?? `backlog-${index}`,
     getScrollElement: () => columnRefs.current.backlog,
     estimateSize: () => 120,
     overscan: 10,
   });
   const unclaimedVirtualizer = useVirtualizer({
-    count: ticketsByStatus.unclaimed.length,
+    count: unclaimedTickets.length,
+    getItemKey: (index) => unclaimedTickets[index]?._id ?? `unclaimed-${index}`,
     getScrollElement: () => columnRefs.current.unclaimed,
     estimateSize: () => 120,
     overscan: 10,
   });
   const inProgressVirtualizer = useVirtualizer({
-    count: ticketsByStatus.in_progress.length,
+    count: inProgressTickets.length,
+    getItemKey: (index) => inProgressTickets[index]?._id ?? `in-progress-${index}`,
     getScrollElement: () => columnRefs.current.in_progress,
     estimateSize: () => 120,
     overscan: 10,
   });
   const doneVirtualizer = useVirtualizer({
-    count: ticketsByStatus.done.length,
+    count: doneTickets.length,
+    getItemKey: (index) => doneTickets[index]?._id ?? `done-${index}`,
     getScrollElement: () => columnRefs.current.done,
     estimateSize: () => 120,
     overscan: 10,
@@ -264,6 +272,22 @@ export function KanbanBoard({
     },
     []
   );
+
+  useEffect(() => {
+    backlogVirtualizer.measure();
+    unclaimedVirtualizer.measure();
+    inProgressVirtualizer.measure();
+    doneVirtualizer.measure();
+  }, [
+    backlogTickets,
+    unclaimedTickets,
+    inProgressTickets,
+    doneTickets,
+    backlogVirtualizer,
+    unclaimedVirtualizer,
+    inProgressVirtualizer,
+    doneVirtualizer,
+  ]);
 
   const clearDragState = () => {
     pendingDragStateRef.current = null;
@@ -330,6 +354,14 @@ export function KanbanBoard({
       return getTicketOrderValue(prevTicket) + 1000;
     }
     return 0;
+  };
+
+  const getCardDropPosition = (
+    event: React.DragEvent<HTMLElement>
+  ): "above" | "below" => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offset = event.clientY - rect.top;
+    return offset < rect.height / 2 ? "above" : "below";
   };
 
   const applyStatusSideEffects = async (
@@ -488,6 +520,7 @@ export function KanbanBoard({
           .padStart(2, "0");
         const virtualizer = virtualizerMap[status];
         const columnTickets = ticketsByStatus[status] ?? [];
+        const shouldVirtualizeColumn = columnTickets.length > 80;
 
           return (
             <section
@@ -497,11 +530,16 @@ export function KanbanBoard({
             } ${dragOverStatus === status ? "bg-white/[0.02]" : ""}`}
             onDragOver={(event) => {
               event.preventDefault();
+              if (event.target !== event.currentTarget) return;
               scheduleDragState({ ticketId: null, position: null, status });
             }}
-            onDragLeave={() =>
-              scheduleDragState({ ticketId: null, position: null, status: null })
-            }
+            onDragLeave={(event) => {
+              const nextTarget = event.relatedTarget;
+              if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+                return;
+              }
+              scheduleDragState({ ticketId: null, position: null, status: null });
+            }}
             onDrop={async (event) => {
               event.preventDefault();
               const ticketId = event.dataTransfer.getData(
@@ -548,91 +586,180 @@ export function KanbanBoard({
                 </div>
               )}
 
-              {columnTickets.length > 0 && (
-                <div
-                  className="relative w-full"
-                  style={{ height: `${virtualizer.getTotalSize()}px` }}
-                >
-                  {virtualizer.getVirtualItems().map((virtualItem) => {
-                    const ticket = columnTickets[virtualItem.index];
-                    const parentTicket = ticket.parentId
-                      ? ticketsById.get(ticket.parentId) ?? null
-                      : null;
+              {columnTickets.length > 0 &&
+                (shouldVirtualizeColumn ? (
+                  <div
+                    className="relative w-full"
+                    style={{ height: `${virtualizer.getTotalSize()}px` }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualItem) => {
+                      const ticket = columnTickets[virtualItem.index];
+                      const parentTicket = ticket.parentId
+                        ? ticketsById.get(ticket.parentId) ?? null
+                        : null;
 
-                    return (
-                      <div
-                        key={ticket._id}
-                        data-index={virtualItem.index}
-                        ref={virtualizer.measureElement}
-                        className="absolute left-0 top-0 w-full pb-1"
-                        style={{ transform: `translateY(${virtualItem.start}px)` }}
-                      >
-                        <TicketCard
-                          ticket={ticket}
-                          workspaceId={workspaceId}
-                          workspacePrefix={workspacePrefix}
-                          workspaceTags={workspaceTags}
-                          parentTicket={parentTicket}
-                          accent={statusMeta.accent}
-                          isDragOver={dragOverTicketId === ticket._id}
-                          onDragStart={(event) => handleDragStart(event, ticket._id)}
-                          onDragOver={(event) => {
-                            event.preventDefault();
-                            const rect = (
-                              event.currentTarget as HTMLDivElement
-                            ).getBoundingClientRect();
-                            const offset = event.clientY - rect.top;
-                            const position: DragOverPosition =
-                              offset < rect.height / 2 ? "above" : "below";
-                            scheduleDragState({
-                              ticketId: ticket._id,
-                              position,
-                              status,
-                            });
-                          }}
-                          onDragLeave={() =>
-                            scheduleDragState({
-                              ticketId: null,
-                              position: null,
-                              status,
-                            })
-                          }
-                          onDrop={async (event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            const draggedId = event.dataTransfer.getData(
-                              "application/x-ticket-id"
-                            ) as Id<"tickets">;
-                            if (!draggedId || draggedId === ticket._id || !dragOverPosition) {
-                              return;
+                      return (
+                        <div
+                          key={ticket._id}
+                          data-index={virtualItem.index}
+                          ref={virtualizer.measureElement}
+                          className="absolute left-0 top-0 w-full pb-1"
+                          style={{ transform: `translateY(${virtualItem.start}px)` }}
+                        >
+                          <TicketCard
+                            ticket={ticket}
+                            workspaceId={workspaceId}
+                            workspacePrefix={workspacePrefix}
+                            workspaceTags={workspaceTags}
+                            parentTicket={parentTicket}
+                            accent={statusMeta.accent}
+                            isDragOver={dragOverTicketId === ticket._id}
+                            onDragStart={(event) => handleDragStart(event, ticket._id)}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const offset = event.clientY - rect.top;
+                              const position: DragOverPosition =
+                                offset < rect.height / 2 ? "above" : "below";
+                              scheduleDragState({
+                                ticketId: ticket._id,
+                                position,
+                                status,
+                              });
+                            }}
+                            onDragLeave={(event) => {
+                              const nextTarget = event.relatedTarget;
+                              if (
+                                nextTarget instanceof Node &&
+                                event.currentTarget.contains(nextTarget)
+                              ) {
+                                return;
+                              }
+                              scheduleDragState({
+                                ticketId: null,
+                                position: null,
+                                status,
+                              });
+                            }}
+                            onDrop={async (event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const draggedId = event.dataTransfer.getData(
+                                "application/x-ticket-id"
+                              ) as Id<"tickets">;
+                              if (!draggedId || draggedId === ticket._id) {
+                                return;
+                              }
+                              const dropPosition = getCardDropPosition(event);
+                              await moveTicketToStatus(
+                                draggedId,
+                                status,
+                                ticket._id,
+                                dropPosition
+                              );
+                              clearDragState();
+                            }}
+                            onDragHandleEnd={() => clearDragState()}
+                            onClick={(event) => handleCardClick(event, ticket._id)}
+                            onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
+                            onStatusChange={(newStatus) =>
+                              handleStatusChange(ticket._id, newStatus)
                             }
-                            await moveTicketToStatus(
-                              draggedId,
-                              status,
-                              ticket._id,
-                              dragOverPosition
-                            );
-                            clearDragState();
-                          }}
-                          onDragHandleEnd={() => clearDragState()}
-                          onClick={(event) => handleCardClick(event, ticket._id)}
-                          onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
-                          onStatusChange={(newStatus) =>
-                            handleStatusChange(ticket._id, newStatus)
-                          }
-                          onArchiveToggle={() =>
-                            updateTicket({
-                              id: ticket._id,
-                              archived: !(ticket.archived ?? false),
-                            })
-                          }
-                          onDelete={() => handleDelete(ticket._id)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                            onArchiveToggle={() =>
+                              updateTicket({
+                                id: ticket._id,
+                                archived: !(ticket.archived ?? false),
+                              })
+                            }
+                            onDelete={() => handleDelete(ticket._id)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {columnTickets.map((ticket) => {
+                      const parentTicket = ticket.parentId
+                        ? ticketsById.get(ticket.parentId) ?? null
+                        : null;
+
+                      return (
+                        <div key={ticket._id}>
+                          <TicketCard
+                            ticket={ticket}
+                            workspaceId={workspaceId}
+                            workspacePrefix={workspacePrefix}
+                            workspaceTags={workspaceTags}
+                            parentTicket={parentTicket}
+                            accent={statusMeta.accent}
+                            isDragOver={dragOverTicketId === ticket._id}
+                            onDragStart={(event) => handleDragStart(event, ticket._id)}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const offset = event.clientY - rect.top;
+                              const position: DragOverPosition =
+                                offset < rect.height / 2 ? "above" : "below";
+                              scheduleDragState({
+                                ticketId: ticket._id,
+                                position,
+                                status,
+                              });
+                            }}
+                            onDragLeave={(event) => {
+                              const nextTarget = event.relatedTarget;
+                              if (
+                                nextTarget instanceof Node &&
+                                event.currentTarget.contains(nextTarget)
+                              ) {
+                                return;
+                              }
+                              scheduleDragState({
+                                ticketId: null,
+                                position: null,
+                                status,
+                              });
+                            }}
+                            onDrop={async (event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const draggedId = event.dataTransfer.getData(
+                                "application/x-ticket-id"
+                              ) as Id<"tickets">;
+                              if (!draggedId || draggedId === ticket._id) {
+                                return;
+                              }
+                              const dropPosition = getCardDropPosition(event);
+                              await moveTicketToStatus(
+                                draggedId,
+                                status,
+                                ticket._id,
+                                dropPosition
+                              );
+                              clearDragState();
+                            }}
+                            onDragHandleEnd={() => clearDragState()}
+                            onClick={(event) => handleCardClick(event, ticket._id)}
+                            onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
+                            onStatusChange={(newStatus) =>
+                              handleStatusChange(ticket._id, newStatus)
+                            }
+                            onArchiveToggle={() =>
+                              updateTicket({
+                                id: ticket._id,
+                                archived: !(ticket.archived ?? false),
+                              })
+                            }
+                            onDelete={() => handleDelete(ticket._id)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
             </div>
             </section>
           );

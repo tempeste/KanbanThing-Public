@@ -199,6 +199,7 @@ export function TicketTable({
 
   const rowVirtualizer = useVirtualizer({
     count: displayRows.length,
+    getItemKey: (index) => displayRows[index]?.ticket._id ?? `row-${index}`,
     getScrollElement: () => listRef.current,
     estimateSize: () => 48,
     overscan: 12,
@@ -238,6 +239,10 @@ export function TicketTable({
     },
     []
   );
+
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [displayRows, rowVirtualizer]);
 
   const toggleCollapsed = (ticketId: Id<"tickets">) => {
     setCollapsed((prev) => {
@@ -312,17 +317,38 @@ export function TicketTable({
     setDragOverPosition(null);
   };
 
+  const resolveRowDropPosition = (
+    event: React.DragEvent<HTMLDivElement>,
+    depth: number
+  ): Exclude<DragOverPosition, null> => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offsetY = event.clientY - rect.top;
+    const offsetX = event.clientX - rect.left;
+    const edgeBand = rect.height * 0.3;
+
+    if (offsetY < edgeBand) return "above";
+    if (offsetY > rect.height - edgeBand) return "below";
+
+    // Require deliberate rightward placement to nest as a sub-issue.
+    const nestTriggerX = Math.min(rect.width - 20, 150 + depth * 14);
+    if (offsetX >= nestTriggerX) return "inside";
+
+    return offsetY < rect.height / 2 ? "above" : "below";
+  };
+
   const handleDrop = async (
     event: React.DragEvent<HTMLDivElement>,
-    targetTicket: TicketSummary
+    targetTicket: TicketSummary,
+    targetDepth: number
   ) => {
     event.preventDefault();
     const draggedId = event.dataTransfer.getData("application/x-ticket-id") as Id<"tickets">;
     if (!draggedId || draggedId === targetTicket._id) return;
     if (isDescendant(draggedId, targetTicket._id)) return;
+    const dropPosition = resolveRowDropPosition(event, targetDepth);
 
     try {
-      if (dragOverPosition === "inside") {
+      if (dropPosition === "inside") {
         const siblings = childrenByParent.get(targetTicket._id) ?? [];
         const lastTicket = siblings[siblings.length - 1];
         const draggedTicket = ticketsById.get(draggedId);
@@ -333,13 +359,13 @@ export function TicketTable({
             : 0;
         applyOptimisticMove(draggedId, targetTicket._id, order);
         await updateTicket({ id: draggedId, parentId: targetTicket._id, order });
-      } else if (dragOverPosition === "above" || dragOverPosition === "below") {
+      } else if (dropPosition === "above" || dropPosition === "below") {
         const nextParentId = targetTicket.parentId ?? null;
         const siblings = childrenByParent.get(nextParentId ?? "root") ?? [];
         const order = calculateOrder(
           siblings,
           targetTicket._id,
-          dragOverPosition,
+          dropPosition,
           draggedId
         );
         if (order === null) return;
@@ -556,6 +582,57 @@ export function TicketTable({
     []
   );
 
+  const shouldVirtualizeRows = displayRows.length > 200;
+
+  const renderTicketRow = (ticket: TicketSummary, depth: number) => {
+    const hasChildren = (ticket.childCount ?? 0) > 0;
+    const isCollapsed = collapsed.has(ticket._id);
+    const parentTicket = ticket.parentId
+      ? ticketsById.get(ticket.parentId) ?? null
+      : null;
+    const dragClass =
+      dragOverId === ticket._id
+        ? dragOverPosition === "inside"
+          ? "bg-accent"
+          : dragOverPosition === "above"
+            ? "shadow-[inset_0_2px_0_0_#ff3b00]"
+            : "shadow-[inset_0_-2px_0_0_#ff3b00]"
+        : "";
+
+    return (
+      <TicketTableRow
+        ticket={ticket}
+        workspaceId={workspaceId}
+        workspacePrefix={workspacePrefix}
+        workspaceTags={workspaceTags}
+        gridTemplate={gridTemplate}
+        parentTicket={parentTicket}
+        depth={depth}
+        hasChildren={hasChildren}
+        isCollapsed={isCollapsed}
+        isSelected={selected.has(ticket._id)}
+        onToggleSelect={(shiftKey: boolean) => toggleSelect(ticket._id, shiftKey)}
+        dragClass={dragClass}
+        onToggleCollapse={() => toggleCollapsed(ticket._id)}
+        onDragStart={(event) => handleDragStart(event, ticket._id)}
+        onDragOver={(event) => {
+          event.preventDefault();
+          const position = resolveRowDropPosition(event, depth);
+          scheduleDragState(ticket._id, position);
+        }}
+        onDragLeave={() => scheduleDragState(null, null)}
+        onDrop={(event) => handleDrop(event, ticket, depth)}
+        onClick={(event) => handleRowClick(event, ticket._id)}
+        onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
+        onStatusChange={(status) => handleStatusChange(ticket._id, status)}
+        onArchiveToggle={() =>
+          handleArchiveToggle(ticket._id, !(ticket.archived ?? false))
+        }
+        onDelete={() => handleDelete(ticket._id)}
+      />
+    );
+  };
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Bulk action bar */}
@@ -746,77 +823,34 @@ export function TicketTable({
           </div>
         )}
 
-        {displayRows.length > 0 && (
-          <div
-            className="relative divide-y divide-border/50"
-            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const { ticket, depth } = displayRows[virtualRow.index];
-              const hasChildren = (ticket.childCount ?? 0) > 0;
-              const isCollapsed = collapsed.has(ticket._id);
-              const parentTicket = ticket.parentId
-                ? ticketsById.get(ticket.parentId) ?? null
-                : null;
-              const dragClass =
-                dragOverId === ticket._id
-                  ? dragOverPosition === "inside"
-                    ? "bg-accent"
-                    : dragOverPosition === "above"
-                      ? "border-t-2 border-t-primary"
-                      : "border-b-2 border-b-primary"
-                  : "";
-
-              return (
-                <div
-                  key={ticket._id}
-                  data-index={virtualRow.index}
-                  ref={rowVirtualizer.measureElement}
-                  className="absolute left-0 top-0 w-full"
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
-                >
-                  <TicketTableRow
-                    ticket={ticket}
-                    workspaceId={workspaceId}
-                    workspacePrefix={workspacePrefix}
-                    workspaceTags={workspaceTags}
-                    gridTemplate={gridTemplate}
-                    parentTicket={parentTicket}
-                    depth={depth}
-                    hasChildren={hasChildren}
-                    isCollapsed={isCollapsed}
-                    isSelected={selected.has(ticket._id)}
-                    onToggleSelect={(shiftKey: boolean) => toggleSelect(ticket._id, shiftKey)}
-                    dragClass={dragClass}
-                    onToggleCollapse={() => toggleCollapsed(ticket._id)}
-                    onDragStart={(event) => handleDragStart(event, ticket._id)}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      const rect = (
-                        event.currentTarget as HTMLDivElement
-                      ).getBoundingClientRect();
-                      const offset = event.clientY - rect.top;
-                      const threshold = rect.height * 0.25;
-                      let position: DragOverPosition = "inside";
-                      if (offset < threshold) position = "above";
-                      else if (offset > rect.height - threshold) position = "below";
-                      scheduleDragState(ticket._id, position);
-                    }}
-                    onDragLeave={() => scheduleDragState(null, null)}
-                    onDrop={(event) => handleDrop(event, ticket)}
-                    onClick={(event) => handleRowClick(event, ticket._id)}
-                    onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
-                    onStatusChange={(status) => handleStatusChange(ticket._id, status)}
-                    onArchiveToggle={() =>
-                      handleArchiveToggle(ticket._id, !(ticket.archived ?? false))
-                    }
-                    onDelete={() => handleDelete(ticket._id)}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {displayRows.length > 0 &&
+          (shouldVirtualizeRows ? (
+            <div
+              className="relative divide-y divide-border/50"
+              style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const { ticket, depth } = displayRows[virtualRow.index];
+                return (
+                  <div
+                    key={ticket._id}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                    className="absolute left-0 top-0 w-full"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    {renderTicketRow(ticket, depth)}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {displayRows.map(({ ticket, depth }) => (
+                <div key={ticket._id}>{renderTicketRow(ticket, depth)}</div>
+              ))}
+            </div>
+          ))}
       </div>
 
     </div>

@@ -11,6 +11,35 @@ import * as z from "zod";
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
+const isUnauthenticatedError = (error: unknown) => {
+  const message =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? error.message
+        : typeof error === "object" &&
+            error !== null &&
+            "message" in error &&
+            typeof error.message === "string"
+          ? error.message
+          : "";
+
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes("unauthenticated") || normalized.includes("not authenticated");
+};
+
+export const getAuthUserOrNull = async (ctx: GenericCtx<DataModel>) => {
+  try {
+    return await authComponent.getAuthUser(ctx);
+  } catch (error) {
+    if (isUnauthenticatedError(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   const allowedEmails = (process.env.ALLOWED_EMAILS ?? "")
     .split(",")
@@ -120,6 +149,6 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => {
-    return authComponent.getAuthUser(ctx);
+    return getAuthUserOrNull(ctx);
   },
 });

@@ -4,7 +4,7 @@ import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { generateWorkspacePrefix } from "./prefix";
 import { actorValidator, resolveActor } from "./activityHelpers";
-import { authComponent } from "./auth";
+import { authComponent, getAuthUserOrNull } from "./auth";
 import { requireWorkspaceAccess } from "./access";
 
 const requireWorkspaceOwner = async (
@@ -86,7 +86,7 @@ const deleteWorkspaceData = async (
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const authUser = await authComponent.getAuthUser(ctx);
+    const authUser = await getAuthUserOrNull(ctx);
     if (!authUser) return [];
 
     const memberships = await ctx.db
@@ -188,7 +188,7 @@ export const createWithOwner = mutation({
 export const listForUser = query({
   args: {},
   handler: async (ctx) => {
-    const authUser = await authComponent.getAuthUser(ctx);
+    const authUser = await getAuthUserOrNull(ctx);
     if (!authUser) return [];
 
     // Get all memberships for this user
@@ -212,7 +212,7 @@ export const listForUser = query({
 export const listSidebar = query({
   args: {},
   handler: async (ctx) => {
-    const authUser = await authComponent.getAuthUser(ctx);
+    const authUser = await getAuthUserOrNull(ctx);
     if (!authUser) return [];
 
     const memberships = await ctx.db
