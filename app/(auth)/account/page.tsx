@@ -3,18 +3,39 @@
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient, useSession } from "@/lib/auth-client";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Link as LinkIcon, Unlink, Check, X, Pencil } from "lucide-react";
+import {
+  ArrowLeft,
+  Link as LinkIcon,
+  Unlink,
+  Check,
+  X,
+  Pencil,
+  Plus,
+  Server,
+  Trash2,
+} from "lucide-react";
 import Link from "next/link";
+import { validateOpenClawInstanceInput } from "@/lib/openclaw-instance-validation";
 
 type LinkedAccount = {
   id: string;
   providerId: string;
   accountId?: string;
+};
+
+type OpenClawInstance = {
+  _id: string;
+  name: string;
+  url: string;
+  createdAt: number;
+  updatedAt: number;
 };
 
 function AccountPageContent() {
@@ -33,6 +54,20 @@ function AccountPageContent() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [openClawName, setOpenClawName] = useState("");
+  const [openClawUrl, setOpenClawUrl] = useState("");
+  const [openClawToken, setOpenClawToken] = useState("");
+  const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
+  const [isSubmittingInstance, setIsSubmittingInstance] = useState(false);
+
+  const convexApi = api as any;
+  const openClawInstances = (useQuery(
+    convexApi.openclawInstances.list,
+    session?.user ? {} : "skip"
+  ) ?? []) as OpenClawInstance[];
+  const createOpenClawInstance = useAction(convexApi.openclawInstancesActions.create);
+  const updateOpenClawInstance = useAction(convexApi.openclawInstancesActions.update);
+  const removeOpenClawInstance = useMutation(convexApi.openclawInstances.remove);
 
   const fetchAccounts = useCallback(async () => {
     try {
@@ -199,6 +234,81 @@ function AccountPageContent() {
       ? returnToParam
       : "/";
 
+  const resetOpenClawForm = () => {
+    setEditingInstanceId(null);
+    setOpenClawName("");
+    setOpenClawUrl("");
+    setOpenClawToken("");
+  };
+
+  const handleSubmitOpenClawInstance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    const validationError = validateOpenClawInstanceInput({
+      name: openClawName,
+      url: openClawUrl,
+      token: openClawToken,
+      requireToken: editingInstanceId === null,
+    });
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setIsSubmittingInstance(true);
+    try {
+      if (editingInstanceId) {
+        await updateOpenClawInstance({
+          id: editingInstanceId,
+          name: openClawName.trim(),
+          url: openClawUrl.trim(),
+          ...(openClawToken.trim() ? { token: openClawToken.trim() } : {}),
+        });
+        setSuccess("OpenClaw instance updated");
+      } else {
+        await createOpenClawInstance({
+          name: openClawName.trim(),
+          url: openClawUrl.trim(),
+          token: openClawToken.trim(),
+        });
+        setSuccess("OpenClaw instance created");
+      }
+      resetOpenClawForm();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to save OpenClaw instance";
+      setError(message);
+    } finally {
+      setIsSubmittingInstance(false);
+    }
+  };
+
+  const handleEditOpenClawInstance = (instance: OpenClawInstance) => {
+    setEditingInstanceId(instance._id);
+    setOpenClawName(instance.name);
+    setOpenClawUrl(instance.url);
+    setOpenClawToken("");
+  };
+
+  const handleDeleteOpenClawInstance = async (instance: OpenClawInstance) => {
+    setError(null);
+    setSuccess(null);
+    if (!confirm(`Delete OpenClaw instance "${instance.name}"?`)) return;
+    try {
+      await removeOpenClawInstance({ id: instance._id });
+      setSuccess("OpenClaw instance deleted");
+      if (editingInstanceId === instance._id) {
+        resetOpenClawForm();
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to delete OpenClaw instance";
+      setError(message);
+    }
+  };
+
   return (
     <main className="min-h-screen p-4 md:p-6">
       <div className="kb-shell min-h-[calc(100vh-2rem)] overflow-hidden md:min-h-[calc(100vh-3rem)]">
@@ -301,6 +411,121 @@ function AccountPageContent() {
               <Label>Email</Label>
               <p className="text-sm">{user.email}</p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Server className="w-5 h-5" />
+              OpenClaw Instances
+            </CardTitle>
+            <CardDescription>
+              Manage your personal OpenClaw gateways for ticket dispatch. Tokens are encrypted at rest.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Make sure your OpenClaw agent is configured with the correct workspace directory
+              and KanbanThing API key in its `.env` file.
+            </p>
+
+            {openClawInstances.length === 0 ? (
+              <div className="rounded border border-border bg-background/50 p-3 text-sm text-muted-foreground">
+                No OpenClaw instances yet.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {openClawInstances.map((instance) => (
+                  <div
+                    key={instance._id}
+                    className="flex flex-col gap-3 rounded border border-border bg-background/50 p-3 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{instance.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{instance.url}</p>
+                      <p className="text-[11px] text-muted-foreground/80">
+                        Added {new Date(instance.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditOpenClawInstance(instance)}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteOpenClawInstance(instance)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitOpenClawInstance} className="space-y-3 rounded border border-border p-3">
+              <p className="text-sm font-medium">
+                {editingInstanceId ? "Edit OpenClaw instance" : "Add OpenClaw instance"}
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="openclaw-name">Name</Label>
+                <Input
+                  id="openclaw-name"
+                  placeholder="Work Laptop"
+                  value={openClawName}
+                  onChange={(e) => setOpenClawName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="openclaw-url">URL</Label>
+                <Input
+                  id="openclaw-url"
+                  placeholder="https://openclaw.example.com"
+                  value={openClawUrl}
+                  onChange={(e) => setOpenClawUrl(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="openclaw-token">
+                  Bearer Token {editingInstanceId ? "(leave blank to keep existing)" : ""}
+                </Label>
+                <Input
+                  id="openclaw-token"
+                  type="password"
+                  placeholder={editingInstanceId ? "Token saved" : "oc_..."}
+                  value={openClawToken}
+                  onChange={(e) => setOpenClawToken(e.target.value)}
+                  required={!editingInstanceId}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" disabled={isSubmittingInstance}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  {isSubmittingInstance
+                    ? "Saving..."
+                    : editingInstanceId
+                      ? "Update Instance"
+                      : "Add Instance"}
+                </Button>
+                {editingInstanceId ? (
+                  <Button type="button" variant="outline" onClick={resetOpenClawForm}>
+                    Cancel
+                  </Button>
+                ) : null}
+              </div>
+            </form>
           </CardContent>
         </Card>
 
