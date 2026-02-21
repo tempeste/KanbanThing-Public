@@ -113,4 +113,18 @@ export default defineSchema({
     actorDisplayName: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_workspace_createdAt", ["workspaceId", "createdAt"]),
+
+  openclawInstances: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    url: v.string(),
+    encryptedToken: v.object({
+      nonce: v.string(),
+      ciphertext: v.string(),
+    }),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_name", ["userId", "name"]),
 });
