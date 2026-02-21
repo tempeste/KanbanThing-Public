@@ -70,7 +70,9 @@ export const TicketCard = memo(function TicketCard({
       role="button"
       tabIndex={0}
       draggable
+      data-ticket-drag-root="true"
       onDragStart={onDragStart}
+      onDragEnd={onDragHandleEnd}
       onClick={onClick}
       onKeyDown={onKeyDown}
       onDragOver={onDragOver}

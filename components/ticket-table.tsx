@@ -23,6 +23,7 @@ import {
   SortColumn,
   SortDirection,
 } from "@/lib/ticket-derivations";
+import { beginTicketDrag, endTicketDrag } from "@/lib/ticket-drag";
 import { TicketSummary } from "@/lib/ticket-summary";
 import { ChevronDown, ChevronUp, Archive, ArchiveRestore, Trash2, X } from "lucide-react";
 
@@ -377,6 +378,7 @@ export function TicketTable({
       console.error(error);
     } finally {
       clearDragState();
+      endTicketDrag();
     }
   };
 
@@ -390,6 +392,11 @@ export function TicketTable({
     event: React.DragEvent<HTMLElement>,
     ticketId: Id<"tickets">
   ) => {
+    if (event.dataTransfer.getData("application/x-ticket-id")) return;
+    const dragRoot =
+      (event.currentTarget.closest("[data-ticket-drag-root='true']") as HTMLElement | null) ??
+      event.currentTarget;
+    beginTicketDrag(event, dragRoot);
     event.dataTransfer.setData("application/x-ticket-id", ticketId);
     event.dataTransfer.setData("text/plain", ticketId);
     event.dataTransfer.effectAllowed = "move";
@@ -615,6 +622,10 @@ export function TicketTable({
         dragClass={dragClass}
         onToggleCollapse={() => toggleCollapsed(ticket._id)}
         onDragStart={(event) => handleDragStart(event, ticket._id)}
+        onDragEnd={() => {
+          clearDragState();
+          endTicketDrag();
+        }}
         onDragOver={(event) => {
           event.preventDefault();
           const position = resolveRowDropPosition(event, depth);

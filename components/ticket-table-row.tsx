@@ -26,6 +26,7 @@ interface TicketTableRowProps {
   gridTemplate: string;
   onToggleCollapse: () => void;
   onDragStart: (event: React.DragEvent<HTMLElement>) => void;
+  onDragEnd: () => void;
   onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragLeave: () => void;
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
@@ -51,6 +52,7 @@ export const TicketTableRow = memo(function TicketTableRow({
   gridTemplate,
   onToggleCollapse,
   onDragStart,
+  onDragEnd,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -94,7 +96,9 @@ export const TicketTableRow = memo(function TicketTableRow({
       role="button"
       tabIndex={0}
       draggable
+      data-ticket-drag-root="true"
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onClick={onClick}
       onKeyDown={onKeyDown}
       onDragOver={onDragOver}

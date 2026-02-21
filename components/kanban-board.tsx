@@ -21,6 +21,7 @@ import {
   getTicketOrderValue,
   type BoardSortOption,
 } from "@/lib/ticket-derivations";
+import { beginTicketDrag, endTicketDrag } from "@/lib/ticket-drag";
 import { TicketSummary } from "@/lib/ticket-summary";
 
 type Status = IssueStatus;
@@ -461,10 +462,15 @@ export function KanbanBoard({
   };
 
   const handleDragStart = (event: React.DragEvent<HTMLElement>, ticketId: Id<"tickets">) => {
+    if (event.dataTransfer.getData("application/x-ticket-id")) return;
     const ticket = allTicketsById.get(ticketId);
     if (ticket) {
       draggedTicketRef.current = { id: ticketId, status: ticket.status };
     }
+    const dragRoot =
+      (event.currentTarget.closest("[data-ticket-drag-root='true']") as HTMLElement | null) ??
+      event.currentTarget;
+    beginTicketDrag(event, dragRoot);
     event.dataTransfer.setData("application/x-ticket-id", ticketId);
     event.dataTransfer.setData("text/plain", ticketId);
     event.dataTransfer.effectAllowed = "move";
@@ -561,6 +567,7 @@ export function KanbanBoard({
               } finally {
                 draggedTicketRef.current = null;
                 clearDragState();
+                endTicketDrag();
               }
             }}
           >
@@ -660,7 +667,10 @@ export function KanbanBoard({
                               );
                               clearDragState();
                             }}
-                            onDragHandleEnd={() => clearDragState()}
+                            onDragHandleEnd={() => {
+                              clearDragState();
+                              endTicketDrag();
+                            }}
                             onClick={(event) => handleCardClick(event, ticket._id)}
                             onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
                             onStatusChange={(newStatus) =>
@@ -741,7 +751,10 @@ export function KanbanBoard({
                               );
                               clearDragState();
                             }}
-                            onDragHandleEnd={() => clearDragState()}
+                            onDragHandleEnd={() => {
+                              clearDragState();
+                              endTicketDrag();
+                            }}
                             onClick={(event) => handleCardClick(event, ticket._id)}
                             onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
                             onStatusChange={(newStatus) =>
