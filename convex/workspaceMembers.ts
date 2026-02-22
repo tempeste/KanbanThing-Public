@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { authComponent } from "./auth";
@@ -215,6 +215,21 @@ export const getMembership = query({
   handler: async (ctx, args) => {
     await requireSelfOrWorkspaceManager(ctx, args.workspaceId, args.betterAuthUserId);
     return await getWorkspaceMembership(ctx, args.workspaceId, args.betterAuthUserId);
+  },
+});
+
+export const hasMembershipForUserId = internalQuery({
+  args: {
+    workspaceId: v.id("workspaces"),
+    betterAuthUserId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const membership = await getWorkspaceMembership(
+      ctx,
+      args.workspaceId,
+      args.betterAuthUserId
+    );
+    return membership !== null;
   },
 });
 

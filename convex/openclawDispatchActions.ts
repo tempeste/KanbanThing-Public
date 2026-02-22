@@ -10,6 +10,7 @@ import { getOpenClawInstanceUrlValidationError } from "../lib/openclaw-instance-
 const openclawApi = (api as any).openclawInstances;
 const openclawInternal = (internal as any).openclawInstances;
 const dispatchInternal = (internal as any).openclawDispatch;
+const workspaceMembersInternal = (internal as any).workspaceMembers;
 
 const withHooksPath = (rawUrl: string) => {
   const normalized = rawUrl.endsWith("/") ? rawUrl.slice(0, -1) : rawUrl;
@@ -165,6 +166,13 @@ export const cancelDispatch = internalAction({
   },
   handler: async (ctx, args) => {
     const userId = await ctx.runQuery(openclawApi.getCurrentUserId, {});
+    const hasMembership = await ctx.runQuery(workspaceMembersInternal.hasMembershipForUserId, {
+      workspaceId: args.workspaceId,
+      betterAuthUserId: userId,
+    });
+    if (!hasMembership) {
+      throw new Error("Unauthorized");
+    }
     const instance = await ctx.runQuery(openclawInternal.getOwnedEncryptedForDispatch, {
       id: args.instanceId,
       userId,
