@@ -614,7 +614,7 @@ const applyStatusChange = async (
     status,
     updatedAt: Date.now(),
   };
-  if (status === "unclaimed" || status === "backlog" || status === "dispatched") {
+  if (status === "unclaimed" || status === "backlog") {
     updates.ownerId = undefined;
     updates.ownerType = undefined;
     updates.ownerDisplayName = undefined;
