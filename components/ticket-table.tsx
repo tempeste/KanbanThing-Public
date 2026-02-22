@@ -8,13 +8,14 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { TicketTableRow } from "@/components/ticket-table-row";
 import { DispatchTicketsButton } from "@/components/dispatch-tickets-button";
 import { IssueStatus } from "@/components/issue-status";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 import {
   deriveChildrenByParent,
   deriveSortedFlatRows,
@@ -87,8 +88,7 @@ export function TicketTable({
     id: Id<"tickets"> | null;
     position: DragOverPosition;
   } | null>(null);
-
-  const workspaceTags = useQuery(api.tags.list, { workspaceId });
+  const { tags: workspaceTags } = useWorkspaceData();
 
   const updateStatus = useMutation(api.tickets.updateStatus);
   const updateTicket = useMutation(api.tickets.update);

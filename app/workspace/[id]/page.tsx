@@ -1,8 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery, useConvexAuth } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -12,6 +10,7 @@ import { TicketTable } from "@/components/ticket-table";
 import { generateWorkspacePrefix } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { useSession } from "@/lib/auth-client";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { deriveVisibleTickets, type BoardSortOption } from "@/lib/ticket-derivations";
 import { DispatchTicketsButton } from "@/components/dispatch-tickets-button";
 import { Search, X, Download } from "lucide-react";
@@ -30,16 +29,7 @@ export default function WorkspacePage() {
   const router = useRouter();
   const workspaceId = params.id as Id<"workspaces">;
   const { data: session, isPending: isSessionPending } = useSession();
-  const { isAuthenticated } = useConvexAuth();
-
-  const workspace = useQuery(
-    api.workspaces.get,
-    isAuthenticated ? { id: workspaceId } : "skip"
-  );
-  const tickets = useQuery(
-    api.tickets.listSummaries,
-    isAuthenticated ? { workspaceId } : "skip"
-  );
+  const { workspace, ticketSummaries: tickets } = useWorkspaceData();
   const tabParam = searchParams.get("tab");
   const activeTab = tabParam === "list" || tabParam === "board" ? tabParam : "board";
   const showArchived = searchParams.get("archived") === "1";

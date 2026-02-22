@@ -15,6 +15,7 @@ import { Markdown } from "@/components/markdown";
 import { ArrowLeft, Plus } from "lucide-react";
 import { formatTicketNumber, generateWorkspacePrefix } from "@/lib/utils";
 import { PRIORITY_META, PRIORITY_ORDER, type TicketPriority } from "@/lib/priority";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 
 export default function NewTicketPage() {
   const params = useParams();
@@ -23,7 +24,7 @@ export default function NewTicketPage() {
   const workspaceId = params.id as Id<"workspaces">;
   const parentFromQuery = searchParams.get("parentId");
 
-  const workspace = useQuery(api.workspaces.get, { id: workspaceId });
+  const { workspace } = useWorkspaceData();
   const tickets = useQuery(api.tickets.list, { workspaceId });
 
   const createTicket = useMutation(api.tickets.create);

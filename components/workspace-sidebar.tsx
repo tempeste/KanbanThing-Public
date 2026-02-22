@@ -7,6 +7,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useSearchParams } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { deriveVisibleTickets } from "@/lib/ticket-derivations";
 import { Menu, Settings } from "lucide-react";
 import {
@@ -24,19 +25,14 @@ export function WorkspaceSidebar({ workspaceId }: WorkspaceSidebarProps) {
   const { isAuthenticated } = useConvexAuth();
   const searchParams = useSearchParams();
   const showArchived = searchParams.get("archived") === "1";
+  const { workspace, ticketSummaries } = useWorkspaceData();
 
   const userWorkspaces =
     useQuery(api.workspaces.listSidebar, isAuthenticated ? {} : "skip") ?? [];
-  const workspace = useQuery(
-    api.workspaces.get,
-    isAuthenticated ? { id: workspaceId } : "skip"
-  );
-  const tickets = useQuery(
-    api.tickets.listSummaries,
-    isAuthenticated ? { workspaceId } : "skip"
-  );
 
-  const visibleTickets = tickets ? deriveVisibleTickets(tickets, showArchived) : [];
+  const visibleTickets = ticketSummaries
+    ? deriveVisibleTickets(ticketSummaries, showArchived)
+    : [];
   const onlineAgents = new Set(
     visibleTickets
       .filter((t) => t.ownerType === "agent")

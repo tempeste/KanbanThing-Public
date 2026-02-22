@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { ChevronDown, Tag } from "lucide-react";
 
 interface TagPickerProps {
@@ -12,8 +13,8 @@ interface TagPickerProps {
   currentTags: Id<"workspaceTags">[];
 }
 
-export function TagPicker({ workspaceId, ticketId, currentTags }: TagPickerProps) {
-  const tags = useQuery(api.tags.list, { workspaceId });
+export function TagPicker({ ticketId, currentTags }: TagPickerProps) {
+  const { tags } = useWorkspaceData();
   const updateTicket = useMutation(api.tickets.update);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);

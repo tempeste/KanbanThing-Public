@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { Plus, Pencil, Trash2, Check, X } from "lucide-react";
 
 const PRESET_COLORS = [
@@ -16,7 +17,7 @@ interface TagManagerProps {
 }
 
 export function TagManager({ workspaceId }: TagManagerProps) {
-  const tags = useQuery(api.tags.list, { workspaceId });
+  const { tags } = useWorkspaceData();
   const createTag = useMutation(api.tags.create);
   const updateTag = useMutation(api.tags.update);
   const removeTag = useMutation(api.tags.remove);

@@ -34,6 +34,7 @@ import { IssueSidebar } from "@/components/issue-detail/issue-sidebar";
 import { ArchivedBadge } from "@/components/archived-badge";
 import { ArchivedBanner } from "@/components/archived-banner";
 import { UserMenu } from "@/components/user-menu";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,7 +72,7 @@ export default function TicketDetailPage() {
   const workspaceId = params.id as Id<"workspaces">;
   const ticketId = params.ticketId as Id<"tickets">;
 
-  const workspace = useQuery(api.workspaces.get, { id: workspaceId });
+  const { workspace } = useWorkspaceData();
   const hierarchy = useQuery(api.tickets.getHierarchy, { id: ticketId });
   const allTickets = useQuery(api.tickets.list, { workspaceId });
   const comments = useQuery(api.ticketComments.listByTicket, { ticketId });

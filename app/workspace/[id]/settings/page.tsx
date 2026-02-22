@@ -19,6 +19,7 @@ import { generateWorkspacePrefix } from "@/lib/utils";
 import { useSession } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TagManager } from "@/components/tag-manager";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 
 function generateApiKey(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -43,11 +44,7 @@ export default function WorkspaceSettingsPage() {
   const { data: session, isPending: isSessionPending } = useSession();
   const userId = session?.user?.id;
   const canQueryWorkspace = Boolean(userId);
-
-  const workspace = useQuery(
-    api.workspaces.get,
-    canQueryWorkspace ? { id: workspaceId } : "skip"
-  );
+  const { workspace } = useWorkspaceData();
   const apiKeys = useQuery(
     api.apiKeys.list,
     canQueryWorkspace ? { workspaceId } : "skip"

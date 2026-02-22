@@ -14,6 +14,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { IssueStatus } from "@/components/issue-status";
 import { TicketCard } from "@/components/ticket-card";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { useSession } from "@/lib/auth-client";
 import {
   deriveTicketsByStatus,
@@ -68,6 +69,7 @@ export function KanbanBoard({
     api.userProfiles.getByAuthId,
     userId ? { betterAuthUserId: userId } : "skip"
   );
+  const { tags: workspaceTags } = useWorkspaceData();
 
   const [dragOverTicketId, setDragOverTicketId] = useState<Id<"tickets"> | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<DragOverPosition>(null);
@@ -87,8 +89,6 @@ export function KanbanBoard({
     position: DragOverPosition;
     status: Status | null;
   } | null>(null);
-
-  const workspaceTags = useQuery(api.tags.list, { workspaceId });
 
   const [visibleStatuses, setVisibleStatuses] = useState<Set<Status>>(DEFAULT_VISIBLE);
 
