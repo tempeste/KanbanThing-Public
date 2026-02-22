@@ -2,7 +2,7 @@
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { encryptOpenClawToken } from "../lib/openclaw-crypto";
 
@@ -21,7 +21,7 @@ export const create = action({
     token: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = await ctx.runQuery(api.openclawInstances.getCurrentUserId, {});
+    const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
     const encryptedToken = await encryptOpenClawToken(args.token, getEncryptionKey());
     return await ctx.runMutation(internal.openclawInstances.createEncrypted, {
       userId,
@@ -40,7 +40,7 @@ export const update = action({
     token: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = await ctx.runQuery(api.openclawInstances.getCurrentUserId, {});
+    const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
     const encryptedToken =
       args.token === undefined
         ? undefined

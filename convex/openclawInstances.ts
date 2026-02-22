@@ -68,7 +68,7 @@ const ensureNameUnique = async (
   }
 };
 
-export const getCurrentUserId = query({
+export const getCurrentUserId = internalQuery({
   args: {},
   handler: async (ctx) => {
     return await requireAuthUserId(ctx);

@@ -1,7 +1,7 @@
 "use node";
 
 import { internalAction } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { decryptOpenClawToken } from "../lib/openclaw-crypto";
 import { buildOpenClawDispatchMessage } from "../lib/openclaw-dispatch";
@@ -160,7 +160,7 @@ export const cancelDispatch = internalAction({
     ticketIds: v.array(v.id("tickets")),
   },
   handler: async (ctx, args) => {
-    const userId = await ctx.runQuery(api.openclawInstances.getCurrentUserId, {});
+    const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
     const hasMembership = await ctx.runQuery(internal.workspaceMembers.hasMembershipForUserId, {
       workspaceId: args.workspaceId,
       betterAuthUserId: userId,
