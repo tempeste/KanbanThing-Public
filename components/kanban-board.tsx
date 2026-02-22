@@ -39,11 +39,12 @@ interface KanbanBoardProps {
   workspacePrefix: string;
   showArchived: boolean;
   sortBy?: BoardSortOption;
+  visibleStatuses: Set<Status>;
+  onVisibleStatusesChange: (next: Set<Status>) => void;
   compact?: boolean;
 }
 
 const ALL_STATUSES: Status[] = ["backlog", "unclaimed", "dispatched", "in_progress", "done"];
-const DEFAULT_VISIBLE = new Set<Status>(["unclaimed", "dispatched", "in_progress", "done"]);
 const STATUS_META: Record<Status, { label: string; accent: string }> = {
   backlog: { label: "BACKLOG", accent: "var(--backlog)" },
   unclaimed: { label: "UNCLAIMED", accent: "var(--unclaimed)" },
@@ -60,6 +61,8 @@ export function KanbanBoard({
   workspacePrefix,
   showArchived,
   sortBy = "order",
+  visibleStatuses,
+  onVisibleStatusesChange,
 }: KanbanBoardProps) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -89,8 +92,6 @@ export function KanbanBoard({
     position: DragOverPosition;
     status: Status | null;
   } | null>(null);
-
-  const [visibleStatuses, setVisibleStatuses] = useState<Set<Status>>(DEFAULT_VISIBLE);
 
   const columnRefs = useRef<Record<Status, HTMLDivElement | null>>({
     backlog: null,
@@ -244,17 +245,15 @@ export function KanbanBoard({
   };
 
   const toggleColumnVisibility = useCallback((status: Status) => {
-    setVisibleStatuses((prev) => {
-      const next = new Set(prev);
-      if (next.has(status)) {
-        if (next.size <= 1) return prev;
-        next.delete(status);
-      } else {
-        next.add(status);
-      }
-      return next;
-    });
-  }, []);
+    const next = new Set(visibleStatuses);
+    if (next.has(status)) {
+      if (next.size <= 1) return;
+      next.delete(status);
+    } else {
+      next.add(status);
+    }
+    onVisibleStatusesChange(next);
+  }, [onVisibleStatusesChange, visibleStatuses]);
 
   const flushDragState = useCallback(() => {
     dragRafRef.current = null;

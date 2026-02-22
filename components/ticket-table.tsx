@@ -34,12 +34,14 @@ interface TicketTableProps {
   tickets: TicketSummary[];
   workspacePrefix: string;
   showArchived: boolean;
+  statusFilter: Set<IssueStatus>;
+  onStatusFilterChange: (next: Set<IssueStatus>) => void;
   compact?: boolean;
 }
 
 type DragOverPosition = "above" | "below" | "inside" | null;
 
-const DEFAULT_STATUS_FILTER: IssueStatus[] = [
+const ALL_FILTER_STATUSES: IssueStatus[] = [
   "backlog",
   "unclaimed",
   "dispatched",
@@ -52,6 +54,8 @@ export function TicketTable({
   tickets,
   workspacePrefix,
   showArchived,
+  statusFilter,
+  onStatusFilterChange,
 }: TicketTableProps) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -67,10 +71,7 @@ export function TicketTable({
     new Map()
   );
   const [selected, setSelected] = useState<Set<Id<"tickets">>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<Set<IssueStatus>>(
-    new Set(DEFAULT_STATUS_FILTER)
-  );
-  const allStatusCount = DEFAULT_STATUS_FILTER.length;
+  const allStatusCount = ALL_FILTER_STATUSES.length;
   const [sort, setSort] = useState<{ col: SortColumn; dir: SortDirection } | null>(null);
   const [colWidths, setColWidths] = useState({
     id: 160,
@@ -204,17 +205,15 @@ export function TicketTable({
   );
 
   const toggleStatusFilter = useCallback((status: IssueStatus) => {
-    setStatusFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(status)) {
-        if (next.size <= 1) return prev;
-        next.delete(status);
-      } else {
-        next.add(status);
-      }
-      return next;
-    });
-  }, []);
+    const next = new Set(statusFilter);
+    if (next.has(status)) {
+      if (next.size <= 1) return;
+      next.delete(status);
+    } else {
+      next.add(status);
+    }
+    onStatusFilterChange(next);
+  }, [onStatusFilterChange, statusFilter]);
 
   const rowVirtualizer = useVirtualizer({
     count: displayRows.length,
@@ -724,7 +723,7 @@ export function TicketTable({
       )}
       <div className="flex items-center gap-1.5 border-b border-border/60 px-4 py-2 md:px-7">
         <span className="kb-label mr-1">Filter</span>
-        {(["backlog", "unclaimed", "dispatched", "in_progress", "done"] as IssueStatus[]).map((s) => {
+        {ALL_FILTER_STATUSES.map((s) => {
           const active = statusFilter.has(s);
           const labels: Record<IssueStatus, string> = {
             backlog: "BACKLOG",

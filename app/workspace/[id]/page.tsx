@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -13,6 +13,7 @@ import { useSession } from "@/lib/auth-client";
 import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { deriveVisibleTickets, type BoardSortOption } from "@/lib/ticket-derivations";
 import { DispatchTicketsButton } from "@/components/dispatch-tickets-button";
+import { IssueStatus } from "@/components/issue-status";
 import { Search, X, Download } from "lucide-react";
 
 const STATUS_ACCENTS = {
@@ -22,6 +23,39 @@ const STATUS_ACCENTS = {
   in_progress: "var(--in-progress)",
   done: "var(--done)",
 } as const;
+
+const ALL_STATUS_FILTERS: IssueStatus[] = [
+  "backlog",
+  "unclaimed",
+  "dispatched",
+  "in_progress",
+  "done",
+];
+
+const DEFAULT_BOARD_STATUS_FILTER: IssueStatus[] = [
+  "unclaimed",
+  "dispatched",
+  "in_progress",
+  "done",
+];
+
+const STATUS_FILTER_STORAGE_KEY_PREFIX = "kanbanthing:workspace-status-filter:";
+
+function deserializeStatusFilter(
+  raw: string | null,
+  fallback: Set<IssueStatus>
+): Set<IssueStatus> {
+  if (!raw) return fallback;
+  const parsed = raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value): value is IssueStatus =>
+      (ALL_STATUS_FILTERS as string[]).includes(value)
+    );
+
+  if (parsed.length === 0) return fallback;
+  return new Set(parsed);
+}
 
 export default function WorkspacePage() {
   const params = useParams();
@@ -35,6 +69,32 @@ export default function WorkspacePage() {
   const showArchived = searchParams.get("archived") === "1";
   const [searchQuery, setSearchQuery] = useState("");
   const [boardSort, setBoardSort] = useState<BoardSortOption>("order");
+  const statusFilterStorageKey = `${STATUS_FILTER_STORAGE_KEY_PREFIX}${workspaceId}`;
+  const defaultStatusFilter = useMemo(
+    () =>
+      new Set<IssueStatus>(
+        activeTab === "board" ? DEFAULT_BOARD_STATUS_FILTER : ALL_STATUS_FILTERS
+      ),
+    [activeTab]
+  );
+  const [statusFilter, setStatusFilter] = useState<Set<IssueStatus>>(defaultStatusFilter);
+  const [statusFilterRestoredKey, setStatusFilterRestoredKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStatusFilterRestoredKey(null);
+    const next = deserializeStatusFilter(
+      window.localStorage.getItem(statusFilterStorageKey),
+      defaultStatusFilter
+    );
+    setStatusFilter(next);
+    setStatusFilterRestoredKey(statusFilterStorageKey);
+  }, [defaultStatusFilter, statusFilterStorageKey]);
+
+  useEffect(() => {
+    if (statusFilterRestoredKey !== statusFilterStorageKey) return;
+    const serialized = ALL_STATUS_FILTERS.filter((status) => statusFilter.has(status)).join(",");
+    window.localStorage.setItem(statusFilterStorageKey, serialized);
+  }, [statusFilter, statusFilterRestoredKey, statusFilterStorageKey]);
 
   const allVisibleTickets = useMemo(
     () => (tickets ? deriveVisibleTickets(tickets, showArchived) : []),
@@ -454,6 +514,8 @@ export default function WorkspacePage() {
             workspacePrefix={workspacePrefix}
             showArchived={searchQuery.trim() ? true : showArchived}
             sortBy={boardSort}
+            visibleStatuses={statusFilter}
+            onVisibleStatusesChange={setStatusFilter}
             compact
           />
         ) : (
@@ -462,6 +524,8 @@ export default function WorkspacePage() {
             tickets={searchQuery.trim() ? visibleTickets : tickets}
             workspacePrefix={workspacePrefix}
             showArchived={searchQuery.trim() ? true : showArchived}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
             compact
           />
         )}
