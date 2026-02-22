@@ -178,6 +178,7 @@ export const revertDispatchFailure = internalMutation({
     for (const snapshot of args.snapshots) {
       const ticket = await ctx.db.get(snapshot.ticketId);
       if (!ticket || ticket.workspaceId !== args.workspaceId) continue;
+      if (ticket.status !== "dispatched") continue;
 
       await ctx.db.patch(snapshot.ticketId, {
         status: snapshot.previousStatus,
