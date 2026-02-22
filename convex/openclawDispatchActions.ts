@@ -1,6 +1,6 @@
 "use node";
 
-import { action } from "./_generated/server";
+import { internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { decryptOpenClawToken } from "../lib/openclaw-crypto";
@@ -73,7 +73,7 @@ const postToOpenClaw = async (args: {
   }
 };
 
-export const executeDispatch = action({
+export const executeDispatch = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     workspaceName: v.string(),
@@ -150,7 +150,7 @@ export const executeDispatch = action({
   },
 });
 
-export const cancelDispatch = action({
+export const cancelDispatch = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     instanceId: v.id("openclawInstances"),
