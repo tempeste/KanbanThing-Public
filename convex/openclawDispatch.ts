@@ -8,8 +8,9 @@ import { Id } from "./_generated/dataModel";
 const dispatchSnapshotValidator = v.object({
   ticketId: v.id("tickets"),
   title: v.string(),
-  number: v.optional(v.number()),
-  previousStatus: v.union(
+      number: v.optional(v.number()),
+      description: v.optional(v.string()),
+      previousStatus: v.union(
     v.literal("backlog"),
     v.literal("unclaimed"),
     v.literal("dispatched"),
@@ -26,6 +27,9 @@ const getAuthUser = async (ctx: any) => {
   if (!user) throw new Error("Unauthorized");
   return user;
 };
+
+const getReadableUserDisplayName = (user: { name?: string | null; email?: string | null }) =>
+  user.name ?? user.email ?? "Authenticated user";
 
 export const dispatchTickets = mutation({
   args: {
@@ -68,6 +72,7 @@ export const dispatchTickets = mutation({
       ticketId: Id<"tickets">;
       title: string;
       number?: number;
+      description?: string;
       previousStatus: "backlog" | "unclaimed" | "dispatched" | "in_progress" | "done";
       previousOwnerId?: string;
       previousOwnerType?: "user" | "agent";
@@ -86,6 +91,7 @@ export const dispatchTickets = mutation({
         ticketId: ticket._id,
         title: ticket.title,
         number: ticket.number,
+        description: ticket.description,
         previousStatus: ticket.status,
         previousOwnerId: ticket.ownerId,
         previousOwnerType: ticket.ownerType,
@@ -113,7 +119,7 @@ export const dispatchTickets = mutation({
         actor: {
           type: "user",
           id: authUser._id,
-          displayName: authUser.name ?? authUser.email ?? String(authUser._id),
+          displayName: getReadableUserDisplayName(authUser),
         },
       });
     }
@@ -121,10 +127,11 @@ export const dispatchTickets = mutation({
     await ctx.scheduler.runAfter(0, (internal as any).openclawDispatchActions.executeDispatch, {
       workspaceId: args.workspaceId,
       workspaceName: workspace.name,
+      workspaceDocs: workspace.docs,
       instanceId: args.instanceId,
       instanceName: instance.name,
       userId: authUser._id,
-      userDisplayName: authUser.name ?? authUser.email ?? String(authUser._id),
+      userDisplayName: getReadableUserDisplayName(authUser),
       snapshots,
     });
 

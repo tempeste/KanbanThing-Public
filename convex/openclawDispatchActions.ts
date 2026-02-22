@@ -79,6 +79,7 @@ export const executeDispatch = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     workspaceName: v.string(),
+    workspaceDocs: v.optional(v.string()),
     instanceId: v.id("openclawInstances"),
     instanceName: v.string(),
     userId: v.string(),
@@ -88,6 +89,7 @@ export const executeDispatch = internalAction({
         ticketId: v.id("tickets"),
         title: v.string(),
         number: v.optional(v.number()),
+        description: v.optional(v.string()),
         previousStatus: v.union(
           v.literal("backlog"),
           v.literal("unclaimed"),
@@ -119,7 +121,9 @@ export const executeDispatch = internalAction({
           _id: snapshot.ticketId,
           title: snapshot.title,
           number: snapshot.number,
+          description: snapshot.description,
         })),
+        workspaceDocs: args.workspaceDocs,
       });
 
       const result = await postToOpenClaw({
@@ -198,7 +202,7 @@ export const cancelDispatch = internalAction({
       runId: args.runId,
       instanceName: instance.name,
       userId,
-      userDisplayName: userId,
+      userDisplayName: "Authenticated user",
       ...(errorMessage ? { error: errorMessage } : {}),
     });
 
