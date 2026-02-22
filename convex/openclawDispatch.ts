@@ -38,6 +38,11 @@ export const dispatchTickets = mutation({
     if (args.ticketIds.length === 0) {
       throw new Error("At least one ticket is required");
     }
+    if (args.ticketIds.length > 100) {
+      throw new Error("Cannot dispatch more than 100 tickets at once");
+    }
+
+    const ticketIds = [...new Set(args.ticketIds)] as Id<"tickets">[];
 
     const workspace = await ctx.db.get(args.workspaceId);
     if (!workspace) {
@@ -69,7 +74,7 @@ export const dispatchTickets = mutation({
       previousOwnerDisplayName?: string;
     }> = [];
 
-    for (const ticketId of args.ticketIds) {
+    for (const ticketId of ticketIds) {
       const ticket = await ctx.db.get(ticketId);
       if (!ticket || ticket.workspaceId !== args.workspaceId) {
         throw new Error("One or more tickets are invalid");
