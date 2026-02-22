@@ -74,6 +74,9 @@ export const dispatchTickets = mutation({
       if (!ticket || ticket.workspaceId !== args.workspaceId) {
         throw new Error("One or more tickets are invalid");
       }
+      if (ticket.status === "done" || ticket.status === "dispatched") {
+        throw new Error(`Ticket ${ticket.number ?? ticket._id} cannot be dispatched from ${ticket.status}`);
+      }
       snapshots.push({
         ticketId: ticket._id,
         title: ticket.title,
