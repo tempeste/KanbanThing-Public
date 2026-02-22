@@ -9,6 +9,13 @@
 5. Post a short progress update when work is non-trivial or blocked.
 6. Complete the ticket only after validation succeeds.
 
+## Same-Session Ticket Lifecycle
+
+When you create tickets and implement fixes in the same session:
+- Claim each ticket before starting its fix.
+- Complete each ticket immediately after committing its fix.
+- Do not leave tickets in `unclaimed` after the work is done.
+
 ## Validation Expectations
 
 - Run repo-required checks before completion (typecheck/build/tests when requested by local policy).
