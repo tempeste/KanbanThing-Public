@@ -90,6 +90,24 @@ describe("validateOpenClawInstanceInput", () => {
     );
   });
 
+  it("blocks IPv4-mapped IPv6 addresses", () => {
+    expect(getOpenClawInstanceUrlValidationError("https://[::ffff:127.0.0.1]")).toBe(
+      "URL host is not allowed"
+    );
+    expect(getOpenClawInstanceUrlValidationError("https://[::ffff:10.0.0.1]")).toBe(
+      "URL host is not allowed"
+    );
+    expect(getOpenClawInstanceUrlValidationError("https://[::ffff:172.16.0.1]")).toBe(
+      "URL host is not allowed"
+    );
+    expect(getOpenClawInstanceUrlValidationError("https://[::ffff:192.168.1.1]")).toBe(
+      "URL host is not allowed"
+    );
+    expect(getOpenClawInstanceUrlValidationError("https://[::ffff:169.254.169.254]")).toBe(
+      "URL host is not allowed"
+    );
+  });
+
   it("allows public HTTPS hosts", () => {
     expect(getOpenClawInstanceUrlValidationError("https://example.com")).toBeNull();
     expect(getOpenClawInstanceUrlValidationError("https://sub.example.com:8443")).toBeNull();

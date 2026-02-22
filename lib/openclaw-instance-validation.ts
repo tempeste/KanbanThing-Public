@@ -21,6 +21,20 @@ const isPrivateOrLocalIpv6 = (hostname: string) => {
   const normalized = hostname.toLowerCase();
   if (!normalized.includes(":")) return false;
 
+  // Detect IPv4-mapped IPv6 addresses. Node normalizes ::ffff:a.b.c.d to
+  // ::ffff:XXYY:ZZWW (hex), so we handle both dotted-decimal and hex forms.
+  const v4DottedMatch = normalized.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (v4DottedMatch) {
+    return isPrivateOrLocalIpv4(v4DottedMatch[1]);
+  }
+  const v4HexMatch = normalized.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (v4HexMatch) {
+    const hi = parseInt(v4HexMatch[1], 16);
+    const lo = parseInt(v4HexMatch[2], 16);
+    const ipv4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    return isPrivateOrLocalIpv4(ipv4);
+  }
+
   return (
     normalized === "::1" ||
     normalized.startsWith("fc") ||

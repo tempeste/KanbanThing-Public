@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 describe("OpenClaw API references", () => {
   it("does not use as-any casts in OpenClaw action files", () => {
     const files = [
+      "convex/openclawDispatch.ts",
       "convex/openclawDispatchActions.ts",
       "convex/openclawInstancesActions.ts",
     ];

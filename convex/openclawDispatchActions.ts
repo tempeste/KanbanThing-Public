@@ -165,6 +165,7 @@ export const cancelDispatch = internalAction({
   },
   handler: async (ctx, args) => {
     const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
+    const userDisplayName = await ctx.runQuery(internal.openclawInstances.getUserDisplayName, { userId });
     const hasMembership = await ctx.runQuery(internal.workspaceMembers.hasMembershipForUserId, {
       workspaceId: args.workspaceId,
       betterAuthUserId: userId,
@@ -202,7 +203,7 @@ export const cancelDispatch = internalAction({
       runId: args.runId,
       instanceName: instance.name,
       userId,
-      userDisplayName: "Authenticated user",
+      userDisplayName,
       ...(errorMessage ? { error: errorMessage } : {}),
     });
 

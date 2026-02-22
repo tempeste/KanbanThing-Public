@@ -168,6 +168,15 @@ export const updateEncrypted = internalMutation({
   },
 });
 
+export const getUserDisplayName = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await authComponent.getAnyUserById(ctx, args.userId);
+    if (!user) return "Authenticated user";
+    return user.name ?? user.email ?? "Authenticated user";
+  },
+});
+
 export const getOwnedEncryptedForDispatch = internalQuery({
   args: {
     id: v.id("openclawInstances"),

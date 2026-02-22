@@ -20,8 +20,8 @@ export const create = action({
     url: v.string(),
     token: v.string(),
   },
-  handler: async (ctx, args) => {
-    const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
+  handler: async (ctx, args): Promise<Id<"openclawInstances">> => {
+    const userId: string = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
     const encryptedToken = await encryptOpenClawToken(args.token, getEncryptionKey());
     return await ctx.runMutation(internal.openclawInstances.createEncrypted, {
       userId,

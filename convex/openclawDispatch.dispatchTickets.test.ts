@@ -13,9 +13,14 @@ describe("dispatchTickets server-side guards", () => {
   it("limits batch size and deduplicates ticket IDs", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "convex/openclawDispatch.ts"), "utf8");
 
-    expect(source).toContain("if (args.ticketIds.length > 100)");
+    expect(source).toContain("if (ticketIds.length > 100)");
     expect(source).toContain("Cannot dispatch more than 100 tickets at once");
     expect(source).toContain("const ticketIds = [...new Set(args.ticketIds)]");
     expect(source).toContain("for (const ticketId of ticketIds)");
+
+    // Verify dedup happens before the limit check
+    const dedupIndex = source.indexOf("const ticketIds = [...new Set(args.ticketIds)]");
+    const limitIndex = source.indexOf("if (ticketIds.length > 100)");
+    expect(dedupIndex).toBeLessThan(limitIndex);
   });
 });

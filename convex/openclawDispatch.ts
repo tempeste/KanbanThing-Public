@@ -5,12 +5,18 @@ import { logTicketActivity } from "./activityHelpers";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
+const truncateForScheduler = (value: string | undefined, maxLength: number) => {
+  if (!value) return value;
+  if (value.length <= maxLength) return value;
+  return value.slice(0, maxLength);
+};
+
 const dispatchSnapshotValidator = v.object({
   ticketId: v.id("tickets"),
   title: v.string(),
-      number: v.optional(v.number()),
-      description: v.optional(v.string()),
-      previousStatus: v.union(
+  number: v.optional(v.number()),
+  description: v.optional(v.string()),
+  previousStatus: v.union(
     v.literal("backlog"),
     v.literal("unclaimed"),
     v.literal("dispatched"),
@@ -42,11 +48,12 @@ export const dispatchTickets = mutation({
     if (args.ticketIds.length === 0) {
       throw new Error("At least one ticket is required");
     }
-    if (args.ticketIds.length > 100) {
-      throw new Error("Cannot dispatch more than 100 tickets at once");
-    }
 
     const ticketIds = [...new Set(args.ticketIds)] as Id<"tickets">[];
+
+    if (ticketIds.length > 100) {
+      throw new Error("Cannot dispatch more than 100 tickets at once");
+    }
 
     const workspace = await ctx.db.get(args.workspaceId);
     if (!workspace) {
@@ -124,15 +131,20 @@ export const dispatchTickets = mutation({
       });
     }
 
-    await ctx.scheduler.runAfter(0, (internal as any).openclawDispatchActions.executeDispatch, {
+    const truncatedSnapshots = snapshots.map((s) => ({
+      ...s,
+      description: truncateForScheduler(s.description, 300),
+    }));
+
+    await ctx.scheduler.runAfter(0, internal.openclawDispatchActions.executeDispatch, {
       workspaceId: args.workspaceId,
       workspaceName: workspace.name,
-      workspaceDocs: workspace.docs,
+      workspaceDocs: truncateForScheduler(workspace.docs, 600),
       instanceId: args.instanceId,
       instanceName: instance.name,
       userId: authUser._id,
       userDisplayName: getReadableUserDisplayName(authUser),
-      snapshots,
+      snapshots: truncatedSnapshots,
     });
 
     return { success: true, count: snapshots.length };
