@@ -7,7 +7,7 @@ describe("cancelDispatch workspace membership guard", () => {
     const filePath = path.join(process.cwd(), "convex/openclawDispatchActions.ts");
     const source = fs.readFileSync(filePath, "utf8");
 
-    expect(source).toContain("workspaceMembersInternal.hasMembershipForUserId");
+    expect(source).toContain("internal.workspaceMembers.hasMembershipForUserId");
     expect(source).toContain('if (!hasMembership) {');
     expect(source).toContain('throw new Error("Unauthorized");');
   });

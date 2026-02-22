@@ -7,11 +7,6 @@ import { decryptOpenClawToken } from "../lib/openclaw-crypto";
 import { buildOpenClawDispatchMessage } from "../lib/openclaw-dispatch";
 import { getOpenClawInstanceUrlValidationError } from "../lib/openclaw-instance-validation";
 
-const openclawApi = (api as any).openclawInstances;
-const openclawInternal = (internal as any).openclawInstances;
-const dispatchInternal = (internal as any).openclawDispatch;
-const workspaceMembersInternal = (internal as any).workspaceMembers;
-
 const withHooksPath = (rawUrl: string) => {
   const normalized = rawUrl.endsWith("/") ? rawUrl.slice(0, -1) : rawUrl;
   return `${normalized}/hooks/agent`;
@@ -109,7 +104,7 @@ export const executeDispatch = internalAction({
   handler: async (ctx, args) => {
     try {
       const instance = await ctx.runQuery(
-        openclawInternal.getOwnedEncryptedForDispatch,
+        internal.openclawInstances.getOwnedEncryptedForDispatch,
         { id: args.instanceId, userId: args.userId }
       );
       if (!instance) {
@@ -133,7 +128,7 @@ export const executeDispatch = internalAction({
         message,
       });
 
-      await ctx.runMutation(dispatchInternal.markDispatchSuccess, {
+      await ctx.runMutation(internal.openclawDispatch.markDispatchSuccess, {
         workspaceId: args.workspaceId,
         instanceId: args.instanceId,
         instanceName: args.instanceName,
@@ -147,7 +142,7 @@ export const executeDispatch = internalAction({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "OpenClaw dispatch failed";
-      await ctx.runMutation(dispatchInternal.revertDispatchFailure, {
+      await ctx.runMutation(internal.openclawDispatch.revertDispatchFailure, {
         workspaceId: args.workspaceId,
         error: message,
         snapshots: args.snapshots,
@@ -165,15 +160,15 @@ export const cancelDispatch = internalAction({
     ticketIds: v.array(v.id("tickets")),
   },
   handler: async (ctx, args) => {
-    const userId = await ctx.runQuery(openclawApi.getCurrentUserId, {});
-    const hasMembership = await ctx.runQuery(workspaceMembersInternal.hasMembershipForUserId, {
+    const userId = await ctx.runQuery(api.openclawInstances.getCurrentUserId, {});
+    const hasMembership = await ctx.runQuery(internal.workspaceMembers.hasMembershipForUserId, {
       workspaceId: args.workspaceId,
       betterAuthUserId: userId,
     });
     if (!hasMembership) {
       throw new Error("Unauthorized");
     }
-    const instance = await ctx.runQuery(openclawInternal.getOwnedEncryptedForDispatch, {
+    const instance = await ctx.runQuery(internal.openclawInstances.getOwnedEncryptedForDispatch, {
       id: args.instanceId,
       userId,
     });
@@ -197,7 +192,7 @@ export const cancelDispatch = internalAction({
       errorMessage = error instanceof Error ? error.message : "Cancellation request failed";
     }
 
-    await ctx.runMutation(dispatchInternal.logCancellationAttempt, {
+    await ctx.runMutation(internal.openclawDispatch.logCancellationAttempt, {
       workspaceId: args.workspaceId,
       ticketIds: args.ticketIds,
       runId: args.runId,

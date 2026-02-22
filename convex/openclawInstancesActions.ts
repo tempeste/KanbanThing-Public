@@ -6,9 +6,6 @@ import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { encryptOpenClawToken } from "../lib/openclaw-crypto";
 
-const openclawApi = (api as any).openclawInstances;
-const openclawInternal = (internal as any).openclawInstances;
-
 const getEncryptionKey = () => {
   const key = process.env.OPENCLAW_ENCRYPTION_KEY;
   if (!key) {
@@ -24,9 +21,9 @@ export const create = action({
     token: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = await ctx.runQuery(openclawApi.getCurrentUserId, {});
+    const userId = await ctx.runQuery(api.openclawInstances.getCurrentUserId, {});
     const encryptedToken = await encryptOpenClawToken(args.token, getEncryptionKey());
-    return await ctx.runMutation(openclawInternal.createEncrypted, {
+    return await ctx.runMutation(internal.openclawInstances.createEncrypted, {
       userId,
       name: args.name,
       url: args.url,
@@ -43,13 +40,13 @@ export const update = action({
     token: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = await ctx.runQuery(openclawApi.getCurrentUserId, {});
+    const userId = await ctx.runQuery(api.openclawInstances.getCurrentUserId, {});
     const encryptedToken =
       args.token === undefined
         ? undefined
         : await encryptOpenClawToken(args.token, getEncryptionKey());
 
-    await ctx.runMutation(openclawInternal.updateEncrypted, {
+    await ctx.runMutation(internal.openclawInstances.updateEncrypted, {
       id: args.id as Id<"openclawInstances">,
       userId,
       ...(args.name !== undefined ? { name: args.name } : {}),
