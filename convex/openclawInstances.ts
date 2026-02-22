@@ -2,6 +2,7 @@ import { internalMutation, internalQuery, mutation, query } from "./_generated/s
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { authComponent } from "./auth";
+import { getOpenClawInstanceUrlValidationError } from "../lib/openclaw-instance-validation";
 
 const encryptedTokenValidator = v.object({
   nonce: v.string(),
@@ -25,9 +26,14 @@ const normalizeUrl = (url: string) => {
     throw new Error("URL is required");
   }
   try {
-    // Enforce valid absolute URL.
-    new URL(trimmed);
-  } catch {
+    const urlError = getOpenClawInstanceUrlValidationError(trimmed);
+    if (urlError) {
+      throw new Error(urlError);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
     throw new Error("Invalid URL");
   }
   if (trimmed.length > 500) {

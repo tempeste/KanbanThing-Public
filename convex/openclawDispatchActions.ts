@@ -5,6 +5,7 @@ import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { decryptOpenClawToken } from "../lib/openclaw-crypto";
 import { buildOpenClawDispatchMessage } from "../lib/openclaw-dispatch";
+import { getOpenClawInstanceUrlValidationError } from "../lib/openclaw-instance-validation";
 
 const openclawApi = (api as any).openclawInstances;
 const openclawInternal = (internal as any).openclawInstances;
@@ -26,6 +27,11 @@ const postToOpenClaw = async (args: {
   token: string;
   message: string;
 }) => {
+  const urlError = getOpenClawInstanceUrlValidationError(args.url);
+  if (urlError) {
+    throw new Error(urlError);
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
