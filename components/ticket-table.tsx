@@ -38,6 +38,14 @@ interface TicketTableProps {
 
 type DragOverPosition = "above" | "below" | "inside" | null;
 
+const DEFAULT_STATUS_FILTER: IssueStatus[] = [
+  "backlog",
+  "unclaimed",
+  "dispatched",
+  "in_progress",
+  "done",
+];
+
 export function TicketTable({
   workspaceId,
   tickets,
@@ -59,9 +67,9 @@ export function TicketTable({
   );
   const [selected, setSelected] = useState<Set<Id<"tickets">>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<IssueStatus>>(
-    new Set(["backlog", "unclaimed", "dispatched", "in_progress", "done"])
+    new Set(DEFAULT_STATUS_FILTER)
   );
-  const allStatusCount = 5;
+  const allStatusCount = DEFAULT_STATUS_FILTER.length;
   const [sort, setSort] = useState<{ col: SortColumn; dir: SortDirection } | null>(null);
   const [colWidths, setColWidths] = useState({
     id: 160,
