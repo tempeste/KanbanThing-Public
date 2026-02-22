@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient, useSession } from "@/lib/auth-client";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,7 @@ function AccountPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, isPending, refetch } = useSession();
+  const { isAuthenticated } = useConvexAuth();
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +64,7 @@ function AccountPageContent() {
   const convexApi = api as any;
   const openClawInstances = (useQuery(
     convexApi.openclawInstances.list,
-    session?.user ? {} : "skip"
+    isAuthenticated ? {} : "skip"
   ) ?? []) as OpenClawInstance[];
   const createOpenClawInstance = useAction(convexApi.openclawInstancesActions.create);
   const updateOpenClawInstance = useAction(convexApi.openclawInstancesActions.update);

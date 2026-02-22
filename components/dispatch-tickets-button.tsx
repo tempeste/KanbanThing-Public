@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -38,13 +38,16 @@ export function DispatchTicketsButton({
   triggerClassName,
   onDispatched,
 }: DispatchTicketsButtonProps) {
+  const { isAuthenticated } = useConvexAuth();
   const [open, setOpen] = useState(false);
   const [selectedInstanceId, setSelectedInstanceId] = useState("");
   const [isDispatching, setIsDispatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const convexApi = api as any;
-  const openClawInstances = (useQuery(convexApi.openclawInstances.list, {}) ??
-    []) as Array<{ _id: string; name: string }>;
+  const openClawInstances = (useQuery(
+    convexApi.openclawInstances.list,
+    isAuthenticated ? {} : "skip"
+  ) ?? []) as Array<{ _id: string; name: string }>;
   const dispatchTickets = useMutation(convexApi.openclawDispatch.dispatchTickets);
 
   const handleDispatch = async () => {
@@ -148,4 +151,3 @@ export function DispatchTicketsButton({
     </Dialog>
   );
 }
-
