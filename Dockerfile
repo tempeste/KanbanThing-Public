@@ -18,7 +18,7 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3219
 ENV HOSTNAME=0.0.0.0
 
 ARG NEXT_PUBLIC_CONVEX_URL
@@ -34,6 +34,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
-EXPOSE 3000
+EXPOSE 3219
 
 CMD ["node", "server.js"]

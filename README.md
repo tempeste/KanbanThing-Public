@@ -103,7 +103,7 @@ This starts three containers:
 
 | Service | URL |
 |---------|-----|
-| App (Next.js) | http://localhost:3000 |
+| App (Next.js) | http://localhost:3219 |
 | Convex Backend | http://localhost:3210 |
 | Convex Dashboard | http://localhost:6791 |
 

@@ -39,9 +39,9 @@ npx convex env set SITE_URL "http://convex-backend:3211" --env-file "$ENV_FILE" 
 
 # Detect the host's LAN IP for trusted origins
 HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-ORIGINS="http://localhost:3000"
+ORIGINS="http://localhost:3219"
 if [ -n "$HOST_IP" ]; then
-  ORIGINS="$ORIGINS,http://$HOST_IP:3000"
+  ORIGINS="$ORIGINS,http://$HOST_IP:3219"
 fi
 echo "    Trusted origins: $ORIGINS"
 npx convex env set TRUSTED_ORIGINS "$ORIGINS" --env-file "$ENV_FILE" 2>/dev/null || true
@@ -52,7 +52,7 @@ docker compose up -d
 
 echo ""
 echo "All services are running:"
-echo "  App:       http://localhost:3000"
+echo "  App:       http://localhost:3219"
 echo "  Dashboard: http://localhost:6791"
 echo "  Convex:    http://localhost:3210"
 echo ""
