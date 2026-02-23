@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
@@ -71,10 +71,20 @@ export default function TicketDetailPage() {
   const searchParams = useSearchParams();
   const workspaceId = params.id as Id<"workspaces">;
   const ticketId = params.ticketId as Id<"tickets">;
+  const [shouldLoadTicketIndex, setShouldLoadTicketIndex] = useState(false);
+
+  useEffect(() => {
+    startTransition(() => {
+      setShouldLoadTicketIndex(true);
+    });
+  }, []);
 
   const { workspace } = useWorkspaceData();
   const hierarchy = useQuery(api.tickets.getHierarchy, { id: ticketId });
-  const allTickets = useQuery(api.tickets.list, { workspaceId });
+  const allTickets = useQuery(
+    api.tickets.list,
+    shouldLoadTicketIndex ? { workspaceId } : "skip"
+  );
   const comments = useQuery(api.ticketComments.listByTicket, { ticketId });
   const activities = useQuery(api.ticketActivities.listByTicket, { ticketId });
 
@@ -102,6 +112,9 @@ export default function TicketDetailPage() {
   const activeParentId = ticket?.parentId ?? null;
   const backTab = searchParams.get("tab");
   const backHref = backTab ? `/workspace/${workspaceId}?tab=${backTab}` : `/workspace/${workspaceId}`;
+  useEffect(() => {
+    router.prefetch(backHref);
+  }, [backHref, router]);
   const children = useMemo(() => {
     if (!hierarchy?.children) return [];
     return hierarchy.children
@@ -150,16 +163,21 @@ export default function TicketDetailPage() {
       .filter((candidate) => candidate.parentId !== activeTicketId);
   }, [ticketsList, descendantIds, activeTicketId]);
 
+  const commentsList = comments ?? [];
+  const activitiesList = activities ?? [];
+  const commentsLoading = comments === undefined;
+  const activitiesLoading = activities === undefined;
+
   const actorUserIds = useMemo(() => {
     const ids = new Set<string>();
-    comments?.forEach((comment) => {
+    commentsList.forEach((comment) => {
       if (comment.authorType === "user") ids.add(comment.authorId);
     });
-    activities?.forEach((event) => {
+    activitiesList.forEach((event) => {
       if (event.actorType === "user") ids.add(event.actorId);
     });
     return Array.from(ids);
-  }, [comments, activities]);
+  }, [commentsList, activitiesList]);
 
   const actorProfiles = useQuery(
     api.userProfiles.getByAuthIds,
@@ -195,9 +213,7 @@ export default function TicketDetailPage() {
   if (
     workspace === undefined ||
     hierarchy === undefined ||
-    allTickets === undefined ||
-    comments === undefined ||
-    activities === undefined
+    allTickets === undefined
   ) {
     return (
       <div className="flex h-full flex-1 items-center justify-center">
@@ -645,9 +661,9 @@ export default function TicketDetailPage() {
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                     Comments
-                    {comments.length > 0 && (
+                    {!commentsLoading && commentsList.length > 0 && (
                       <span className="font-mono text-[10px] text-muted-foreground ml-0.5">
-                        {comments.length}
+                        {commentsList.length}
                       </span>
                     )}
                   </button>
@@ -661,9 +677,9 @@ export default function TicketDetailPage() {
                   >
                     <History className="w-3.5 h-3.5" />
                     History
-                    {activities.length > 0 && (
+                    {!activitiesLoading && activitiesList.length > 0 && (
                       <span className="font-mono text-[10px] text-muted-foreground ml-0.5">
-                        {activities.length}
+                        {activitiesList.length}
                       </span>
                     )}
                   </button>
@@ -674,13 +690,18 @@ export default function TicketDetailPage() {
                 {/* ── Comments tab ── */}
                 {activeTab === "comments" && (
                   <div className="pt-5 space-y-4">
-                    {comments.length === 0 && (
+                    {commentsLoading && (
+                      <p className="text-sm text-muted-foreground/60 italic py-2">
+                        Loading comments...
+                      </p>
+                    )}
+                    {!commentsLoading && commentsList.length === 0 && (
                       <p className="text-sm text-muted-foreground/60 italic py-2">
                         No comments yet.
                       </p>
                     )}
 
-                    {comments.map((comment) => (
+                    {commentsList.map((comment) => (
                       <div key={comment._id} className="group">
                         <div className="flex items-baseline gap-2 mb-1">
                           <span className="text-sm font-medium">
@@ -740,14 +761,18 @@ export default function TicketDetailPage() {
                 {/* ── History tab ── */}
                 {activeTab === "history" && (
                   <div className="pt-5">
-                    {activities.length === 0 ? (
+                    {activitiesLoading ? (
+                      <p className="text-sm text-muted-foreground/60 italic py-2">
+                        Loading history...
+                      </p>
+                    ) : activitiesList.length === 0 ? (
                       <p className="text-sm text-muted-foreground/60 italic py-2">
                         No activity yet.
                       </p>
                     ) : (
                       <div className="space-y-0">
-                        {activities.map((event, index) => {
-                          const isLast = index === activities.length - 1;
+                        {activitiesList.map((event, index) => {
+                          const isLast = index === activitiesList.length - 1;
                           return (
                             <div key={event._id} className="relative pl-5">
                               {!isLast && (

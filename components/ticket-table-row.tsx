@@ -32,6 +32,7 @@ interface TicketTableRowProps {
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
   onClick: (event: React.MouseEvent<HTMLElement>) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
+  onPrefetch?: () => void;
   onStatusChange: (status: IssueStatus) => void;
   onArchiveToggle: () => void;
   onDelete: () => void;
@@ -58,6 +59,7 @@ export const TicketTableRow = memo(function TicketTableRow({
   onDrop,
   onClick,
   onKeyDown,
+  onPrefetch,
   onStatusChange,
   onArchiveToggle,
   onDelete,
@@ -105,6 +107,8 @@ export const TicketTableRow = memo(function TicketTableRow({
       onDragEnd={onDragEnd}
       onClick={onClick}
       onKeyDown={onKeyDown}
+      onMouseEnter={onPrefetch}
+      onFocus={onPrefetch}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -145,6 +149,7 @@ export const TicketTableRow = memo(function TicketTableRow({
         <div className="min-w-0 flex-1">
           <Link
             href={`/workspace/${workspaceId}/tickets/${ticket._id}?tab=list`}
+            prefetch
             className="block truncate text-sm font-semibold text-foreground/90"
           >
             {ticket.title}
@@ -241,6 +246,7 @@ export const TicketTableRow = memo(function TicketTableRow({
         <div className="min-w-0">
           <Link
             href={`/workspace/${workspaceId}/tickets/${ticket._id}?tab=list`}
+            prefetch
             className="line-clamp-1 break-all text-sm font-semibold text-foreground/90 hover:text-foreground"
           >
             {ticket.title}

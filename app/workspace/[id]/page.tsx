@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -40,6 +40,20 @@ const DEFAULT_BOARD_STATUS_FILTER: IssueStatus[] = [
 ];
 
 const STATUS_FILTER_STORAGE_KEY_PREFIX = "kanbanthing:workspace-status-filter:";
+const BOARD_SORT_STORAGE_KEY_PREFIX = "kanbanthing:workspace-board-sort:";
+
+function deserializeBoardSort(raw: string | null): BoardSortOption {
+  if (
+    raw === "order" ||
+    raw === "newest" ||
+    raw === "oldest" ||
+    raw === "title" ||
+    raw === "priority"
+  ) {
+    return raw;
+  }
+  return "order";
+}
 
 function deserializeStatusFilter(
   raw: string | null,
@@ -68,7 +82,10 @@ export default function WorkspacePage() {
   const activeTab = tabParam === "list" || tabParam === "board" ? tabParam : "board";
   const showArchived = searchParams.get("archived") === "1";
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [boardSort, setBoardSort] = useState<BoardSortOption>("order");
+  const boardSortStorageKey = `${BOARD_SORT_STORAGE_KEY_PREFIX}${workspaceId}`;
+  const [boardSortRestoredKey, setBoardSortRestoredKey] = useState<string | null>(null);
   const statusFilterStorageKey = `${STATUS_FILTER_STORAGE_KEY_PREFIX}${workspaceId}`;
   const defaultStatusFilter = useMemo(
     () =>
@@ -79,6 +96,17 @@ export default function WorkspacePage() {
   );
   const [statusFilter, setStatusFilter] = useState<Set<IssueStatus>>(defaultStatusFilter);
   const [statusFilterRestoredKey, setStatusFilterRestoredKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBoardSortRestoredKey(null);
+    setBoardSort(deserializeBoardSort(window.localStorage.getItem(boardSortStorageKey)));
+    setBoardSortRestoredKey(boardSortStorageKey);
+  }, [boardSortStorageKey]);
+
+  useEffect(() => {
+    if (boardSortRestoredKey !== boardSortStorageKey) return;
+    window.localStorage.setItem(boardSortStorageKey, boardSort);
+  }, [boardSort, boardSortRestoredKey, boardSortStorageKey]);
 
   useEffect(() => {
     setStatusFilterRestoredKey(null);
@@ -101,15 +129,15 @@ export default function WorkspacePage() {
     [tickets, showArchived]
   );
   const visibleTickets = useMemo(() => {
-    if (!searchQuery.trim()) return allVisibleTickets;
-    const q = searchQuery.trim().toLowerCase();
+    if (!deferredSearchQuery.trim()) return allVisibleTickets;
+    const q = deferredSearchQuery.trim().toLowerCase();
     return allVisibleTickets.filter(
       (ticket) =>
         ticket.title.toLowerCase().includes(q) ||
         (ticket.number != null && String(ticket.number).includes(q)) ||
         (ticket.ownerDisplayName?.toLowerCase().includes(q))
     );
-  }, [allVisibleTickets, searchQuery]);
+  }, [allVisibleTickets, deferredSearchQuery]);
 
   if (isSessionPending) {
     return (
@@ -298,7 +326,9 @@ export default function WorkspacePage() {
     } else {
       params.set("archived", "1");
     }
-    router.replace(`/workspace/${workspaceId}?${params.toString()}`);
+    startTransition(() => {
+      router.replace(`/workspace/${workspaceId}?${params.toString()}`);
+    });
   };
 
   return (
@@ -325,7 +355,9 @@ export default function WorkspacePage() {
             onClick={() => {
               const params = new URLSearchParams(searchParams.toString());
               params.set("tab", "board");
-              router.replace(`/workspace/${workspaceId}?${params.toString()}`);
+              startTransition(() => {
+                router.replace(`/workspace/${workspaceId}?${params.toString()}`);
+              });
             }}
             className={`border px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] transition-colors md:px-3 md:py-1.5 md:text-[10px] ${
               activeTab === "board" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"
@@ -338,7 +370,9 @@ export default function WorkspacePage() {
             onClick={() => {
               const params = new URLSearchParams(searchParams.toString());
               params.set("tab", "list");
-              router.replace(`/workspace/${workspaceId}?${params.toString()}`);
+              startTransition(() => {
+                router.replace(`/workspace/${workspaceId}?${params.toString()}`);
+              });
             }}
             className={`border px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] transition-colors md:px-3 md:py-1.5 md:text-[10px] ${
               activeTab === "list" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"
@@ -453,16 +487,6 @@ export default function WorkspacePage() {
           >
             + New
           </Link>
-          <DispatchTicketsButton
-            workspaceId={workspaceId}
-            workspacePrefix={workspacePrefix}
-            tickets={dispatchableTickets.map((ticket) => ({
-              _id: ticket._id,
-              number: ticket.number ?? undefined,
-              title: ticket.title,
-            }))}
-            triggerClassName="border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground/80"
-          />
           <button
             type="button"
             onClick={toggleShowArchived}
@@ -517,6 +541,18 @@ export default function WorkspacePage() {
             visibleStatuses={statusFilter}
             onVisibleStatusesChange={setStatusFilter}
             compact
+            toolbarAction={
+              <DispatchTicketsButton
+                workspaceId={workspaceId}
+                workspacePrefix={workspacePrefix}
+                tickets={dispatchableTickets.map((ticket) => ({
+                  _id: ticket._id,
+                  number: ticket.number ?? undefined,
+                  title: ticket.title,
+                }))}
+                triggerClassName="h-7 border border-primary/70 bg-primary px-3 text-[9px] font-bold uppercase tracking-[0.14em] text-primary-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.15)] hover:bg-primary/90 hover:border-primary"
+              />
+            }
           />
         ) : (
           <TicketTable
@@ -527,6 +563,19 @@ export default function WorkspacePage() {
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
             compact
+            persistKey={`workspace:${workspaceId}`}
+            toolbarAction={
+              <DispatchTicketsButton
+                workspaceId={workspaceId}
+                workspacePrefix={workspacePrefix}
+                tickets={dispatchableTickets.map((ticket) => ({
+                  _id: ticket._id,
+                  number: ticket.number ?? undefined,
+                  title: ticket.title,
+                }))}
+                triggerClassName="h-7 border border-primary/70 bg-primary px-3 text-[9px] font-bold uppercase tracking-[0.14em] text-primary-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.15)] hover:bg-primary/90 hover:border-primary"
+              />
+            }
           />
         )}
       </div>

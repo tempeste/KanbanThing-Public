@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
+  startTransition,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -37,6 +39,8 @@ interface TicketTableProps {
   statusFilter: Set<IssueStatus>;
   onStatusFilterChange: (next: Set<IssueStatus>) => void;
   compact?: boolean;
+  persistKey?: string;
+  toolbarAction?: ReactNode;
 }
 
 type DragOverPosition = "above" | "below" | "inside" | null;
@@ -56,6 +60,8 @@ export function TicketTable({
   showArchived,
   statusFilter,
   onStatusFilterChange,
+  persistKey,
+  toolbarAction,
 }: TicketTableProps) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -73,6 +79,8 @@ export function TicketTable({
   const [selected, setSelected] = useState<Set<Id<"tickets">>>(new Set());
   const allStatusCount = ALL_FILTER_STATUSES.length;
   const [sort, setSort] = useState<{ col: SortColumn; dir: SortDirection } | null>(null);
+  const [sortRestoredKey, setSortRestoredKey] = useState<string | null>(null);
+  const [bulkArchivePending, setBulkArchivePending] = useState<null | boolean>(null);
   const [colWidths, setColWidths] = useState({
     id: 160,
     assignee: 160,
@@ -85,6 +93,7 @@ export function TicketTable({
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const dragRafRef = useRef<number | null>(null);
+  const prefetchedTicketIdsRef = useRef<Set<string>>(new Set());
   const pendingDragStateRef = useRef<{
     id: Id<"tickets"> | null;
     position: DragOverPosition;
@@ -96,6 +105,46 @@ export function TicketTable({
   const deleteTicket = useMutation(api.tickets.remove);
   const bulkArchive = useMutation(api.tickets.bulkArchive);
   const bulkDelete = useMutation(api.tickets.bulkDelete);
+
+  const sortStorageKey = persistKey ? `kanbanthing:${persistKey}:table-sort` : null;
+
+  useEffect(() => {
+    if (!sortStorageKey) return;
+    setSortRestoredKey(null);
+    const raw = window.localStorage.getItem(sortStorageKey);
+    if (!raw) {
+      setSort(null);
+      setSortRestoredKey(sortStorageKey);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { col?: SortColumn; dir?: SortDirection } | null;
+      if (
+        parsed &&
+        (parsed.col === "number" ||
+          parsed.col === "title" ||
+          parsed.col === "assignee" ||
+          parsed.col === "status") &&
+        (parsed.dir === "asc" || parsed.dir === "desc")
+      ) {
+        setSort({ col: parsed.col, dir: parsed.dir });
+      } else {
+        setSort(null);
+      }
+    } catch {
+      setSort(null);
+    }
+    setSortRestoredKey(sortStorageKey);
+  }, [sortStorageKey]);
+
+  useEffect(() => {
+    if (!sortStorageKey || sortRestoredKey !== sortStorageKey) return;
+    if (!sort) {
+      window.localStorage.removeItem(sortStorageKey);
+      return;
+    }
+    window.localStorage.setItem(sortStorageKey, JSON.stringify(sort));
+  }, [sort, sortRestoredKey, sortStorageKey]);
 
   const resolvedOptimisticMoves = useMemo(() => {
     if (!optimisticMoves.size) return optimisticMoves;
@@ -424,7 +473,9 @@ export function TicketTable({
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement;
       if (target.closest("a,button,select,textarea,input,[role='menuitem']")) return;
-      router.push(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
+      startTransition(() => {
+        router.push(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
+      });
     },
     [router, workspaceId]
   );
@@ -433,7 +484,18 @@ export function TicketTable({
     (event: React.KeyboardEvent<HTMLElement>, ticketId: Id<"tickets">) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      router.push(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
+      startTransition(() => {
+        router.push(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
+      });
+    },
+    [router, workspaceId]
+  );
+
+  const prefetchTicketDetail = useCallback(
+    (ticketId: Id<"tickets">) => {
+      if (prefetchedTicketIdsRef.current.has(ticketId)) return;
+      prefetchedTicketIdsRef.current.add(ticketId);
+      router.prefetch(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
     },
     [router, workspaceId]
   );
@@ -556,11 +618,26 @@ export function TicketTable({
   const handleBulkArchive = async (archive: boolean) => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
+    const previousSelection = new Set(selected);
+    setBulkArchivePending(archive);
+    setOptimisticArchived((prev) => {
+      const next = new Map(prev);
+      for (const id of ids) next.set(id, archive);
+      return next;
+    });
+    setSelected(new Set());
     try {
       await bulkArchive({ ids, archived: archive });
-      setSelected(new Set());
     } catch (error) {
+      setOptimisticArchived((prev) => {
+        const next = new Map(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+      setSelected(previousSelection);
       console.error(error);
+    } finally {
+      setBulkArchivePending(null);
     }
   };
 
@@ -652,6 +729,7 @@ export function TicketTable({
         onDrop={(event) => handleDrop(event, ticket, depth)}
         onClick={(event) => handleRowClick(event, ticket._id)}
         onKeyDown={(event) => handleRowKeyDown(event, ticket._id)}
+        onPrefetch={() => prefetchTicketDetail(ticket._id)}
         onStatusChange={(status) => handleStatusChange(ticket._id, status)}
         onArchiveToggle={() =>
           handleArchiveToggle(ticket._id, !(ticket.archived ?? false))
@@ -694,20 +772,22 @@ export function TicketTable({
               <button
                 type="button"
                 onClick={() => handleBulkArchive(true)}
+                disabled={bulkArchivePending !== null}
                 className="inline-flex items-center gap-1.5 border border-border bg-card px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground"
               >
                 <Archive className="h-3 w-3" />
-                Archive
+                {bulkArchivePending === true ? "Archiving..." : "Archive"}
               </button>
             )}
             {selectedHasArchived && (
               <button
                 type="button"
                 onClick={() => handleBulkArchive(false)}
+                disabled={bulkArchivePending !== null}
                 className="inline-flex items-center gap-1.5 border border-border bg-card px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition hover:border-muted-foreground/50 hover:text-foreground"
               >
                 <ArchiveRestore className="h-3 w-3" />
-                Unarchive
+                {bulkArchivePending === false ? "Unarchiving..." : "Unarchive"}
               </button>
             )}
             <button
@@ -746,6 +826,7 @@ export function TicketTable({
             </button>
           );
         })}
+        {toolbarAction ? <div className="ml-auto">{toolbarAction}</div> : null}
       </div>
       <div
         className="hidden border-b-2 border-border bg-card px-7 py-2 md:grid md:items-center"

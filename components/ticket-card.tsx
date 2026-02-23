@@ -27,6 +27,7 @@ interface TicketCardProps {
   onDragHandleEnd: () => void;
   onClick: (event: React.MouseEvent<HTMLElement>) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
+  onPrefetch?: () => void;
   onStatusChange: (status: IssueStatus) => void;
   onArchiveToggle: () => void;
   onDelete: () => void;
@@ -48,6 +49,7 @@ export const TicketCard = memo(function TicketCard({
   onDragHandleEnd,
   onClick,
   onKeyDown,
+  onPrefetch,
   onStatusChange,
   onArchiveToggle,
   onDelete,
@@ -78,6 +80,8 @@ export const TicketCard = memo(function TicketCard({
       onDragEnd={onDragHandleEnd}
       onClick={onClick}
       onKeyDown={onKeyDown}
+      onMouseEnter={onPrefetch}
+      onFocus={onPrefetch}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -102,7 +106,8 @@ export const TicketCard = memo(function TicketCard({
             </div>
 
             <Link
-              href={`/workspace/${workspaceId}/tickets/${ticket._id}`}
+              href={`/workspace/${workspaceId}/tickets/${ticket._id}?tab=board`}
+              prefetch
               className="line-clamp-2 break-words text-[14px] font-semibold leading-[1.35] text-foreground hover:text-foreground"
             >
               {ticket.title}

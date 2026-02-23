@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
+  startTransition,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -42,6 +44,7 @@ interface KanbanBoardProps {
   visibleStatuses: Set<Status>;
   onVisibleStatusesChange: (next: Set<Status>) => void;
   compact?: boolean;
+  toolbarAction?: ReactNode;
 }
 
 const ALL_STATUSES: Status[] = ["backlog", "unclaimed", "dispatched", "in_progress", "done"];
@@ -63,6 +66,7 @@ export function KanbanBoard({
   sortBy = "order",
   visibleStatuses,
   onVisibleStatusesChange,
+  toolbarAction,
 }: KanbanBoardProps) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -105,6 +109,7 @@ export function KanbanBoard({
   const assignTicket = useMutation(api.tickets.assign);
   const updateTicket = useMutation(api.tickets.update);
   const deleteTicket = useMutation(api.tickets.remove);
+  const prefetchedTicketIdsRef = useRef<Set<string>>(new Set());
 
   const allTicketsById = useMemo(
     () => new Map(tickets.map((ticket) => [ticket._id, ticket])),
@@ -501,7 +506,9 @@ export function KanbanBoard({
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement;
       if (target.closest("a,button,select,textarea,input,[role='menuitem']")) return;
-      router.push(`/workspace/${workspaceId}/tickets/${ticketId}`);
+      startTransition(() => {
+        router.push(`/workspace/${workspaceId}/tickets/${ticketId}?tab=board`);
+      });
     },
     [router, workspaceId]
   );
@@ -510,7 +517,18 @@ export function KanbanBoard({
     (event: React.KeyboardEvent<HTMLElement>, ticketId: Id<"tickets">) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      router.push(`/workspace/${workspaceId}/tickets/${ticketId}`);
+      startTransition(() => {
+        router.push(`/workspace/${workspaceId}/tickets/${ticketId}?tab=board`);
+      });
+    },
+    [router, workspaceId]
+  );
+
+  const prefetchTicketDetail = useCallback(
+    (ticketId: Id<"tickets">) => {
+      if (prefetchedTicketIdsRef.current.has(ticketId)) return;
+      prefetchedTicketIdsRef.current.add(ticketId);
+      router.prefetch(`/workspace/${workspaceId}/tickets/${ticketId}?tab=board`);
     },
     [router, workspaceId]
   );
@@ -537,6 +555,7 @@ export function KanbanBoard({
             </button>
           );
         })}
+        {toolbarAction ? <div className="ml-auto">{toolbarAction}</div> : null}
       </div>
       <div className="kb-scroll flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto md:snap-none md:overflow-x-hidden">
         {displayedStatuses.map((status, index) => {
@@ -693,6 +712,7 @@ export function KanbanBoard({
                             }}
                             onClick={(event) => handleCardClick(event, ticket._id)}
                             onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
+                            onPrefetch={() => prefetchTicketDetail(ticket._id)}
                             onStatusChange={(newStatus) =>
                               handleStatusChange(ticket._id, newStatus)
                             }
@@ -778,6 +798,7 @@ export function KanbanBoard({
                             }}
                             onClick={(event) => handleCardClick(event, ticket._id)}
                             onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
+                            onPrefetch={() => prefetchTicketDetail(ticket._id)}
                             onStatusChange={(newStatus) =>
                               handleStatusChange(ticket._id, newStatus)
                             }
