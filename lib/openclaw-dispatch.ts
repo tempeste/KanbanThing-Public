@@ -10,21 +10,30 @@ const truncate = (value: string, maxLength: number) => {
   return `${value.slice(0, maxLength - 1)}…`;
 };
 
+const MAX_METADATA_TICKETS = 20;
+const MAX_METADATA_TITLE_LENGTH = 120;
+
 export const buildOpenClawDispatchMessage = (args: {
   workspaceName: string;
   workspaceId: string;
   workspaceDocs?: string;
   tickets: TicketLine[];
 }) => {
+  const metadataTickets = args.tickets
+    .slice(0, MAX_METADATA_TICKETS)
+    .map((ticket) => ({
+      id: ticket._id,
+      number: ticket.number,
+      title: truncate(ticket.title, MAX_METADATA_TITLE_LENGTH),
+    }));
   const dispatchMetadata = {
     kanbanthing_dispatch_v: 1,
     workspaceId: args.workspaceId,
     workspaceName: args.workspaceName,
-    tickets: args.tickets.map((ticket) => ({
-      id: ticket._id,
-      number: ticket.number,
-      title: ticket.title,
-    })),
+    ticketCount: args.tickets.length,
+    metadataTicketCount: metadataTickets.length,
+    metadataTruncated: args.tickets.length > metadataTickets.length,
+    tickets: metadataTickets,
   };
   const dispatchMetadataBlock =
     "Dispatch metadata (machine-readable):\n```json\n" +

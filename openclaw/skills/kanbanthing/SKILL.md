@@ -63,11 +63,23 @@ Notes:
 
 KanbanThing dispatch messages to OpenClaw include a machine-readable JSON block in the text message with:
 
+- `kanbanthing_dispatch_v`
 - `workspaceId`
 - `workspaceName`
 - ticket IDs/numbers
 
 Use `workspaceId` from that block to resolve the correct local directory/key from your mapping.
+
+Version handling:
+
+- This skill currently expects `kanbanthing_dispatch_v = 1`.
+- If you see an unknown version, do **not** assume the JSON shape. Fall back to the human-readable dispatch text and re-fetch data from the KanbanThing API (`ticket-get`, `tickets-list`) before taking action.
+
+Metadata size note:
+
+- The machine-readable `tickets` list may be truncated for large batches.
+- Check `ticketCount`, `metadataTicketCount`, and `metadataTruncated`.
+- The human-readable ticket list below the JSON block remains the full list.
 
 ## Curl-First Workflow (Primary)
 
@@ -191,6 +203,12 @@ The helper can resolve credentials/base URL via:
 4. fallback local `.env` / `.env.local` in current directory
 
 When `--workspace` or `--workspace-id` is provided, the helper fails closed if mapping resolution fails.
+
+Retry behavior:
+
+- The helper does not automatically retry state-changing requests (`claim`, `complete`, `status`, `comment`, `update`).
+- If a network error happens during a mutating call, re-check ticket state with `ticket-get` before retrying.
+- Read-only calls (`workspace-docs`, `tickets-list`, `ticket-get`) can usually be retried safely.
 
 ### Helper examples
 
