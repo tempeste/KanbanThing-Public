@@ -90,8 +90,14 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     }
   );
 
+  const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "")
+    .split(",")
+    .map((o: string) => o.trim())
+    .filter(Boolean);
+
   return betterAuth({
     baseURL: process.env.SITE_URL!,
+    trustedOrigins,
     database: authComponent.adapter(ctx),
     secret: process.env.BETTER_AUTH_SECRET!,
     emailAndPassword: {
