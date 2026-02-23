@@ -33,9 +33,28 @@ function generateApiKey(): string {
 async function hashKey(key: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(key);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  // crypto.subtle requires a secure context (HTTPS or localhost).
+  // Fall back to a dynamic import of Node's crypto for non-secure contexts (e.g. HTTP dev servers).
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) {
+    const hashBuffer = await subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  // Fallback: POST to a tiny API endpoint that hashes for us
+  const res = await fetch("/api/hash", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value: key }),
+  });
+  if (!res.ok) {
+    throw new Error(`Hash API failed: ${res.status}`);
+  }
+  const json = await res.json();
+  if (typeof json.hash !== "string") {
+    throw new Error("Invalid hash response");
+  }
+  return json.hash;
 }
 
 export default function WorkspaceSettingsPage() {
