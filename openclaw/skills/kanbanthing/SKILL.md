@@ -1,0 +1,229 @@
+---
+name: kanbanthing
+description: Manage KanbanThing tickets via the KanbanThing REST API from OpenClaw. Curl-first docs with optional helper script for deterministic workspace routing.
+homepage: https://github.com/tempeste/KanbanThing-Public
+metadata: { "openclaw": { "emoji": "🗂️", "requires": { "bins": ["curl", "jq", "bash"] } } }
+---
+
+# KanbanThing Skill (OpenClaw)
+
+Use this skill to interact with KanbanThing workspaces from OpenClaw agents.
+
+This skill is meant to be copied into an OpenClaw workspace (or `~/.openclaw/skills`) and does **not** require ClawHub publishing.
+
+## Install (copy into OpenClaw)
+
+OpenClaw loads workspace skills from `<workspace>/skills`.
+
+```bash
+mkdir -p /path/to/openclaw-workspace/skills
+cp -R /path/to/KanbanThing-Public/openclaw/skills/kanbanthing /path/to/openclaw-workspace/skills/
+```
+
+Start a new OpenClaw session after copying (skills are loaded per session).
+
+## Routing Model (Recommended)
+
+KanbanThing API keys are **workspace-scoped**. Do not rely on a single global key for all workspaces.
+
+Instead, maintain a local mapping file that tells OpenClaw which local project directory corresponds to which KanbanThing workspace ID.
+
+Default mapping file path:
+
+```bash
+~/.openclaw/kanbanthing-workspaces.json
+```
+
+Recommended schema (ID for identity, alias for ergonomics):
+
+```json
+{
+  "workspaces": {
+    "kanbanthing-private": {
+      "workspaceId": "your-workspace-id-here",
+      "dir": "/path/to/your/kanbanthing-private-repo",
+      "envFiles": [".env.local", ".env"]
+    },
+    "kanbanthing-public": {
+      "workspaceId": "another-workspace-id",
+      "dir": "/path/to/your/kanbanthing-public-repo",
+      "envFiles": [".env.local", ".env"]
+    }
+  }
+}
+```
+
+Notes:
+
+- `workspaceId` is the stable identifier.
+- `dir` points to the local repo containing the workspace-scoped API key in `.env` / `.env.local`.
+- `envFiles` is optional (defaults to `[".env.local", ".env"]` in the helper script).
+
+## Dispatch Message Metadata (Important)
+
+KanbanThing dispatch messages to OpenClaw include a machine-readable JSON block in the text message with:
+
+- `workspaceId`
+- `workspaceName`
+- ticket IDs/numbers
+
+Use `workspaceId` from that block to resolve the correct local directory/key from your mapping.
+
+## Curl-First Workflow (Primary)
+
+If the agent is already running inside the correct project directory (or the runtime exports the env vars), use direct `curl`.
+
+Required auth header:
+
+```bash
+-H "X-API-Key: $KANBANTHING_API_KEY"
+```
+
+Base URL:
+
+```bash
+${KANBANTHING_API_URL:-$KANBANTHING_URL}
+```
+
+### Core sequence
+
+1. Read workspace docs
+
+```bash
+curl -sS -H "X-API-Key: $KANBANTHING_API_KEY" \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/workspace/docs" | jq .
+```
+
+2. List unclaimed tickets
+
+```bash
+curl -sS -H "X-API-Key: $KANBANTHING_API_KEY" \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/tickets?status=unclaimed&fields=summary" | jq .
+```
+
+3. Get one ticket
+
+```bash
+curl -sS -H "X-API-Key: $KANBANTHING_API_KEY" \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/tickets/<ticket-id>" | jq .
+```
+
+4. Claim it
+
+```bash
+curl -sS -X POST -H "X-API-Key: $KANBANTHING_API_KEY" \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/tickets/<ticket-id>/claim" | jq .
+```
+
+5. Update status (if needed)
+
+```bash
+curl -sS -X POST \
+  -H "X-API-Key: $KANBANTHING_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"in_progress"}' \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/tickets/<ticket-id>/status" | jq .
+```
+
+Non-standard transitions require `reason`:
+
+```bash
+curl -sS -X POST \
+  -H "X-API-Key: $KANBANTHING_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"backlog","reason":"Blocked on dependency"}' \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/tickets/<ticket-id>/status" | jq .
+```
+
+6. Add a comment
+
+```bash
+curl -sS -X POST \
+  -H "X-API-Key: $KANBANTHING_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"body":"Starting implementation now"}' \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/tickets/<ticket-id>/comments" | jq .
+```
+
+7. Complete the ticket
+
+```bash
+curl -sS -X POST -H "X-API-Key: $KANBANTHING_API_KEY" \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/tickets/<ticket-id>/complete" | jq .
+```
+
+### Generic ticket PATCH (title/description/priority/tags/archived/status)
+
+```bash
+curl -sS -X PATCH \
+  -H "X-API-Key: $KANBANTHING_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"priority":"high"}' \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/tickets/<ticket-id>" | jq .
+```
+
+## Optional Helper Script (Deterministic Routing + Convenience)
+
+This skill includes an optional wrapper script:
+
+```bash
+{baseDir}/scripts/kanbanthing.sh
+```
+
+`{baseDir}` means the installed skill directory, for example:
+
+- `~/.openclaw/skills/kanbanthing`
+- `<openclaw-workspace>/skills/kanbanthing`
+
+Use it when you want:
+
+- consistent error handling/timeouts
+- mapping-based workspace routing (`workspaceId` / alias -> local dir -> `.env`)
+- simpler command surface for repetitive calls
+
+### Helper script routing modes
+
+The helper can resolve credentials/base URL via:
+
+1. `--workspace <alias>` (from mapping file)
+2. `--workspace-id <id>` (best for dispatch metadata)
+3. current working directory match against mapping `dir`
+4. fallback local `.env` / `.env.local` in current directory
+
+When `--workspace` or `--workspace-id` is provided, the helper fails closed if mapping resolution fails.
+
+### Helper examples
+
+```bash
+# Inspect resolved routing/env (shows alias/workspaceId/dir if mapping matched)
+{baseDir}/scripts/kanbanthing.sh --workspace-id <workspace-id> doctor
+
+# Workspace docs
+{baseDir}/scripts/kanbanthing.sh --workspace kanbanthing-private workspace-docs
+
+# List unclaimed
+{baseDir}/scripts/kanbanthing.sh --workspace-id <workspace-id> tickets-list --status unclaimed --fields summary
+
+# Claim / comment / complete
+{baseDir}/scripts/kanbanthing.sh --workspace-id <workspace-id> ticket-claim <ticket-id>
+{baseDir}/scripts/kanbanthing.sh --workspace-id <workspace-id> ticket-comment <ticket-id> "Working on this now"
+{baseDir}/scripts/kanbanthing.sh --workspace-id <workspace-id> ticket-complete <ticket-id>
+
+# Generic patch
+{baseDir}/scripts/kanbanthing.sh --workspace-id <workspace-id> ticket-update <ticket-id> --json '{"priority":"medium"}'
+```
+
+## Duplicate Dispatch Handling (Important)
+
+KanbanThing dispatch to OpenClaw may rarely duplicate instructions due to upstream retries.
+
+Agents must handle this gracefully:
+
+- Check the ticket status before starting work.
+- `claim` fails safely if the ticket is no longer `unclaimed`.
+- If another agent already claimed it, skip without crashing.
+
+## Notes
+
+- This skill is AgentSkills-compatible (`SKILL.md` + optional `scripts/` helpers).
+- It is safe for multi-subagent usage because routing is explicit (`workspaceId`) and keys stay workspace-scoped.

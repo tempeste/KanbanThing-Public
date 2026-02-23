@@ -21,6 +21,12 @@ describe("buildOpenClawDispatchMessage", () => {
 
     expect(message).toContain("KanbanThing dispatch: 2 tickets");
     expect(message).toContain("workspace KanbanThing (ID: w_123)");
+    expect(message).toContain("Dispatch metadata (machine-readable):");
+    expect(message).toContain("```json");
+    expect(message).toContain('"kanbanthing_dispatch_v": 1');
+    expect(message).toContain('"workspaceId": "w_123"');
+    expect(message).toContain('"workspaceName": "KanbanThing"');
+    expect(message).toContain('"id": "t_1"');
     expect(message).toContain("Workspace docs (truncated):");
     expect(message).toContain("Team rules: write tests first.");
     expect(message).toContain("1. Ticket #12: Fix auth bug (ID: t_1)");
