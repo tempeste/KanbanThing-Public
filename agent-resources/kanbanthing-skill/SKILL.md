@@ -23,7 +23,7 @@ KANBANTHING_URL=$(grep KANBANTHING_BASE_URL .kanbanthing | cut -d= -f2)
 
 ### 2. Resolve the base URL
 
-- **Hosted instance:** `https://your-deployment-url` — use as-is.
+- **Hosted instance:** `https://<your-kanbanthing-host>` — use as-is.
 - **Local dev (`localhost:3000`):** The server typically runs plain HTTP even if the config says `https`. If you get TLS/SSL errors, switch the scheme to `http://`. Try `http://` first for localhost URLs.
 
 ### 3. Fallback: env vars
