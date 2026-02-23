@@ -64,12 +64,22 @@ npx convex dev
 This will:
 - Prompt you to create a Convex account/project
 - Generate type definitions in `convex/_generated/`
-- Create `.env.local` with your Convex URL
+- Create `.env.local` with your `CONVEX_DEPLOYMENT` and `NEXT_PUBLIC_CONVEX_URL`
 - Start the Convex development server
 
 Keep this running in a separate terminal.
 
-### 3. Start the dev server
+You also need to add `NEXT_PUBLIC_CONVEX_SITE_URL` to `.env.local` — this is **not** set automatically. The value is your deployment slug (the part after `dev:` in `CONVEX_DEPLOYMENT`) with `.convex.site` appended:
+
+```
+NEXT_PUBLIC_CONVEX_SITE_URL=https://<your-deployment-slug>.convex.site
+```
+
+### 3. Configure authentication
+
+Follow the [Authentication Setup guide](SETUP_AUTH.md) to configure OAuth providers and the remaining environment variables.
+
+### 4. Start the dev server
 
 ```bash
 npm run dev
