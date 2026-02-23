@@ -91,6 +91,43 @@ Open http://localhost:3000
 
 KanbanThing can be deployed to any hosting platform that supports Next.js and Convex (e.g. Vercel, Railway, Fly.io). A hosted instance lets multiple users and agents collaborate on the same workspace in real time. Point `KANBANTHING_BASE_URL` in each project's `.kanbanthing` config to the deployed URL.
 
+### Self-Hosted (Docker)
+
+Run the entire stack locally with a single command:
+
+```bash
+./scripts/docker-start.sh
+```
+
+This starts three containers:
+
+| Service | URL |
+|---------|-----|
+| App (Next.js) | http://localhost:3219 |
+| Convex Backend | http://localhost:3210 |
+| Convex Dashboard | http://localhost:6791 |
+
+The script automatically generates `.env.docker` with the required credentials and deploys Convex functions.
+
+#### Updating
+
+To update to the latest version:
+
+```bash
+git pull
+./scripts/docker-start.sh
+```
+
+The script is safe to re-run — it rebuilds the app image with the latest code, redeploys Convex functions, and preserves your `BETTER_AUTH_SECRET` across runs.
+
+> **Note:** Your data lives in the `convex_data` Docker volume and persists across restarts. Always use `docker compose down` to stop services — this keeps your data intact.
+
+#### Stopping
+
+```bash
+docker compose down
+```
+
 ## Bootstrap Agent Skill Into Another Project
 
 This repo ships a reusable KanbanThing skill bundle for Codex and Claude agents at `agent-resources/kanbanthing-skill/`.

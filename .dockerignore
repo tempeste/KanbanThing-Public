@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.gitignore
+*.md
+!package.json
+!package-lock.json
+.env*
+.vscode
+.idea
+*.log
+docker-compose.yml
+Dockerfile
