@@ -13,57 +13,20 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Markdown } from "@/components/markdown";
-import {
-  ArrowLeft,
-  Archive,
-  ArchiveRestore,
-  MessageSquare,
-  History,
-  Trash2,
-  ChevronRight,
-  Pencil,
-  X,
-  Send,
-  MoreHorizontal,
-} from "lucide-react";
 import { formatTicketNumber, generateWorkspacePrefix } from "@/lib/utils";
 import { IssueStatusBadge, STATUS_META, IssueStatus } from "@/components/issue-status";
 import { PRIORITY_META, type TicketPriority } from "@/lib/priority";
 import { SubIssuesCard } from "@/components/issue-detail/sub-issues-card";
 import { IssueSidebar } from "@/components/issue-detail/issue-sidebar";
+import { TicketDetailHeader } from "@/components/issue-detail/ticket-detail-header";
+import { TicketActivityTabs } from "@/components/issue-detail/ticket-activity-tabs";
 import { ArchivedBadge } from "@/components/archived-badge";
 import { ArchivedBanner } from "@/components/archived-banner";
-import { UserMenu } from "@/components/user-menu";
 import { useWorkspaceData } from "@/components/workspace-data-provider";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
 
 type Ticket = Doc<"tickets">;
 
 const getOrderValue = (ticket: Ticket) => ticket.order ?? ticket.createdAt;
-
-function RelativeTime({ timestamp }: { timestamp: number }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-  const diff = now - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return <span>just now</span>;
-  if (minutes < 60) return <span>{minutes}m ago</span>;
-  if (hours < 24) return <span>{hours}h ago</span>;
-  if (days < 30) return <span>{days}d ago</span>;
-  return <span>{new Date(timestamp).toLocaleDateString()}</span>;
-}
 
 export default function TicketDetailPage() {
   const params = useParams();
@@ -103,7 +66,6 @@ export default function TicketDetailPage() {
   const [existingChildId, setExistingChildId] = useState<Id<"tickets"> | "">("");
   const [isAddingExisting, setIsAddingExisting] = useState(false);
   const [optimisticStatus, setOptimisticStatus] = useState<IssueStatus | null>(null);
-  const [activeTab, setActiveTab] = useState<"comments" | "history">("comments");
 
   const ticket = hierarchy?.ticket ?? null;
   const ancestors = hierarchy?.ancestors ?? [];
@@ -389,94 +351,23 @@ export default function TicketDetailPage() {
 
   return (
     <div className="min-h-full">
-      <header className="border-b border-border/60 bg-card/50 sticky top-0 z-10">
-          <div className="flex items-center justify-between pl-12 pr-4 py-2.5 md:px-6">
-            {/* Left: back + breadcrumb */}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Link
-                href={backHref}
-                className="shrink-0 p-1.5 -ml-1.5 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </Link>
-
-              <nav className="flex items-center gap-1 text-sm text-muted-foreground min-w-0 overflow-hidden">
-                <Link
-                  href={`/workspace/${workspaceId}`}
-                  className="shrink-0 hover:text-foreground transition-colors"
-                >
-                  {workspace.name}
-                </Link>
-                {ancestors.map((ancestor) => (
-                  <span key={ancestor._id} className="flex items-center gap-1 shrink-0">
-                    <ChevronRight className="w-3 h-3 text-muted-foreground/50" />
-                    <Link
-                      href={`/workspace/${workspaceId}/tickets/${ancestor._id}`}
-                      className="hover:text-foreground transition-colors font-mono text-xs"
-                    >
-                      {formatTicketNumber(workspacePrefix, ancestor.number) ?? "—"}
-                    </Link>
-                  </span>
-                ))}
-                <ChevronRight className="w-3 h-3 text-muted-foreground/50 shrink-0" />
-                <span className="font-mono text-xs text-foreground/70 truncate">
-                  {ticketNumber}
-                </span>
-              </nav>
-            </div>
-
-            {/* Right: actions */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 gap-1.5 text-xs"
-                onClick={() => setIsEditing((prev) => !prev)}
-              >
-                {isEditing ? <X className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-                {isEditing ? "Cancel" : "Edit"}
-              </Button>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <MoreHorizontal className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 border-border/80 bg-card/95">
-                  <DropdownMenuItem
-                    onClick={() =>
-                      updateTicket({ id: ticket._id, archived: !(ticket.archived ?? false) })
-                    }
-                  >
-                    {ticket.archived ? (
-                      <>
-                        <ArchiveRestore className="w-4 h-4 mr-2" />
-                        Unarchive
-                      </>
-                    ) : (
-                      <>
-                        <Archive className="w-4 h-4 mr-2" />
-                        Archive
-                      </>
-                    )}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={handleDelete}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Issue
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <div className="w-px h-5 bg-border/50 mx-1" />
-              <UserMenu />
-            </div>
-          </div>
-        </header>
+      <TicketDetailHeader
+        workspaceId={workspaceId}
+        workspaceName={workspace.name}
+        backHref={backHref}
+        ancestors={ancestors}
+        workspacePrefix={workspacePrefix}
+        ticketNumber={ticketNumber}
+        isEditing={isEditing}
+        ticketArchived={Boolean(ticket.archived)}
+        onToggleEdit={() => setIsEditing((prev) => !prev)}
+        onToggleArchive={() => {
+          updateTicket({ id: ticket._id, archived: !(ticket.archived ?? false) }).catch((error) => {
+            console.error(error);
+          });
+        }}
+        onDelete={handleDelete}
+      />
 
         {/* ── Main content ── */}
         <div className="p-5 md:p-8">
@@ -648,168 +539,19 @@ export default function TicketDetailPage() {
 
               <Separator className="my-8 opacity-40" />
 
-              {/* ── Tabbed: Comments / History ── */}
-              <div>
-                <div className="flex items-center gap-0 mb-5">
-                  <button
-                    onClick={() => setActiveTab("comments")}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                      activeTab === "comments"
-                        ? "border-primary text-foreground"
-                        : "border-transparent text-muted-foreground hover:text-foreground/80"
-                    }`}
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    Comments
-                    {!commentsLoading && commentsList.length > 0 && (
-                      <span className="font-mono text-[10px] text-muted-foreground ml-0.5">
-                        {commentsList.length}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("history")}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                      activeTab === "history"
-                        ? "border-primary text-foreground"
-                        : "border-transparent text-muted-foreground hover:text-foreground/80"
-                    }`}
-                  >
-                    <History className="w-3.5 h-3.5" />
-                    History
-                    {!activitiesLoading && activitiesList.length > 0 && (
-                      <span className="font-mono text-[10px] text-muted-foreground ml-0.5">
-                        {activitiesList.length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                <div className="border-t border-border/30 -mt-px" />
-
-                {/* ── Comments tab ── */}
-                {activeTab === "comments" && (
-                  <div className="pt-5 space-y-4">
-                    {commentsLoading && (
-                      <p className="text-sm text-muted-foreground/60 italic py-2">
-                        Loading comments...
-                      </p>
-                    )}
-                    {!commentsLoading && commentsList.length === 0 && (
-                      <p className="text-sm text-muted-foreground/60 italic py-2">
-                        No comments yet.
-                      </p>
-                    )}
-
-                    {commentsList.map((comment) => (
-                      <div key={comment._id} className="group">
-                        <div className="flex items-baseline gap-2 mb-1">
-                          <span className="text-sm font-medium">
-                            {formatActorName(
-                              comment.authorType,
-                              comment.authorId,
-                              comment.authorDisplayName
-                            )}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground/60 font-mono">
-                            <RelativeTime timestamp={comment.createdAt} />
-                          </span>
-                        </div>
-                        <div className="pl-0">
-                          <Markdown content={comment.body} className="prose-sm" />
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Comment input */}
-                    <div className="pt-2">
-                      <div className="border border-border/50 bg-background/40 focus-within:border-primary/30 transition-colors">
-                        <Textarea
-                          value={newComment}
-                          onChange={(event) => setNewComment(event.target.value)}
-                          rows={3}
-                          className="border-0 bg-transparent font-mono text-sm resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                          placeholder="Leave a comment..."
-                        />
-                        <div className="flex items-center justify-end gap-2 px-3 pb-2.5">
-                          {newComment.trim() && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs text-muted-foreground"
-                              onClick={() => setNewComment("")}
-                              disabled={isAddingComment}
-                            >
-                              Clear
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            className="h-7 gap-1.5 text-xs"
-                            onClick={handleAddComment}
-                            disabled={!newComment.trim() || isAddingComment}
-                          >
-                            <Send className="w-3 h-3" />
-                            {isAddingComment ? "Posting..." : "Comment"}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── History tab ── */}
-                {activeTab === "history" && (
-                  <div className="pt-5">
-                    {activitiesLoading ? (
-                      <p className="text-sm text-muted-foreground/60 italic py-2">
-                        Loading history...
-                      </p>
-                    ) : activitiesList.length === 0 ? (
-                      <p className="text-sm text-muted-foreground/60 italic py-2">
-                        No activity yet.
-                      </p>
-                    ) : (
-                      <div className="space-y-0">
-                        {activitiesList.map((event, index) => {
-                          const isLast = index === activitiesList.length - 1;
-                          return (
-                            <div key={event._id} className="relative pl-5">
-                              {!isLast && (
-                                <span
-                                  aria-hidden
-                                  className="absolute left-[4.5px] top-[14px] h-[calc(100%-6px)] w-px bg-border/40"
-                                />
-                              )}
-                              <span
-                                aria-hidden
-                                className="absolute left-0 top-[6px] h-[10px] w-[10px] border border-border/60 bg-card"
-                              />
-                              <div className="pb-4">
-                                <div className="flex items-baseline gap-2">
-                                  <span className="text-sm">
-                                    {formatActorName(
-                                      event.actorType,
-                                      event.actorId,
-                                      event.actorDisplayName
-                                    )}
-                                  </span>
-                                  <span className="text-sm text-muted-foreground">
-                                    {formatActivity(event).toLowerCase()}
-                                  </span>
-                                </div>
-                                <div className="text-[11px] text-muted-foreground/50 font-mono">
-                                  <RelativeTime timestamp={event.createdAt} />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <TicketActivityTabs
+                commentsLoading={commentsLoading}
+                commentsList={commentsList}
+                activitiesLoading={activitiesLoading}
+                activitiesList={activitiesList}
+                formatActorName={formatActorName}
+                formatActivity={formatActivity}
+                newComment={newComment}
+                isAddingComment={isAddingComment}
+                onNewCommentChange={setNewComment}
+                onClearNewComment={() => setNewComment("")}
+                onAddComment={handleAddComment}
+              />
             </div>
 
             {/* ── Right sidebar ── */}

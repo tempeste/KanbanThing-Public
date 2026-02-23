@@ -10,16 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Markdown } from "@/components/markdown";
-import { ArrowLeft, Key, Plus, Trash2, Copy, Check, Hash, Users, Crown, Shield, User, AlertCircle } from "lucide-react";
+import { ArrowLeft, Hash } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { generateWorkspacePrefix } from "@/lib/utils";
 import { useSession } from "@/lib/auth-client";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TagManager } from "@/components/tag-manager";
 import { useWorkspaceData } from "@/components/workspace-data-provider";
+import { WorkspaceApiKeysCard } from "@/components/workspace-settings/api-keys-card";
+import { WorkspaceMembersCard } from "@/components/workspace-settings/members-card";
+import { WorkspaceDocsVersionDialog } from "@/components/workspace-settings/docs-version-dialog";
 
 function generateApiKey(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -257,14 +257,6 @@ export default function WorkspaceSettingsPage() {
     }
   };
 
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case "owner": return <Crown className="w-4 h-4 text-amber-500" />;
-      case "admin": return <Shield className="w-4 h-4 text-blue-500" />;
-      default: return <User className="w-4 h-4 text-muted-foreground" />;
-    }
-  };
-
   const copyToClipboard = async (text: string, id: string) => {
     await navigator.clipboard.writeText(text);
     setCopiedKeyId(id);
@@ -486,339 +478,40 @@ export default function WorkspaceSettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Key className="w-5 h-5" />
-              API Keys
-            </CardTitle>
-            <CardDescription>
-              Generate API keys for LLM agents to access this workspace via the REST API.
-              Keys are scoped to this workspace only.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {generatedKey && (
-              <div className="p-4 border rounded-lg bg-primary/5 border-primary/20">
-                <div className="flex items-center justify-between mb-2">
-                  <Label className="text-primary">New API Key Generated</Label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(generatedKey, "new")}
-                  >
-                    {copiedKeyId === "new" ? (
-                      <Check className="w-4 h-4 mr-1" />
-                    ) : (
-                      <Copy className="w-4 h-4 mr-1" />
-                    )}
-                    Copy
-                  </Button>
-                </div>
-                <code className="block p-2 bg-background rounded text-sm font-mono break-all">
-                  {generatedKey}
-                </code>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Copy this key now. It won&apos;t be shown again.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setGeneratedKey(null)}
-                >
-                  Done
-                </Button>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                placeholder="Key name (e.g., 'Claude Agent')"
-                value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
-                disabled={!canManageApiKeys}
-              />
-              <select
-                className="h-10 min-w-[140px] rounded-md border border-input bg-background px-3 text-sm"
-                value={newKeyRole}
-                onChange={(e) => setNewKeyRole(e.target.value as "agent" | "admin")}
-                disabled={!canManageApiKeys}
-              >
-                <option value="agent">Agent key</option>
-                <option value="admin">Admin key</option>
-              </select>
-              <Button
-                onClick={handleCreateKey}
-                disabled={!canManageApiKeys || !newKeyName.trim()}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Generate Key
-              </Button>
-            </div>
-            {!canManageApiKeys && (
-              <p className="text-sm text-muted-foreground">
-                You have read-only access to API keys. Ask an owner or admin to manage keys.
-              </p>
-            )}
-
-            {apiKeys.length > 0 && (
-              <>
-                <Separator />
-                <div className="space-y-3">
-                  <Label>Existing Keys</Label>
-                  {apiKeys.map((key) => (
-                    <div
-                      key={key._id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium">{key.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Created {new Date(key.createdAt).toLocaleDateString()}
-                        </p>
-                        <p className="text-xs text-muted-foreground capitalize">
-                          Role: {key.role ?? "admin"}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {canManageApiKeys && (
-                          <select
-                            className="h-8 px-2 text-sm border rounded-md bg-background"
-                            value={key.role ?? "admin"}
-                            onChange={(e) =>
-                              handleChangeApiKeyRole(
-                                key._id,
-                                e.target.value as "agent" | "admin"
-                              )
-                            }
-                            disabled={updatingApiKeyId === key._id}
-                          >
-                            <option value="agent">Agent</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                        )}
-                        {canManageApiKeys && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDeleteKey(key._id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <Separator />
-
-            <div className="space-y-2">
-              <Label>API Usage</Label>
-              <div className="text-sm text-muted-foreground space-y-1 font-mono bg-muted p-3 rounded-lg">
-                <p># Get workspace docs</p>
-                <p className="text-foreground">
-                  {"curl -H \"X-API-Key: sk_...\" /api/workspace/docs"}
-                </p>
-                <p className="mt-2"># Update workspace docs</p>
-                <p className="text-foreground">
-                  {"curl -X PATCH -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"docs\":\"...\"}' /api/workspace/docs"}
-                </p>
-                <p className="mt-2"># Docs history</p>
-                <p className="text-foreground">
-                  {"curl -H \"X-API-Key: sk_...\" /api/workspace/docs/history"}
-                </p>
-                <p className="mt-2"># List issues</p>
-                <p className="text-foreground">
-                  {"curl -H \"X-API-Key: sk_...\" /api/tickets"}
-                </p>
-                <p className="mt-2"># List child issues</p>
-                <p className="text-foreground">
-                  {"curl -H \"X-API-Key: sk_...\" /api/tickets?parentId=ISSUE_ID"}
-                </p>
-                <p className="mt-2"># Create issue</p>
-                <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"title\":\"New issue\",\"description\":\"...\"}' /api/tickets"}
-                </p>
-                <p className="mt-2"># Update issue</p>
-                <p className="text-foreground">
-                  {"curl -X PATCH -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"title\":\"Updated\"}' /api/tickets/ISSUE_ID"}
-                </p>
-                <p className="mt-2"># Change status</p>
-                <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"status\":\"done\"}' /api/tickets/ISSUE_ID/status"}
-                </p>
-                <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"status\":\"unclaimed\",\"reason\":\"duplicate ticket\"}' /api/tickets/ISSUE_ID/status"}
-                </p>
-                <p className="mt-2"># Claim an issue</p>
-                <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/claim"}
-                </p>
-                <p className="mt-2"># Assign / unassign</p>
-                <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"X-Agent-Session-Id: agent-A\" -H \"Content-Type: application/json\" -d '{}' /api/tickets/ISSUE_ID/assign"}
-                </p>
-                <p className="text-foreground">
-                  {"# OpenClaw alias: use X-OpenClaw-Session-Id instead of X-Agent-Session-Id"}
-                </p>
-                <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/unassign"}
-                </p>
-                <p className="mt-2"># Comment + activity</p>
-                <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_...\" -H \"Content-Type: application/json\" -d '{\"body\":\"Update...\"}' /api/tickets/ISSUE_ID/comments"}
-                </p>
-                <p className="text-foreground">
-                  {"curl -H \"X-API-Key: sk_...\" /api/tickets/ISSUE_ID/activity"}
-                </p>
-                <p className="mt-2"># API key lifecycle (admin key only)</p>
-                <p className="text-foreground">
-                  {"curl -H \"X-API-Key: sk_admin...\" /api/api-keys"}
-                </p>
-                <p className="text-foreground">
-                  {"curl -X POST -H \"X-API-Key: sk_admin...\" -H \"Content-Type: application/json\" -d '{\"name\":\"Harness B\",\"role\":\"agent\"}' /api/api-keys"}
-                </p>
-                <p className="text-foreground">
-                  {"curl -X DELETE -H \"X-API-Key: sk_admin...\" /api/api-keys/API_KEY_ID"}
-                </p>
-                <p className="text-foreground">
-                  {"curl -X PATCH -H \"X-API-Key: sk_admin...\" -H \"Content-Type: application/json\" -d '{\"role\":\"admin\"}' /api/api-keys/API_KEY_ID"}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <WorkspaceApiKeysCard
+          apiKeys={apiKeys}
+          canManageApiKeys={canManageApiKeys}
+          generatedKey={generatedKey}
+          copiedKeyId={copiedKeyId}
+          newKeyName={newKeyName}
+          newKeyRole={newKeyRole}
+          updatingApiKeyId={updatingApiKeyId}
+          onNewKeyNameChange={setNewKeyName}
+          onNewKeyRoleChange={setNewKeyRole}
+          onCreateKey={handleCreateKey}
+          onDeleteKey={handleDeleteKey}
+          onChangeApiKeyRole={handleChangeApiKeyRole}
+          onCopyToClipboard={copyToClipboard}
+          onDismissGeneratedKey={() => setGeneratedKey(null)}
+        />
 
         {canManageMembers && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Members
-              </CardTitle>
-              <CardDescription>
-                Manage who has access to this workspace. Owners have full control, admins can manage members, and members can view and edit tickets.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="member-emails">Add members by email</Label>
-                <Textarea
-                  id="member-emails"
-                  placeholder="Enter email addresses (comma or newline separated)"
-                  value={memberEmails}
-                  onChange={(e) => {
-                    setMemberEmails(e.target.value);
-                    setAddMemberResult(null);
-                  }}
-                  rows={3}
-                  className="font-mono text-sm"
-                />
-                <Button
-                  onClick={handleAddMembers}
-                  disabled={!memberEmails.trim() || isAddingMembers}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  {isAddingMembers ? "Adding..." : "Add Members"}
-                </Button>
-              </div>
-
-              {addMemberResult && (
-                <div className="space-y-2 text-sm">
-                  {addMemberResult.added.length > 0 && (
-                    <div className="p-2 bg-green-500/10 border border-green-500/20 rounded-md text-green-700 dark:text-green-400">
-                      <strong>Added:</strong> {addMemberResult.added.join(", ")}
-                    </div>
-                  )}
-                  {addMemberResult.alreadyMember.length > 0 && (
-                    <div className="p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md text-yellow-700 dark:text-yellow-400">
-                      <strong>Already members:</strong> {addMemberResult.alreadyMember.join(", ")}
-                    </div>
-                  )}
-                  {addMemberResult.notFound.length > 0 && (
-                    <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-md text-red-700 dark:text-red-400 flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <strong>Not found:</strong> {addMemberResult.notFound.join(", ")}
-                        <p className="text-xs mt-1 opacity-80">
-                          Users must log in at least once before they can be added.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {members && members.length > 0 && (
-                <>
-                  <Separator />
-                  <div className="space-y-3">
-                    <Label>Current Members</Label>
-                    {members.map((member) => {
-                      const profile = profileMap.get(member.betterAuthUserId);
-                      const displayName = profile?.name || profile?.email || member.betterAuthUserId;
-                      const initials = (profile?.name?.[0] || profile?.email?.[0] || "?").toUpperCase();
-
-                      return (
-                        <div
-                          key={member._id}
-                          className="flex items-center justify-between p-3 border rounded-lg"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage src={profile?.image} alt={displayName} />
-                              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                            </Avatar>
-                            <div className="flex items-center gap-2">
-                              {getRoleIcon(member.role)}
-                              <div>
-                                <p className="font-medium text-sm">{displayName}</p>
-                                {profile?.name && profile?.email && (
-                                  <p className="text-xs text-muted-foreground">{profile.email}</p>
-                                )}
-                                <p className="text-xs text-muted-foreground capitalize">
-                                  {member.role}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {currentMembership?.role === "owner" && member.betterAuthUserId !== userId && (
-                              <select
-                                className="h-8 px-2 text-sm border rounded-md bg-background"
-                                value={member.role}
-                                onChange={(e) => handleChangeRole(member.betterAuthUserId, e.target.value as "owner" | "admin" | "member")}
-                              >
-                                <option value="member">Member</option>
-                                <option value="admin">Admin</option>
-                                <option value="owner">Owner</option>
-                              </select>
-                            )}
-                            {member.betterAuthUserId !== userId && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-muted-foreground hover:text-destructive"
-                                onClick={() => handleRemoveMember(member.betterAuthUserId)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-
-            </CardContent>
-          </Card>
+          <WorkspaceMembersCard
+            members={members}
+            profileMap={profileMap}
+            currentMembershipRole={currentMembership?.role}
+            currentUserId={userId}
+            memberEmails={memberEmails}
+            isAddingMembers={isAddingMembers}
+            addMemberResult={addMemberResult}
+            onMemberEmailsChange={(value) => {
+              setMemberEmails(value);
+              setAddMemberResult(null);
+            }}
+            onAddMembers={handleAddMembers}
+            onChangeRole={handleChangeRole}
+            onRemoveMember={handleRemoveMember}
+          />
         )}
 
         <Card>
@@ -857,30 +550,14 @@ export default function WorkspaceSettingsPage() {
         </Card>
       </div>
 
-      <Dialog
+      <WorkspaceDocsVersionDialog
         open={isDocsDialogOpen}
+        selectedVersion={selectedDocsVersion}
         onOpenChange={(open) => {
           setIsDocsDialogOpen(open);
           if (!open) setSelectedDocsVersion(null);
         }}
-      >
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Docs Version</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-[60vh] overflow-auto rounded-md border bg-background/60 p-4">
-            {selectedDocsVersion ? (
-              selectedDocsVersion.docs.trim() ? (
-                <Markdown content={selectedDocsVersion.docs} className="prose-lg" />
-              ) : (
-                <p className="text-sm text-muted-foreground">No content.</p>
-              )
-            ) : (
-              <p className="text-sm text-muted-foreground">No version selected.</p>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      />
     </div>
   );
 }
