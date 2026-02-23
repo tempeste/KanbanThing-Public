@@ -1,7 +1,7 @@
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { authComponent } from "./auth";
+import { authComponent, getAuthUserOrNull } from "./auth";
 import { getOpenClawInstanceUrlValidationError } from "../lib/openclaw-instance-validation";
 
 const encryptedTokenValidator = v.object({
@@ -78,7 +78,12 @@ export const getCurrentUserId = internalQuery({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireAuthUserId(ctx);
+    const authUser = await getAuthUserOrNull(ctx);
+    if (!authUser) {
+      return [];
+    }
+
+    const userId = authUser._id;
     const instances = await ctx.db
       .query("openclawInstances")
       .withIndex("by_user", (q) => q.eq("userId", userId))
