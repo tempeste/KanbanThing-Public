@@ -47,7 +47,13 @@ async function hashKey(key: string): Promise<string> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ value: key }),
   });
+  if (!res.ok) {
+    throw new Error(`Hash API failed: ${res.status}`);
+  }
   const json = await res.json();
+  if (typeof json.hash !== "string") {
+    throw new Error("Invalid hash response");
+  }
   return json.hash;
 }
 
