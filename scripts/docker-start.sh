@@ -38,8 +38,6 @@ npx convex deploy --yes --env-file "$ENV_FILE"
 # ── 5. Set Convex environment variables ─────────────────────────────
 echo "==> Setting Convex environment variables..."
 npx convex env set BETTER_AUTH_SECRET "$AUTH_SECRET" --env-file "$ENV_FILE" 2>/dev/null || true
-npx convex env set SITE_URL "$APP_URL" --env-file "$ENV_FILE" 2>/dev/null || true
-
 # Detect the host's LAN IP for trusted origins (Linux/macOS)
 HOST_IP=""
 if hostname -I >/dev/null 2>&1; then
@@ -51,11 +49,15 @@ elif command -v ipconfig >/dev/null 2>&1; then
     true
   )
 fi
+
+SITE_URL="$APP_URL"
 ORIGINS="$APP_URL"
 if [ -n "$HOST_IP" ]; then
   ORIGINS="$ORIGINS,http://$HOST_IP:3219"
 fi
+echo "    Site URL: $SITE_URL"
 echo "    Trusted origins: $ORIGINS"
+npx convex env set SITE_URL "$SITE_URL" --env-file "$ENV_FILE" 2>/dev/null || true
 npx convex env set TRUSTED_ORIGINS "$ORIGINS" --env-file "$ENV_FILE" 2>/dev/null || true
 
 # ── 6. Start all remaining services ────────────────────────────────
