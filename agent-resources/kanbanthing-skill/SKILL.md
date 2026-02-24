@@ -9,18 +9,38 @@ Follow this workflow when working in a project connected to KanbanThing.
 
 ## Setup
 
-Set these env vars (or pass inline with curl):
+### 1. Load credentials from `.kanbanthing`
+
+Before using env vars, check for a `.kanbanthing` file in the project root. It contains the API key and base URL:
+
+```bash
+# Read config from dotfile
+KANBANTHING_API_KEY=$(grep KANBANTHING_API_KEY .kanbanthing | cut -d= -f2)
+KANBANTHING_URL=$(grep KANBANTHING_BASE_URL .kanbanthing | cut -d= -f2)
+```
+
+**Important:** The config file may use `KANBANTHING_BASE_URL` (not `KANBANTHING_URL`). Normalize to `KANBANTHING_URL` when extracting.
+
+### 2. Resolve the base URL
+
+- **Hosted instance:** `https://<your-kanbanthing-host>` — use as-is.
+- **Local dev (`localhost:3000`):** The server typically runs plain HTTP even if the config says `https`. If you get TLS/SSL errors, switch the scheme to `http://`. Try `http://` first for localhost URLs.
+
+### 3. Fallback: env vars
+
+If no `.kanbanthing` file exists, use these env vars (or pass inline with curl):
 - `KANBANTHING_API_KEY` — workspace-scoped API key (`sk_...`)
-- `KANBANTHING_URL` — base URL (default: `https://<your-kanbanthing-host>`)
+- `KANBANTHING_URL` — base URL
 
 ## Core Sequence
 
-1. Load project context with `GET /api/workspace/docs`.
-2. Find available work with `GET /api/tickets?status=unclaimed`.
-3. Claim exactly one ticket with `POST /api/tickets/<ticket-id>/claim`.
-4. Execute the requested code changes in the repository.
-5. Add progress notes or comments for visibility when needed.
-6. Complete the ticket with `POST /api/tickets/<ticket-id>/complete`.
+1. Parse `.kanbanthing` for credentials (see Setup above). Verify connectivity with a quick `GET /api/workspace/docs` call.
+2. Get board overview with `GET /api/tickets` (no status filter) to understand the full picture — epics, sub-tickets, priorities, and what's already in progress.
+3. Find claimable work with `GET /api/tickets?status=unclaimed`.
+4. Claim exactly one ticket with `POST /api/tickets/<ticket-id>/claim`.
+5. Execute the requested code changes in the repository.
+6. Add progress notes or comments for visibility when needed.
+7. Complete the ticket with `POST /api/tickets/<ticket-id>/complete`.
 
 ## Status Flow
 
