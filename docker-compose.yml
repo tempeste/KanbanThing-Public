@@ -40,12 +40,15 @@ services:
   app:
     build:
       context: .
-      args:
-        NEXT_PUBLIC_CONVEX_URL: http://localhost:3210
-        NEXT_PUBLIC_CONVEX_SITE_URL: http://localhost:3211
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - /app/node_modules
     ports:
       - "3219:3219"
     environment:
+      - NEXT_PUBLIC_CONVEX_URL=http://localhost:3210
+      - NEXT_PUBLIC_CONVEX_SITE_URL=http://localhost:3211
       - CONVEX_URL=http://convex-backend:3210
       - CONVEX_SITE_URL=http://convex-backend:3211
     depends_on:

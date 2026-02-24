@@ -46,9 +46,27 @@ const isPrivateOrLocalIpv6 = (hostname: string) => {
   );
 };
 
-const isDevelopment = () => process.env.NODE_ENV === "development";
+/**
+ * Check if relaxed URL validation is enabled.
+ * Uses try/catch because process.env may not exist in all runtimes
+ * (e.g. Convex V8 isolates only expose env vars in actions, not mutations).
+ */
+const isRelaxedMode = (): boolean => {
+  try {
+    return (
+      (typeof process !== "undefined" && process.env?.NODE_ENV === "development") ||
+      (typeof process !== "undefined" && !!process.env?.ALLOW_LOCAL_OPENCLAW) ||
+      (typeof process !== "undefined" && !!process.env?.NEXT_PUBLIC_ALLOW_LOCAL_OPENCLAW)
+    );
+  } catch {
+    return false;
+  }
+};
 
-export const getOpenClawInstanceUrlValidationError = (url: string) => {
+export const getOpenClawInstanceUrlValidationError = (
+  url: string,
+  options?: { allowLocal?: boolean },
+) => {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -73,8 +91,8 @@ export const getOpenClawInstanceUrlValidationError = (url: string) => {
     isPrivateOrLocalIpv4(normalizedHostname) ||
     isPrivateOrLocalIpv6(normalizedHostname);
 
-  if (isDevelopment()) {
-    // In development, allow HTTP and local/private addresses
+  if (options?.allowLocal || isRelaxedMode()) {
+    // In development or when explicitly allowed, permit HTTP and local addresses
     return null;
   }
 
