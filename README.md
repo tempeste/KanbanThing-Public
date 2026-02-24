@@ -128,6 +128,92 @@ The script is safe to re-run — it rebuilds the app image with the latest code,
 docker compose down
 ```
 
+## Connecting OpenClaw
+
+KanbanThing can dispatch tickets directly to your [OpenClaw](https://github.com/openclaw/openclaw) gateway. Link your instance from the **Account Settings** page.
+
+### Local Development
+
+When running KanbanThing locally (`NODE_ENV=development`), HTTP and local/private addresses are allowed:
+
+1. Go to **Account Settings → OpenClaw Instances**
+2. Fill in the form:
+   - **Name:** anything memorable (e.g. `My Laptop`)
+   - **URL:** your gateway address (e.g. `http://127.0.0.1:18789`)
+   - **Bearer Token:** your gateway token — find it with:
+     ```bash
+     openclaw config get gateway.auth
+     ```
+3. Click **Add Instance**
+
+### Production
+
+In production (`NODE_ENV=production`), only HTTPS URLs pointing to public hosts are accepted. Set up a reverse proxy with TLS in front of your gateway first.
+
+### OpenClaw Webhook Setup
+
+KanbanThing dispatches tickets to OpenClaw via `POST /hooks/agent`. You need to enable the webhook endpoint on your gateway:
+
+1. **Generate a hooks token** (separate from your gateway auth token):
+   ```bash
+   # Generate a random token
+   node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
+   ```
+
+2. **Enable webhooks** in your OpenClaw config (`~/.openclaw/openclaw.json`):
+   ```json
+   {
+     "hooks": {
+       "enabled": true,
+       "token": "<your-hooks-token>",
+       "path": "/hooks",
+       "allowedAgentIds": ["main"],
+       "defaultSessionKey": "hook:kanbanthing",
+       "allowRequestSessionKey": false
+     }
+   }
+   ```
+   Or via CLI:
+   ```bash
+   openclaw config set hooks.enabled true
+   openclaw config set hooks.token "<your-hooks-token>"
+   ```
+
+3. **Use the hooks token** (not the gateway auth token) as the Bearer Token when adding your OpenClaw instance in KanbanThing Account Settings.
+
+4. **Restart your gateway** to apply changes:
+   ```bash
+   openclaw gateway restart
+   ```
+
+> **Important:** The Bearer Token in KanbanThing must match `hooks.token` in your OpenClaw config — this is different from `gateway.auth.token`.
+
+### Convex Environment Variables
+
+For self-hosted Docker deployments, set these Convex environment variables:
+
+```bash
+# Required: encryption key for storing OpenClaw tokens at rest
+npx convex env set OPENCLAW_ENCRYPTION_KEY "$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" \
+  --admin-key <your-admin-key> --url http://127.0.0.1:3210
+
+# Optional: allow HTTP + local addresses for OpenClaw instances (self-hosted dev)
+npx convex env set ALLOW_LOCAL_OPENCLAW "true" \
+  --admin-key <your-admin-key> --url http://127.0.0.1:3210
+```
+
+### Agent-Side Setup
+
+On the OpenClaw side, make sure your agent has a `.kanbanthing` config in its workspace:
+
+```ini
+KANBANTHING_BASE_URL=http://localhost:3219
+KANBANTHING_WORKSPACE_ID=<your-workspace-id>
+KANBANTHING_API_KEY=sk_...
+```
+
+You can bootstrap this automatically with the init script (see below).
+
 ## Bootstrap Agent Skill Into Another Project
 
 This repo ships a reusable KanbanThing skill bundle for Codex and Claude agents at `agent-resources/kanbanthing-skill/`.

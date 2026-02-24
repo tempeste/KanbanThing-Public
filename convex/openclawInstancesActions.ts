@@ -23,11 +23,13 @@ export const create = action({
   handler: async (ctx, args): Promise<Id<"openclawInstances">> => {
     const userId: string = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
     const encryptedToken = await encryptOpenClawToken(args.token, getEncryptionKey());
+    const allowLocal = !!process.env.ALLOW_LOCAL_OPENCLAW;
     return await ctx.runMutation(internal.openclawInstances.createEncrypted, {
       userId,
       name: args.name,
       url: args.url,
       encryptedToken,
+      allowLocal,
     });
   },
 });
@@ -46,12 +48,14 @@ export const update = action({
         ? undefined
         : await encryptOpenClawToken(args.token, getEncryptionKey());
 
+    const allowLocal = !!process.env.ALLOW_LOCAL_OPENCLAW;
     await ctx.runMutation(internal.openclawInstances.updateEncrypted, {
       id: args.id as Id<"openclawInstances">,
       userId,
       ...(args.name !== undefined ? { name: args.name } : {}),
       ...(args.url !== undefined ? { url: args.url } : {}),
       ...(encryptedToken ? { encryptedToken } : {}),
+      allowLocal,
     });
   },
 });

@@ -46,7 +46,27 @@ const isPrivateOrLocalIpv6 = (hostname: string) => {
   );
 };
 
-export const getOpenClawInstanceUrlValidationError = (url: string) => {
+/**
+ * Check if relaxed URL validation is enabled.
+ * Uses try/catch because process.env may not exist in all runtimes
+ * (e.g. Convex V8 isolates only expose env vars in actions, not mutations).
+ */
+const isRelaxedMode = (): boolean => {
+  try {
+    return (
+      (typeof process !== "undefined" && process.env?.NODE_ENV === "development") ||
+      (typeof process !== "undefined" && !!process.env?.ALLOW_LOCAL_OPENCLAW) ||
+      (typeof process !== "undefined" && !!process.env?.NEXT_PUBLIC_ALLOW_LOCAL_OPENCLAW)
+    );
+  } catch {
+    return false;
+  }
+};
+
+export const getOpenClawInstanceUrlValidationError = (
+  url: string,
+  options?: { allowLocal?: boolean },
+) => {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -54,8 +74,8 @@ export const getOpenClawInstanceUrlValidationError = (url: string) => {
     return "URL must be a valid absolute URL";
   }
 
-  if (parsed.protocol !== "https:") {
-    return "URL must use HTTPS";
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return "URL must use HTTP or HTTPS";
   }
 
   const hostname = parsed.hostname.trim().toLowerCase();
@@ -65,12 +85,23 @@ export const getOpenClawInstanceUrlValidationError = (url: string) => {
     return "URL must be a valid absolute URL";
   }
 
-  if (
+  const isLocal =
     normalizedHostname === "localhost" ||
     normalizedHostname.endsWith(".localhost") ||
     isPrivateOrLocalIpv4(normalizedHostname) ||
-    isPrivateOrLocalIpv6(normalizedHostname)
-  ) {
+    isPrivateOrLocalIpv6(normalizedHostname);
+
+  if (options?.allowLocal || isRelaxedMode()) {
+    // In development or when explicitly allowed, permit HTTP and local addresses
+    return null;
+  }
+
+  // Production: require HTTPS, block local/private hosts
+  if (parsed.protocol !== "https:") {
+    return "URL must use HTTPS";
+  }
+
+  if (isLocal) {
     return "URL host is not allowed";
   }
 

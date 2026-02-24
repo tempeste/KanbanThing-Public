@@ -20,13 +20,13 @@ const normalizeName = (name: string) => {
   return trimmed;
 };
 
-const normalizeUrl = (url: string) => {
+const normalizeUrl = (url: string, options?: { allowLocal?: boolean }) => {
   const trimmed = url.trim();
   if (!trimmed) {
     throw new Error("URL is required");
   }
   try {
-    const urlError = getOpenClawInstanceUrlValidationError(trimmed);
+    const urlError = getOpenClawInstanceUrlValidationError(trimmed, options);
     if (urlError) {
       throw new Error(urlError);
     }
@@ -119,10 +119,11 @@ export const createEncrypted = internalMutation({
     name: v.string(),
     url: v.string(),
     encryptedToken: encryptedTokenValidator,
+    allowLocal: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const name = normalizeName(args.name);
-    const url = normalizeUrl(args.url);
+    const url = normalizeUrl(args.url, { allowLocal: args.allowLocal });
     await ensureNameUnique(ctx, args.userId, name);
 
     const now = Date.now();
@@ -144,6 +145,7 @@ export const updateEncrypted = internalMutation({
     name: v.optional(v.string()),
     url: v.optional(v.string()),
     encryptedToken: v.optional(encryptedTokenValidator),
+    allowLocal: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const instance = await ctx.db.get(args.id);
@@ -163,7 +165,7 @@ export const updateEncrypted = internalMutation({
       await ensureNameUnique(ctx, args.userId, updates.name, args.id);
     }
     if (args.url !== undefined) {
-      updates.url = normalizeUrl(args.url);
+      updates.url = normalizeUrl(args.url, { allowLocal: args.allowLocal });
     }
     if (args.encryptedToken !== undefined) {
       updates.encryptedToken = args.encryptedToken;
