@@ -128,6 +128,40 @@ The script is safe to re-run — it rebuilds the app image with the latest code,
 docker compose down
 ```
 
+## Connecting OpenClaw
+
+KanbanThing can dispatch tickets directly to your [OpenClaw](https://github.com/openclaw/openclaw) gateway. Link your instance from the **Account Settings** page.
+
+### Local Development
+
+When running KanbanThing locally (`NODE_ENV=development`), HTTP and local/private addresses are allowed:
+
+1. Go to **Account Settings → OpenClaw Instances**
+2. Fill in the form:
+   - **Name:** anything memorable (e.g. `My Laptop`)
+   - **URL:** your gateway address (e.g. `http://127.0.0.1:18789`)
+   - **Bearer Token:** your gateway token — find it with:
+     ```bash
+     openclaw config get gateway.auth
+     ```
+3. Click **Add Instance**
+
+### Production
+
+In production (`NODE_ENV=production`), only HTTPS URLs pointing to public hosts are accepted. Set up a reverse proxy with TLS in front of your gateway first.
+
+### Agent-Side Setup
+
+On the OpenClaw side, make sure your agent has a `.kanbanthing` config in its workspace:
+
+```ini
+KANBANTHING_BASE_URL=http://localhost:3219
+KANBANTHING_WORKSPACE_ID=<your-workspace-id>
+KANBANTHING_API_KEY=sk_...
+```
+
+You can bootstrap this automatically with the init script (see below).
+
 ## Bootstrap Agent Skill Into Another Project
 
 This repo ships a reusable KanbanThing skill bundle for Codex and Claude agents at `agent-resources/kanbanthing-skill/`.
