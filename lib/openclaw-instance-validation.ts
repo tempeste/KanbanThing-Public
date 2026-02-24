@@ -46,12 +46,18 @@ const isPrivateOrLocalIpv6 = (hostname: string) => {
   );
 };
 
+const isDevelopment = () => process.env.NODE_ENV === "development";
+
 export const getOpenClawInstanceUrlValidationError = (url: string) => {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return "URL must be a valid absolute URL";
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return "URL must use HTTP or HTTPS";
   }
 
   const hostname = parsed.hostname.trim().toLowerCase();
@@ -67,14 +73,18 @@ export const getOpenClawInstanceUrlValidationError = (url: string) => {
     isPrivateOrLocalIpv4(normalizedHostname) ||
     isPrivateOrLocalIpv6(normalizedHostname);
 
-  // Allow HTTP for local/private network addresses (self-hosted dev),
-  // require HTTPS for all public endpoints.
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return "URL must use HTTP or HTTPS";
+  if (isDevelopment()) {
+    // In development, allow HTTP and local/private addresses
+    return null;
   }
 
-  if (parsed.protocol === "http:" && !isLocal) {
-    return "URL must use HTTPS for public endpoints";
+  // Production: require HTTPS, block local/private hosts
+  if (parsed.protocol !== "https:") {
+    return "URL must use HTTPS";
+  }
+
+  if (isLocal) {
+    return "URL host is not allowed";
   }
 
   return null;
