@@ -139,12 +139,40 @@ When running KanbanThing locally (`NODE_ENV=development`), HTTP and local/privat
 1. Go to **Account Settings → OpenClaw Instances**
 2. Fill in the form:
    - **Name:** anything memorable (e.g. `My Laptop`)
-   - **URL:** your gateway address (e.g. `http://127.0.0.1:18789`)
+   - **URL:** your gateway address (see Docker note below)
    - **Bearer Token:** your gateway token — find it with:
      ```bash
      openclaw config get gateway.auth
      ```
 3. Click **Add Instance**
+
+#### Docker Networking (Self-Hosted)
+
+When KanbanThing runs in Docker, its Convex backend dispatches webhooks from **inside** a container. `127.0.0.1` refers to the container itself, not your host machine.
+
+**On macOS (Docker Desktop):**
+
+Use `http://host.docker.internal:18789` as the instance URL. This is Docker Desktop's built-in hostname that resolves to the host machine. Note: `network_mode: host` does **not** work on macOS — containers run inside a Linux VM, so host networking gives them the VM's network, not your Mac's.
+
+Your OpenClaw gateway must also bind to LAN (not loopback) so it accepts connections from Docker's bridge network:
+
+```bash
+openclaw config set gateway.bind lan
+openclaw gateway restart
+```
+
+**On Linux:**
+
+You have two options:
+
+1. **`host.docker.internal`** — Add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `convex-backend` service in `docker-compose.yml`, then use `http://host.docker.internal:18789`. Gateway must bind to LAN.
+2. **`network_mode: host`** — Set `network_mode: host` on the `convex-backend` service. Then `http://127.0.0.1:18789` works directly with the default loopback bind (no LAN bind needed).
+
+**Quick check:** After setup, verify from inside the container:
+
+```bash
+docker exec kanbanthing-convex-backend-1 wget -qO- http://host.docker.internal:18789/health
+```
 
 ### Production
 

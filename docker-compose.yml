@@ -4,6 +4,8 @@ services:
     image: ghcr.io/get-convex/convex-backend:latest
     stop_grace_period: 10s
     stop_signal: SIGINT
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3210:3210"
       - "3211:3211"
