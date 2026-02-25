@@ -85,6 +85,7 @@ export function KanbanBoard({
   const [dragOverTicketId, setDragOverTicketId] = useState<Id<"tickets"> | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<DragOverPosition>(null);
   const [dragOverStatus, setDragOverStatus] = useState<Status | null>(null);
+  const [isDraggingTicket, setIsDraggingTicket] = useState(false);
   const draggedTicketRef = useRef<{ id: Id<"tickets">; status: Status } | null>(null);
 
   const [optimisticMoves, setOptimisticMoves] = useState<
@@ -514,9 +515,17 @@ export function KanbanBoard({
       (event.currentTarget.closest("[data-ticket-drag-root='true']") as HTMLElement | null) ??
       event.currentTarget;
     beginTicketDrag(event, dragRoot);
+    setIsDraggingTicket(true);
     event.dataTransfer.setData("application/x-ticket-id", ticketId);
     event.dataTransfer.setData("text/plain", ticketId);
     event.dataTransfer.effectAllowed = "move";
+  };
+
+  const finishDragSession = () => {
+    draggedTicketRef.current = null;
+    clearDragState();
+    setIsDraggingTicket(false);
+    endTicketDrag();
   };
 
   const handleCardClick = useCallback(
@@ -552,6 +561,7 @@ export function KanbanBoard({
   );
 
   const displayedStatuses = ALL_STATUSES.filter((s) => visibleStatuses.has(s));
+  const isSortedViewDragHintActive = isDraggingTicket && sortBy !== "order";
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -588,7 +598,7 @@ export function KanbanBoard({
           return (
             <section
             key={status}
-            className={`flex min-h-0 min-w-[85vw] shrink-0 snap-center flex-col border-border md:min-w-0 md:flex-1 ${
+            className={`relative flex min-h-0 min-w-[85vw] shrink-0 snap-center flex-col border-border md:min-w-0 md:flex-1 ${
               index < displayedStatuses.length - 1 ? "border-r" : ""
             } ${dragOverStatus === status ? "bg-white/[0.02]" : ""}`}
             onDragOver={(event) => {
@@ -622,9 +632,7 @@ export function KanbanBoard({
                   await moveTicketToStatus(ticketId, status);
                 }
               } finally {
-                draggedTicketRef.current = null;
-                clearDragState();
-                endTicketDrag();
+                finishDragSession();
               }
             }}
           >
@@ -644,6 +652,16 @@ export function KanbanBoard({
             </div>
 
             <div ref={(el) => { columnRefs.current[status] = el; }} className="kb-scroll h-full overflow-auto px-3 py-3">
+              {isSortedViewDragHintActive && (
+                <div className="pointer-events-none sticky top-2 z-20 mb-2 rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 shadow-sm backdrop-blur-sm">
+                  <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-amber-200/90">
+                    Sort View Active
+                  </div>
+                  <div className="mt-1 text-[11px] leading-4 text-amber-100/90">
+                    Board is sorted by <span className="font-semibold">{sortBy.replace("_", " ")}</span>. Dragging still changes ticket order, but this column is currently displayed by the active sort.
+                  </div>
+                </div>
+              )}
               {columnTickets.length === 0 && (
                 <div className="pt-4 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">
                   No issues
@@ -734,8 +752,7 @@ export function KanbanBoard({
                               clearDragState();
                             }}
                             onDragHandleEnd={() => {
-                              clearDragState();
-                              endTicketDrag();
+                              finishDragSession();
                             }}
                             onClick={(event) => handleCardClick(event, ticket._id)}
                             onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
@@ -830,8 +847,7 @@ export function KanbanBoard({
                               clearDragState();
                             }}
                             onDragHandleEnd={() => {
-                              clearDragState();
-                              endTicketDrag();
+                              finishDragSession();
                             }}
                             onClick={(event) => handleCardClick(event, ticket._id)}
                             onKeyDown={(event) => handleCardKeyDown(event, ticket._id)}
