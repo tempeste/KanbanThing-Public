@@ -14,6 +14,7 @@ type WorkspaceDataContextValue = {
   workspace: Doc<"workspaces"> | null | undefined;
   tags: Doc<"workspaceTags">[] | undefined;
   ticketSummaries: TicketSummary[] | undefined;
+  dispatchExecutions: Doc<"dispatchExecutions">[] | undefined;
 };
 
 const WorkspaceDataContext = createContext<WorkspaceDataContextValue | null>(null);
@@ -33,9 +34,15 @@ export function WorkspaceDataProvider({
     api.tickets.listSummaries,
     isAuthenticated ? { workspaceId } : "skip"
   );
+  const dispatchExecutions = useQuery(
+    api.dispatchExecutions.listByWorkspace,
+    isAuthenticated ? { workspaceId, limit: 200 } : "skip"
+  );
 
   return (
-    <WorkspaceDataContext.Provider value={{ workspace, tags, ticketSummaries }}>
+    <WorkspaceDataContext.Provider
+      value={{ workspace, tags, ticketSummaries, dispatchExecutions }}
+    >
       {children}
     </WorkspaceDataContext.Provider>
   );

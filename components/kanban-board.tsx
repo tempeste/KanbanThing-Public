@@ -26,6 +26,10 @@ import {
 } from "@/lib/ticket-derivations";
 import { beginTicketDrag, endTicketDrag } from "@/lib/ticket-drag";
 import { TicketSummary } from "@/lib/ticket-summary";
+import {
+  getDispatchExecutionBadgeLabelForTicket,
+  getLatestDispatchExecutionByTicketId,
+} from "@/lib/dispatch-executions";
 
 type Status = IssueStatus;
 
@@ -76,7 +80,7 @@ export function KanbanBoard({
     api.userProfiles.getByAuthId,
     userId ? { betterAuthUserId: userId } : "skip"
   );
-  const { tags: workspaceTags } = useWorkspaceData();
+  const { tags: workspaceTags, dispatchExecutions } = useWorkspaceData();
 
   const [dragOverTicketId, setDragOverTicketId] = useState<Id<"tickets"> | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<DragOverPosition>(null);
@@ -114,6 +118,10 @@ export function KanbanBoard({
   const allTicketsById = useMemo(
     () => new Map(tickets.map((ticket) => [ticket._id, ticket])),
     [tickets]
+  );
+  const latestDispatchExecutionByTicketId = useMemo(
+    () => getLatestDispatchExecutionByTicketId(dispatchExecutions),
+    [dispatchExecutions]
   );
 
   const resolvedOptimisticMoves = useMemo(() => {
@@ -477,6 +485,16 @@ export function KanbanBoard({
   };
 
   const handleStatusChange = async (ticketId: Id<"tickets">, newStatus: Status) => {
+    const current = allTicketsById.get(ticketId);
+    if (
+      current?.status === "dispatched" &&
+      newStatus === "unclaimed" &&
+      !window.confirm(
+        "This ticket was dispatched to OpenClaw. Moving it back to unclaimed can cause duplicate work if the agent already received it. Prefer 'Cancel Dispatch' first. Continue?"
+      )
+    ) {
+      return;
+    }
     await moveTicketToStatus(ticketId, newStatus);
   };
 
@@ -643,6 +661,15 @@ export function KanbanBoard({
                       const parentTicket = ticket.parentId
                         ? ticketsById.get(ticket.parentId) ?? null
                         : null;
+                      const dispatchExecution =
+                        latestDispatchExecutionByTicketId.get(ticket._id);
+                      const executionBadgeLabel =
+                        ticket.status === "dispatched"
+                          ? getDispatchExecutionBadgeLabelForTicket(
+                              ticket,
+                              dispatchExecution
+                            )
+                          : null;
 
                       return (
                         <div
@@ -724,6 +751,7 @@ export function KanbanBoard({
                             }
                             onDelete={() => handleDelete(ticket._id)}
                             showDispatchButton
+                            dispatchExecutionBadgeLabel={executionBadgeLabel}
                           />
                         </div>
                       );
@@ -735,6 +763,15 @@ export function KanbanBoard({
                       const parentTicket = ticket.parentId
                         ? ticketsById.get(ticket.parentId) ?? null
                         : null;
+                      const dispatchExecution =
+                        latestDispatchExecutionByTicketId.get(ticket._id);
+                      const executionBadgeLabel =
+                        ticket.status === "dispatched"
+                          ? getDispatchExecutionBadgeLabelForTicket(
+                              ticket,
+                              dispatchExecution
+                            )
+                          : null;
 
                       return (
                         <div key={ticket._id}>
@@ -810,6 +847,7 @@ export function KanbanBoard({
                             }
                             onDelete={() => handleDelete(ticket._id)}
                             showDispatchButton
+                            dispatchExecutionBadgeLabel={executionBadgeLabel}
                           />
                         </div>
                       );

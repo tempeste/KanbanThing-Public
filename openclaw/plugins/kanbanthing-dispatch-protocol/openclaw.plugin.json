@@ -1,0 +1,40 @@
+{
+  "id": "kanbanthing-dispatch-protocol",
+  "name": "KanbanThing Dispatch Protocol",
+  "description": "KanbanThing dispatch lifecycle callbacks and control endpoints for OpenClaw.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kanbanthingBaseUrl": {
+        "type": "string"
+      },
+      "kanbanthingApiKey": {
+        "type": "string"
+      },
+      "callbackPath": {
+        "type": "string"
+      },
+      "pluginSecret": {
+        "type": "string"
+      },
+      "emitReceivedCallbacks": {
+        "type": "boolean"
+      },
+      "enforceCancellation": {
+        "type": "boolean"
+      },
+      "hardKillMode": {
+        "type": "string",
+        "enum": ["off", "best_effort", "internal_api"]
+      },
+      "emitProgressEvents": {
+        "type": "boolean"
+      },
+      "internalApiPathHint": {
+        "type": "string"
+      }
+    },
+    "required": ["kanbanthingBaseUrl", "kanbanthingApiKey"]
+  }
+}

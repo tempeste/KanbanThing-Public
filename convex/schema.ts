@@ -103,6 +103,42 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_ticket_createdAt", ["ticketId", "createdAt"]),
 
+  dispatchExecutions: defineTable({
+    workspaceId: v.id("workspaces"),
+    dispatchId: v.string(),
+    runId: v.optional(v.string()),
+    state: v.string(),
+    ticketIds: v.array(v.id("tickets")),
+    protocolVersion: v.optional(v.number()),
+    lastEventType: v.string(),
+    lastEventId: v.optional(v.string()),
+    lastMessage: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    ackAt: v.optional(v.number()),
+    startedAt: v.optional(v.number()),
+    cancelRequestedAt: v.optional(v.number()),
+    cancelAckAt: v.optional(v.number()),
+    cancelResultAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
+    timedOutAt: v.optional(v.number()),
+    lastHeartbeatAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_workspace_dispatch", ["workspaceId", "dispatchId"]),
+
+  dispatchProtocolEventReceipts: defineTable({
+    workspaceId: v.id("workspaces"),
+    eventId: v.string(),
+    eventType: v.string(),
+    dispatchId: v.optional(v.string()),
+    runId: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_workspace_event", ["workspaceId", "eventId"]),
+
   workspaceTags: defineTable({
     workspaceId: v.id("workspaces"),
     name: v.string(),

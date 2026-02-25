@@ -23,6 +23,10 @@ import { TicketActivityTabs } from "@/components/issue-detail/ticket-activity-ta
 import { ArchivedBadge } from "@/components/archived-badge";
 import { ArchivedBanner } from "@/components/archived-banner";
 import { useWorkspaceData } from "@/components/workspace-data-provider";
+import {
+  getDispatchExecutionBadgeLabelForTicket,
+  getLatestDispatchExecutionByTicketId,
+} from "@/lib/dispatch-executions";
 
 type Ticket = Doc<"tickets">;
 
@@ -42,7 +46,7 @@ export default function TicketDetailPage() {
     });
   }, []);
 
-  const { workspace } = useWorkspaceData();
+  const { workspace, dispatchExecutions } = useWorkspaceData();
   const hierarchy = useQuery(api.tickets.getHierarchy, { id: ticketId });
   const allTickets = useQuery(
     api.tickets.list,
@@ -124,6 +128,10 @@ export default function TicketDetailPage() {
       .filter((candidate) => !descendantIds.has(candidate._id))
       .filter((candidate) => candidate.parentId !== activeTicketId);
   }, [ticketsList, descendantIds, activeTicketId]);
+  const latestDispatchExecutionByTicketId = useMemo(
+    () => getLatestDispatchExecutionByTicketId(dispatchExecutions),
+    [dispatchExecutions]
+  );
 
   const commentsList = comments ?? [];
   const activitiesList = activities ?? [];
@@ -214,6 +222,14 @@ export default function TicketDetailPage() {
     ownerDisplayName:
       effectiveStatus === "unclaimed" || effectiveStatus === "backlog" ? undefined : ticket.ownerDisplayName,
   };
+  const latestDispatchExecution = latestDispatchExecutionByTicketId.get(ticket._id) ?? null;
+  const dispatchExecutionBadgeLabel =
+    effectiveTicket.status === "dispatched"
+      ? getDispatchExecutionBadgeLabelForTicket(
+          effectiveTicket,
+          latestDispatchExecution
+        )
+      : null;
 
   const formatActorName = (
     actorType: string,
@@ -289,6 +305,77 @@ export default function TicketDetailPage() {
         }
         return "Requested dispatch cancellation";
       }
+      case "ticket_dispatch_received":
+        return "OpenClaw plugin acknowledged receipt of dispatch";
+      case "ticket_dispatch_started":
+        return "OpenClaw plugin reported dispatch started";
+      case "ticket_dispatch_finished":
+        return "OpenClaw plugin reported dispatch finished";
+      case "ticket_dispatch_cancel_acknowledged":
+      {
+        const base =
+          event.data?.message ??
+          "OpenClaw plugin acknowledged cancellation request";
+        const hardKill = event.data?.metadata?.hardKillAttempt as
+          | {
+              attempted?: boolean;
+              mode?: string;
+              abortCallsSucceeded?: number;
+              stopMessagesQueued?: number;
+              limitations?: string;
+            }
+          | undefined;
+        if (!hardKill || !hardKill.attempted) {
+          return base;
+        }
+        const aborts = Number(hardKill.abortCallsSucceeded ?? 0);
+        const stops = Number(hardKill.stopMessagesQueued ?? 0);
+        const mode = typeof hardKill.mode === "string" ? hardKill.mode : "unknown";
+        if (aborts > 0 || stops > 0) {
+          return `${base} (hard kill ${mode}: aborts=${aborts}, stop_msgs=${stops})`;
+        }
+        if (typeof hardKill.limitations === "string" && hardKill.limitations.trim()) {
+          return `${base} (hard kill ${mode}: ${hardKill.limitations})`;
+        }
+        return `${base} (hard kill ${mode}: no immediate abort signal succeeded)`;
+      }
+      case "ticket_dispatch_cancel_result": {
+        const result = String(event.data?.metadata?.result ?? "");
+        const message = event.data?.message;
+        if (typeof message === "string" && message.trim()) {
+          return message;
+        }
+        switch (result) {
+          case "cancelled":
+            return "OpenClaw plugin reported dispatch cancelled";
+          case "too_late":
+          case "too_late_to_cancel":
+            return "OpenClaw plugin reported cancellation was too late";
+          default:
+            return "OpenClaw plugin reported cancellation result";
+        }
+      }
+      case "ticket_dispatch_progress": {
+        const message = event.data?.message;
+        const toolName = event.data?.metadata?.toolName;
+        const phase = event.data?.metadata?.phase;
+        if (typeof message === "string" && message.trim()) {
+          return message;
+        }
+        if (toolName && phase === "tool_start") {
+          return `OpenClaw started tool ${toolName}`;
+        }
+        if (toolName && phase === "tool_end") {
+          return `OpenClaw completed tool ${toolName}`;
+        }
+        return "OpenClaw plugin progress update";
+      }
+      case "ticket_dispatch_blocked":
+        return event.data?.message ?? "OpenClaw plugin reported a blocker";
+      case "ticket_dispatch_ticket_failed":
+        return event.data?.message ?? "OpenClaw plugin reported ticket failure";
+      case "ticket_dispatch_ticket_finished":
+        return event.data?.message ?? "OpenClaw plugin reported ticket completion";
       default:
         return event.type ?? "Activity";
     }
@@ -562,7 +649,18 @@ export default function TicketDetailPage() {
               progressDone={progressDone}
               progressTotal={progressTotal}
               progressPct={progressPct}
+              dispatchExecutionDispatchId={latestDispatchExecution?.dispatchId ?? null}
+              dispatchExecutionBadgeLabel={dispatchExecutionBadgeLabel}
               onStatusChange={(status) => {
+                if (
+                  effectiveTicket.status === "dispatched" &&
+                  status === "unclaimed" &&
+                  !window.confirm(
+                    "This ticket is dispatched to OpenClaw. Moving it back to unclaimed before cancelling dispatch can cause duplicate work. Prefer 'Cancel Dispatch' first. Continue anyway?"
+                  )
+                ) {
+                  return;
+                }
                 setOptimisticStatus(status);
                 updateStatus({
                   id: ticket._id,
@@ -571,6 +669,18 @@ export default function TicketDetailPage() {
                   setOptimisticStatus(null);
                   console.error(error);
                 });
+              }}
+              onForceReturnToUnclaimed={async () => {
+                setOptimisticStatus("unclaimed");
+                try {
+                  await updateStatus({
+                    id: ticket._id,
+                    status: "unclaimed",
+                  });
+                } catch (error) {
+                  setOptimisticStatus(null);
+                  throw error;
+                }
               }}
               onPriorityChange={(priority: TicketPriority) => {
                 updateTicket({

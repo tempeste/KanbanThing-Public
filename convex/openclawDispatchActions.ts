@@ -1,7 +1,7 @@
 "use node";
 
-import { internalAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { action, internalAction } from "./_generated/server";
+import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { decryptOpenClawToken } from "../lib/openclaw-crypto";
 import { buildOpenClawDispatchMessage } from "../lib/openclaw-dispatch";
@@ -10,6 +10,12 @@ import { getOpenClawInstanceUrlValidationError } from "../lib/openclaw-instance-
 const withHooksPath = (rawUrl: string) => {
   const normalized = rawUrl.endsWith("/") ? rawUrl.slice(0, -1) : rawUrl;
   return `${normalized}/hooks/agent`;
+};
+
+const withPluginPath = (rawUrl: string, path: string) => {
+  const normalized = rawUrl.endsWith("/") ? rawUrl.slice(0, -1) : rawUrl;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${normalized}${normalizedPath}`;
 };
 
 const getEncryptionKey = () => {
@@ -70,6 +76,51 @@ const postToOpenClaw = async (args: {
         (bodyJson?.id as string | undefined) ??
         undefined,
     };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const postToOpenClawPlugin = async (args: {
+  url: string;
+  token: string;
+  path: string;
+  body: Record<string, unknown>;
+}) => {
+  const urlError = getOpenClawInstanceUrlValidationError(args.url);
+  if (urlError) {
+    throw new Error(urlError);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(withPluginPath(args.url, args.path), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${args.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(args.body),
+      signal: controller.signal,
+    });
+    const bodyText = await response.text();
+    let bodyJson: Record<string, unknown> | null = null;
+    if (bodyText) {
+      try {
+        bodyJson = JSON.parse(bodyText) as Record<string, unknown>;
+      } catch {
+        bodyJson = null;
+      }
+    }
+    if (!response.ok) {
+      throw new Error(
+        (bodyJson?.error as string | undefined) ??
+          (bodyJson?.message as string | undefined) ??
+          `OpenClaw plugin request failed (${response.status})`
+      );
+    }
+    return bodyJson;
   } finally {
     clearTimeout(timeout);
   }
@@ -212,5 +263,102 @@ export const cancelDispatch = internalAction({
     }
 
     return { success: true };
+  },
+});
+
+export const requestCancelDispatch = action({
+  args: {
+    workspaceId: v.id("workspaces"),
+    instanceId: v.id("openclawInstances"),
+    ticketIds: v.array(v.id("tickets")),
+    runId: v.optional(v.string()),
+    dispatchId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
+    const userDisplayName = await ctx.runQuery(internal.openclawInstances.getUserDisplayName, {
+      userId,
+    });
+    const hasMembership = await ctx.runQuery(internal.workspaceMembers.hasMembershipForUserId, {
+      workspaceId: args.workspaceId,
+      betterAuthUserId: userId,
+    });
+    if (!hasMembership) {
+      throw new Error("Unauthorized");
+    }
+    if (args.ticketIds.length === 0) {
+      throw new Error("At least one ticket is required");
+    }
+
+    const instance = await ctx.runQuery(internal.openclawInstances.getOwnedEncryptedForDispatch, {
+      id: args.instanceId,
+      userId,
+    });
+    if (!instance) {
+      throw new Error("OpenClaw instance not found");
+    }
+
+    const ticketIds = [...new Set(args.ticketIds)];
+    for (const ticketId of ticketIds) {
+      const ticket = await ctx.runQuery(api.tickets.get, { id: ticketId });
+      if (!ticket || ticket.workspaceId !== args.workspaceId) {
+        throw new Error("One or more tickets are invalid");
+      }
+    }
+
+    const token = await decryptOpenClawToken(instance.encryptedToken, getEncryptionKey());
+    const cancelMessage =
+      "KanbanThing user requested dispatch cancellation. Plugin accepted signal; " +
+      "awaiting OpenClaw callback confirmation.";
+
+    await ctx.runMutation(internal.dispatchExecutions.markCancelRequested, {
+      workspaceId: args.workspaceId,
+      ticketIds,
+      ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
+      ...(args.runId ? { runId: args.runId } : {}),
+      message: cancelMessage,
+    });
+
+    let pluginResponse: Record<string, unknown> | null = null;
+    let errorMessage: string | undefined;
+    try {
+      pluginResponse = await postToOpenClawPlugin({
+        url: instance.url,
+        token,
+        path: "/kanbanthing/dispatch/cancel",
+        body: {
+          workspaceId: args.workspaceId,
+          ticketIds,
+          ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
+          ...(args.runId ? { runId: args.runId } : {}),
+          reason: "Cancelled from KanbanThing UI",
+        },
+      });
+    } catch (error) {
+      errorMessage =
+        error instanceof Error ? error.message : "OpenClaw plugin cancel request failed";
+    }
+
+    await ctx.runMutation(internal.openclawDispatch.logCancellationAttempt, {
+      workspaceId: args.workspaceId,
+      ticketIds,
+      runId: args.runId ?? "unknown",
+      instanceName: instance.name,
+      userId,
+      userDisplayName,
+      ...(errorMessage ? { error: errorMessage } : {}),
+    });
+
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
+
+    return {
+      success: true,
+      cancelMode:
+        typeof pluginResponse?.cancelMode === "string" ? pluginResponse.cancelMode : "unknown",
+      accepted: pluginResponse?.accepted !== false,
+      key: typeof pluginResponse?.key === "string" ? pluginResponse.key : null,
+    };
   },
 });

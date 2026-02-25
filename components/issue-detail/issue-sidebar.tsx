@@ -6,6 +6,8 @@ import { IssueStatus, STATUS_META } from "@/components/issue-status";
 import { AssigneePicker } from "@/components/assignee-picker";
 import { TagPicker } from "@/components/tag-picker";
 import { DispatchTicketsButton } from "@/components/dispatch-tickets-button";
+import { CancelDispatchButton } from "@/components/cancel-dispatch-button";
+import { ForceReturnToUnclaimedButton } from "@/components/force-return-to-unclaimed-button";
 import { PRIORITY_META, PRIORITY_ORDER, type TicketPriority } from "@/lib/priority";
 import { ExternalLink } from "lucide-react";
 
@@ -18,7 +20,10 @@ interface IssueSidebarProps {
   progressDone: number;
   progressTotal: number;
   progressPct: number;
+  dispatchExecutionDispatchId?: string | null;
+  dispatchExecutionBadgeLabel?: string | null;
   onStatusChange: (status: IssueStatus) => void;
+  onForceReturnToUnclaimed?: () => Promise<void> | void;
   onPriorityChange: (priority: TicketPriority) => void;
 }
 
@@ -29,7 +34,10 @@ export function IssueSidebar({
   progressDone,
   progressTotal,
   progressPct,
+  dispatchExecutionDispatchId,
+  dispatchExecutionBadgeLabel,
   onStatusChange,
+  onForceReturnToUnclaimed,
   onPriorityChange,
 }: IssueSidebarProps) {
   return (
@@ -94,19 +102,44 @@ export function IssueSidebar({
         {ticket.status !== "done" && (
           <div className="px-4 py-3">
             <div className="kb-label mb-2">Dispatch</div>
-            <DispatchTicketsButton
-              workspaceId={workspaceId}
-              workspacePrefix={workspacePrefix}
-              tickets={[
-                {
-                  _id: ticket._id,
-                  number: ticket.number ?? undefined,
-                  title: ticket.title,
-                },
-              ]}
-              triggerLabel="Dispatch This Ticket"
-              triggerClassName="w-full"
-            />
+            <div className="space-y-2">
+              {ticket.status === "dispatched" && dispatchExecutionBadgeLabel && (
+                <div>
+                  <span className="inline-flex border border-dispatched/45 bg-dispatched/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-dispatched">
+                    {dispatchExecutionBadgeLabel}
+                  </span>
+                </div>
+              )}
+
+              <DispatchTicketsButton
+                workspaceId={workspaceId}
+                workspacePrefix={workspacePrefix}
+                tickets={[
+                  {
+                    _id: ticket._id,
+                    number: ticket.number ?? undefined,
+                    title: ticket.title,
+                  },
+                ]}
+                triggerLabel="Dispatch This Ticket"
+                triggerClassName="w-full"
+              />
+
+              {ticket.status === "dispatched" && ticket.lastDispatchInstanceId && (
+                <CancelDispatchButton
+                  workspaceId={workspaceId}
+                  instanceId={ticket.lastDispatchInstanceId}
+                  ticketId={ticket._id}
+                  dispatchId={dispatchExecutionDispatchId}
+                  runId={ticket.lastDispatchRunId ?? null}
+                  disabled={!ticket.lastDispatchInstanceId}
+                />
+              )}
+
+              {ticket.status === "dispatched" && onForceReturnToUnclaimed && (
+                <ForceReturnToUnclaimedButton onConfirm={onForceReturnToUnclaimed} />
+              )}
+            </div>
           </div>
         )}
 

@@ -32,6 +32,7 @@ interface TicketCardProps {
   onArchiveToggle: () => void;
   onDelete: () => void;
   showDispatchButton?: boolean;
+  dispatchExecutionBadgeLabel?: string | null;
 }
 
 export const TicketCard = memo(function TicketCard({
@@ -54,6 +55,7 @@ export const TicketCard = memo(function TicketCard({
   onArchiveToggle,
   onDelete,
   showDispatchButton = false,
+  dispatchExecutionBadgeLabel,
 }: TicketCardProps) {
   const ticketNumber = formatTicketNumber(workspacePrefix, ticket.number);
   const progressTotal = ticket.childCount ?? 0;
@@ -129,6 +131,13 @@ export const TicketCard = memo(function TicketCard({
                   {ticket.lastDispatchInstanceName}
                 </span>
                 {ticket.lastDispatchRunId ? ` • run ${ticket.lastDispatchRunId}` : ""}
+              </div>
+            )}
+            {ticket.status === "dispatched" && dispatchExecutionBadgeLabel && (
+              <div className="mt-1">
+                <span className="inline-flex border border-dispatched/45 bg-dispatched/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-dispatched">
+                  {dispatchExecutionBadgeLabel}
+                </span>
               </div>
             )}
           </div>

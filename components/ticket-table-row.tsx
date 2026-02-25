@@ -36,6 +36,7 @@ interface TicketTableRowProps {
   onStatusChange: (status: IssueStatus) => void;
   onArchiveToggle: () => void;
   onDelete: () => void;
+  dispatchExecutionBadgeLabel?: string | null;
 }
 
 export const TicketTableRow = memo(function TicketTableRow({
@@ -63,6 +64,7 @@ export const TicketTableRow = memo(function TicketTableRow({
   onStatusChange,
   onArchiveToggle,
   onDelete,
+  dispatchExecutionBadgeLabel,
 }: TicketTableRowProps) {
   const ticketNumber = formatTicketNumber(workspacePrefix, ticket.number);
   const progressTotal = ticket.childCount ?? 0;
@@ -182,6 +184,11 @@ export const TicketTableRow = memo(function TicketTableRow({
             {progressTotal > 0 && (
               <span>
                 {progressDone}/{progressTotal}
+              </span>
+            )}
+            {ticket.status === "dispatched" && dispatchExecutionBadgeLabel && (
+              <span className="inline-flex border border-dispatched/45 bg-dispatched/10 px-1 py-0.5 font-bold text-dispatched">
+                {dispatchExecutionBadgeLabel}
               </span>
             )}
             {isArchived && <span>Archived</span>}
@@ -305,6 +312,11 @@ export const TicketTableRow = memo(function TicketTableRow({
           >
             {statusLabel}
           </span>
+          {ticket.status === "dispatched" && dispatchExecutionBadgeLabel && (
+            <span className="inline-flex shrink-0 border border-dispatched/45 bg-dispatched/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-dispatched">
+              {dispatchExecutionBadgeLabel}
+            </span>
+          )}
           {priority !== "none" && (
             <span
               className="inline-flex shrink-0 border px-1.5 py-0.5 font-mono text-[9px] font-black uppercase tracking-[0.08em] text-black"

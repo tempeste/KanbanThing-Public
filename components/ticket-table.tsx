@@ -29,6 +29,10 @@ import {
 } from "@/lib/ticket-derivations";
 import { beginTicketDrag, endTicketDrag } from "@/lib/ticket-drag";
 import { TicketSummary } from "@/lib/ticket-summary";
+import {
+  getDispatchExecutionBadgeLabelForTicket,
+  getLatestDispatchExecutionByTicketId,
+} from "@/lib/dispatch-executions";
 import { ChevronDown, ChevronUp, Archive, ArchiveRestore, Trash2, X } from "lucide-react";
 
 interface TicketTableProps {
@@ -98,7 +102,7 @@ export function TicketTable({
     id: Id<"tickets"> | null;
     position: DragOverPosition;
   } | null>(null);
-  const { tags: workspaceTags } = useWorkspaceData();
+  const { tags: workspaceTags, dispatchExecutions } = useWorkspaceData();
 
   const updateStatus = useMutation(api.tickets.updateStatus);
   const updateTicket = useMutation(api.tickets.update);
@@ -251,6 +255,10 @@ export function TicketTable({
         ? deriveSortedFlatRows(visibleTickets, sort.col, sort.dir)
         : treeRows,
     [sort, visibleTickets, treeRows]
+  );
+  const latestDispatchExecutionByTicketId = useMemo(
+    () => getLatestDispatchExecutionByTicketId(dispatchExecutions),
+    [dispatchExecutions]
   );
 
   const toggleStatusFilter = useCallback((status: IssueStatus) => {
@@ -501,6 +509,17 @@ export function TicketTable({
   );
 
   const handleStatusChange = (ticketId: Id<"tickets">, status: IssueStatus) => {
+    const current = ticketsById.get(ticketId);
+    if (
+      current?.status === "dispatched" &&
+      status === "unclaimed" &&
+      !window.confirm(
+        "This ticket was dispatched to OpenClaw. Moving it back to unclaimed can cause duplicate work if the agent already received it. Prefer 'Cancel Dispatch' from the ticket page first. Continue?"
+      )
+    ) {
+      return;
+    }
+
     setOptimisticStatuses((prev) => {
       const next = new Map(prev);
       next.set(ticketId, status);
@@ -735,6 +754,14 @@ export function TicketTable({
           handleArchiveToggle(ticket._id, !(ticket.archived ?? false))
         }
         onDelete={() => handleDelete(ticket._id)}
+        dispatchExecutionBadgeLabel={
+          ticket.status === "dispatched"
+            ? getDispatchExecutionBadgeLabelForTicket(
+                ticket,
+                latestDispatchExecutionByTicketId.get(ticket._id)
+              )
+            : null
+        }
       />
     );
   };

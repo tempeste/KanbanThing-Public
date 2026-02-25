@@ -1,6 +1,6 @@
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { authComponent } from "./auth";
+import { getAuthUserOrNull } from "./auth";
 
 type AccessCtx = MutationCtx | QueryCtx;
 
@@ -17,7 +17,7 @@ export const requireWorkspaceAccess = async (
     return;
   }
 
-  const authUser = await authComponent.getAuthUser(ctx);
+  const authUser = await getAuthUserOrNull(ctx);
   if (!authUser) {
     throw new Error("Unauthorized");
   }
