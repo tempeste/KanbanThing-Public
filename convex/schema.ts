@@ -160,6 +160,7 @@ export default defineSchema({
     userId: v.string(),
     name: v.string(),
     url: v.string(),
+    integrationMode: v.optional(v.union(v.literal("basic"), v.literal("enhanced"))),
     encryptedToken: v.object({
       nonce: v.string(),
       ciphertext: v.string(),

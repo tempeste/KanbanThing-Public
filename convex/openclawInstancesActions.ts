@@ -69,6 +69,7 @@ export const create = action({
     name: v.string(),
     url: v.string(),
     token: v.string(),
+    integrationMode: v.optional(v.union(v.literal("basic"), v.literal("enhanced"))),
   },
   handler: async (ctx, args): Promise<Id<"openclawInstances">> => {
     const userId: string = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
@@ -79,6 +80,7 @@ export const create = action({
       name: args.name,
       url: args.url,
       encryptedToken,
+      ...(args.integrationMode ? { integrationMode: args.integrationMode } : {}),
       allowLocal,
     });
   },
@@ -90,6 +92,7 @@ export const update = action({
     name: v.optional(v.string()),
     url: v.optional(v.string()),
     token: v.optional(v.string()),
+    integrationMode: v.optional(v.union(v.literal("basic"), v.literal("enhanced"))),
   },
   handler: async (ctx, args) => {
     const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
@@ -105,6 +108,7 @@ export const update = action({
       ...(args.name !== undefined ? { name: args.name } : {}),
       ...(args.url !== undefined ? { url: args.url } : {}),
       ...(encryptedToken ? { encryptedToken } : {}),
+      ...(args.integrationMode !== undefined ? { integrationMode: args.integrationMode } : {}),
       allowLocal,
     });
   },

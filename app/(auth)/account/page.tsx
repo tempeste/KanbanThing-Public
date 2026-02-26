@@ -40,6 +40,7 @@ type OpenClawInstance = {
   _id: Id<"openclawInstances">;
   name: string;
   url: string;
+  integrationMode?: "basic" | "enhanced";
   tokenSyncStatus?: "unknown" | "token_rotation_pending" | "healthy" | "auth_failed";
   tokenRotatedAt?: number;
   tokenVerifiedAt?: number;
@@ -68,6 +69,9 @@ function AccountPageContent() {
   const [openClawName, setOpenClawName] = useState("");
   const [openClawUrl, setOpenClawUrl] = useState("");
   const [openClawToken, setOpenClawToken] = useState("");
+  const [openClawIntegrationMode, setOpenClawIntegrationMode] = useState<"basic" | "enhanced">(
+    "basic"
+  );
   const [editingInstanceId, setEditingInstanceId] = useState<Id<"openclawInstances"> | null>(
     null
   );
@@ -260,6 +264,7 @@ function AccountPageContent() {
     setOpenClawName("");
     setOpenClawUrl("");
     setOpenClawToken("");
+    setOpenClawIntegrationMode("basic");
   };
 
   const copyToClipboard = async (text: string, id: string) => {
@@ -302,11 +307,14 @@ function AccountPageContent() {
           id: editingInstanceId,
           name: openClawName.trim(),
           url: openClawUrl.trim(),
+          integrationMode: openClawIntegrationMode,
           ...(openClawToken.trim() ? { token: openClawToken.trim() } : {}),
         });
         setSuccess(
           openClawToken.trim()
-            ? "OpenClaw instance updated. Token verification is required before dispatch."
+            ? openClawIntegrationMode === "enhanced"
+              ? "OpenClaw instance updated. Plugin verification is required before enhanced dispatch."
+              : "OpenClaw instance updated. Basic dispatch is available after updating OpenClaw with the new token (plugin verification optional)."
             : "OpenClaw instance updated"
         );
       } else {
@@ -314,8 +322,13 @@ function AccountPageContent() {
           name: openClawName.trim(),
           url: openClawUrl.trim(),
           token: openClawToken.trim(),
+          integrationMode: openClawIntegrationMode,
         });
-        setSuccess("OpenClaw instance created. Token verification is required before dispatch.");
+        setSuccess(
+          openClawIntegrationMode === "enhanced"
+            ? "OpenClaw instance created in enhanced mode. Install the KanbanThing OpenClaw plugin and verify plugin capabilities before dispatch."
+            : "OpenClaw instance created in basic mode. Plugin installation is optional."
+        );
       }
       resetOpenClawForm();
     } catch (err) {
@@ -332,6 +345,7 @@ function AccountPageContent() {
     setOpenClawName(instance.name);
     setOpenClawUrl(instance.url);
     setOpenClawToken("");
+    setOpenClawIntegrationMode(instance.integrationMode ?? "basic");
   };
 
   const handleDeleteOpenClawInstance = async (instance: OpenClawInstance) => {
@@ -380,7 +394,9 @@ function AccountPageContent() {
       const result = await regenerateOpenClawInstanceToken({ id: instance._id });
       setRevealedRotatedToken({ instanceId: instance._id, token: result.token });
       setSuccess(
-        `Token regenerated for "${instance.name}". Update OpenClaw config, then click Verify before dispatching.`
+        (instance.integrationMode ?? "basic") === "enhanced"
+          ? `Token regenerated for "${instance.name}". Update OpenClaw config, then click Verify Plugin before enhanced dispatching.`
+          : `Token regenerated for "${instance.name}". Update OpenClaw config before dispatching. Plugin verification is optional in basic mode.`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to regenerate token");
@@ -390,28 +406,29 @@ function AccountPageContent() {
   };
 
   const getTokenSyncMeta = (instance: OpenClawInstance) => {
+    const isEnhanced = (instance.integrationMode ?? "basic") === "enhanced";
     switch (instance.tokenSyncStatus) {
       case "healthy":
         return {
-          label: "Verified",
+          label: isEnhanced ? "Plugin Verified" : "Plugin Verified (Optional)",
           className: "border-done/45 bg-done/10 text-done",
           Icon: ShieldCheck,
         };
       case "token_rotation_pending":
         return {
-          label: "Verification Required",
+          label: isEnhanced ? "Plugin Verify Required" : "Plugin Verify Optional",
           className: "border-amber-400/40 bg-amber-500/10 text-amber-200",
           Icon: ShieldAlert,
         };
       case "auth_failed":
         return {
-          label: "Verify Failed",
+          label: isEnhanced ? "Plugin Verify Failed" : "Plugin Verify Failed (Optional)",
           className: "border-destructive/45 bg-destructive/10 text-destructive",
           Icon: ShieldAlert,
         };
       default:
         return {
-          label: "Unknown",
+          label: isEnhanced ? "Plugin Verify Unknown" : "Plugin Not Verified",
           className: "border-border bg-muted/20 text-muted-foreground",
           Icon: ShieldQuestion,
         };
@@ -536,8 +553,9 @@ function AccountPageContent() {
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground">
               Make sure your OpenClaw agent is configured with the correct workspace directory
-              and KanbanThing API key in its `.env` file. New or rotated bearer tokens must be
-              manually updated in OpenClaw and verified here before dispatch is allowed.
+              and KanbanThing API key in its `.env` file. `Enhanced` mode requires the KanbanThing
+              OpenClaw plugin and plugin verification; `Basic` mode keeps the original webhook
+              dispatch flow and does not require the plugin.
             </p>
 
             {openClawInstances.length === 0 ? (
@@ -558,6 +576,11 @@ function AccountPageContent() {
                         return (
                           <div className="mb-1 flex flex-wrap items-center gap-2">
                             <p className="truncate text-sm font-medium">{instance.name}</p>
+                            <span className="inline-flex items-center border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
+                              {(instance.integrationMode ?? "basic") === "enhanced"
+                                ? "Enhanced (Plugin)"
+                                : "Basic"}
+                            </span>
                             <span
                               className={`inline-flex items-center gap-1 border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ${syncMeta.className}`}
                             >
@@ -579,8 +602,10 @@ function AccountPageContent() {
                       {revealedRotatedToken?.instanceId === instance._id ? (
                         <div className="mt-2 space-y-2 rounded border border-amber-400/30 bg-amber-500/5 p-2">
                           <p className="text-xs text-amber-100">
-                            New bearer token (shown once). Update OpenClaw config, then click
-                            Verify.
+                            New bearer token (shown once). Update OpenClaw config
+                            {(instance.integrationMode ?? "basic") === "enhanced"
+                              ? ", then click Verify Plugin."
+                              : ". Plugin verification is optional in basic mode."}
                           </p>
                           <code className="block overflow-x-auto rounded bg-black/30 px-2 py-1 text-[11px] text-amber-100">
                             {revealedRotatedToken.token}
@@ -631,7 +656,7 @@ function AccountPageContent() {
                         disabled={verifyingInstanceId === instance._id}
                       >
                         <ShieldCheck className="h-4 w-4 mr-2" />
-                        {verifyingInstanceId === instance._id ? "Verifying..." : "Verify"}
+                        {verifyingInstanceId === instance._id ? "Verifying..." : "Verify Plugin"}
                       </Button>
                       <Button
                         type="button"
@@ -704,9 +729,24 @@ function AccountPageContent() {
                   required={!editingInstanceId}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="openclaw-mode">Integration Mode</Label>
+                <select
+                  id="openclaw-mode"
+                  value={openClawIntegrationMode}
+                  onChange={(e) =>
+                    setOpenClawIntegrationMode(e.target.value as "basic" | "enhanced")
+                  }
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="basic">Basic (original webhook dispatch, no plugin required)</option>
+                  <option value="enhanced">Enhanced (plugin required for ACK/cancel/progress)</option>
+                </select>
+              </div>
               <p className="text-xs text-muted-foreground">
-                After add/update with a token, dispatch will be blocked until you click Verify and
-                the OpenClaw plugin capabilities check succeeds.
+                {openClawIntegrationMode === "enhanced"
+                  ? "Enhanced mode requires the KanbanThing OpenClaw plugin. After add/update with a token, dispatch is blocked until you click Verify Plugin and the capabilities check succeeds."
+                  : "Basic mode uses the original webhook dispatch path. Plugin installation is optional, and plugin verification is not required for dispatch."}
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" disabled={isSubmittingInstance}>

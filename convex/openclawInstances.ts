@@ -102,6 +102,7 @@ export const list = query({
       _id: instance._id,
       name: instance.name,
       url: instance.url,
+      integrationMode: instance.integrationMode ?? "basic",
       tokenSyncStatus: instance.tokenSyncStatus ?? "unknown",
       tokenRotatedAt: instance.tokenRotatedAt,
       tokenVerifiedAt: instance.tokenVerifiedAt,
@@ -132,6 +133,7 @@ export const createEncrypted = internalMutation({
     name: v.string(),
     url: v.string(),
     encryptedToken: encryptedTokenValidator,
+    integrationMode: v.optional(v.union(v.literal("basic"), v.literal("enhanced"))),
     allowLocal: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -145,6 +147,7 @@ export const createEncrypted = internalMutation({
       name,
       url,
       encryptedToken: args.encryptedToken,
+      integrationMode: args.integrationMode ?? "basic",
       tokenSyncStatus: "token_rotation_pending",
       tokenRotatedAt: now,
       createdAt: now,
@@ -160,6 +163,7 @@ export const updateEncrypted = internalMutation({
     name: v.optional(v.string()),
     url: v.optional(v.string()),
     encryptedToken: v.optional(encryptedTokenValidator),
+    integrationMode: v.optional(v.union(v.literal("basic"), v.literal("enhanced"))),
     allowLocal: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -172,6 +176,7 @@ export const updateEncrypted = internalMutation({
       name?: string;
       url?: string;
       encryptedToken?: { nonce: string; ciphertext: string };
+      integrationMode?: "basic" | "enhanced";
       tokenSyncStatus?: "unknown" | "token_rotation_pending" | "healthy" | "auth_failed";
       tokenRotatedAt?: number;
       tokenVerifiedAt?: number;
@@ -191,6 +196,9 @@ export const updateEncrypted = internalMutation({
       updates.tokenSyncStatus = "token_rotation_pending" as const;
       updates.tokenRotatedAt = Date.now();
       updates.tokenLastVerifyError = undefined;
+    }
+    if (args.integrationMode !== undefined) {
+      updates.integrationMode = args.integrationMode;
     }
 
     await ctx.db.patch(args.id, updates);

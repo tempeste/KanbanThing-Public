@@ -49,17 +49,22 @@ export function DispatchTicketsButton({
   ) ?? []) as Array<{
     _id: string;
     name: string;
+    integrationMode?: "basic" | "enhanced";
     tokenSyncStatus?: "unknown" | "token_rotation_pending" | "healthy" | "auth_failed";
   }>;
   const dispatchTickets = useMutation(api.openclawDispatch.dispatchTickets);
   const selectedInstance = openClawInstances.find((instance) => instance._id === selectedInstanceId);
+  const selectedInstanceMode = selectedInstance?.integrationMode ?? "basic";
+  const selectedInstanceRequiresPluginVerify = selectedInstanceMode === "enhanced";
   const selectedInstanceIsVerified = selectedInstance?.tokenSyncStatus === "healthy";
+  const selectedInstanceCanDispatch =
+    !!selectedInstance && (!selectedInstanceRequiresPluginVerify || selectedInstanceIsVerified);
 
   const handleDispatch = async () => {
     if (!selectedInstanceId || tickets.length === 0) return;
-    if (!selectedInstanceIsVerified) {
+    if (!selectedInstanceCanDispatch) {
       setError(
-        "OpenClaw instance token is not verified. Verify the bearer token in Account Settings before dispatching."
+        "Enhanced OpenClaw integration requires the KanbanThing plugin and a successful plugin verification in Account Settings before dispatching."
       );
       return;
     }
@@ -126,19 +131,26 @@ export function DispatchTicketsButton({
               {openClawInstances.map((instance) => (
                 <option key={instance._id} value={instance._id}>
                   {instance.name}
-                  {instance.tokenSyncStatus === "healthy"
-                    ? " (verified)"
-                    : " (verify required)"}
+                  {instance.integrationMode === "enhanced"
+                    ? instance.tokenSyncStatus === "healthy"
+                      ? " (enhanced, verified)"
+                      : " (enhanced, plugin verify required)"
+                    : " (basic)"}
                 </option>
               ))}
             </select>
-            {selectedInstance && !selectedInstanceIsVerified ? (
+            {selectedInstance && selectedInstanceRequiresPluginVerify && !selectedInstanceIsVerified ? (
               <p className="text-xs text-amber-300">
-                This instance must be verified before dispatch. Go to{" "}
+                Enhanced mode requires the KanbanThing OpenClaw plugin. Go to{" "}
                 <Link href={`/account?returnTo=/workspace/${workspaceId}`} className="underline">
                   account settings
                 </Link>{" "}
-                and click Verify for the instance.
+                and click Verify Plugin for the instance.
+              </p>
+            ) : null}
+            {selectedInstance && !selectedInstanceRequiresPluginVerify ? (
+              <p className="text-xs text-muted-foreground">
+                Basic mode uses the original webhook dispatch path. Plugin verification is optional.
               </p>
             ) : null}
           </div>
@@ -165,7 +177,7 @@ export function DispatchTicketsButton({
             disabled={
               isDispatching ||
               !selectedInstanceId ||
-              !selectedInstanceIsVerified ||
+              !selectedInstanceCanDispatch ||
               tickets.length === 0 ||
               openClawInstances.length === 0
             }
