@@ -52,11 +52,13 @@ const verifyOpenClawBearerToken = async (args: { url: string; token: string }) =
       json = null;
     }
     if (!response.ok) {
-      throw new Error(
+      const error = new Error(
         (json?.error as string | undefined) ??
           (json?.message as string | undefined) ??
           `Verification failed (${response.status})`
-      );
+      ) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
     }
     return json;
   } finally {
@@ -150,15 +152,32 @@ export const verify = action({
     try {
       const { decryptOpenClawToken } = await import("../lib/openclaw-crypto");
       const token = await decryptOpenClawToken(instance.encryptedToken, getEncryptionKey());
-      const capabilities = await verifyOpenClawBearerToken({
-        url: instance.url,
-        token,
-      });
+      const isEnhanced = (instance.integrationMode ?? "basic") === "enhanced";
+      let capabilities: Record<string, unknown> | null = null;
+      try {
+        capabilities = await verifyOpenClawBearerToken({
+          url: instance.url,
+          token,
+        });
+      } catch (error) {
+        const status =
+          typeof (error as { status?: unknown })?.status === "number"
+            ? ((error as { status?: number }).status ?? null)
+            : null;
+        if (!(status === 404 && !isEnhanced)) {
+          throw error;
+        }
+      }
       await ctx.runMutation(internal.openclawInstances.markTokenHealthy, {
         id: args.id as Id<"openclawInstances">,
         userId,
       });
-      return { ok: true, capabilities };
+      return {
+        ok: true,
+        capabilities,
+        pluginInstalled: capabilities !== null,
+        verificationMode: isEnhanced ? "plugin" : "basic",
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Token verification failed";
       await ctx.runMutation(internal.openclawInstances.markTokenVerifyFailed, {
