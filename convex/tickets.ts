@@ -895,6 +895,11 @@ export const updateStatus = mutation({
       ownerType: ticket.ownerType ?? null,
       ownerDisplayName: ticket.ownerDisplayName ?? null,
     };
+    if (args.status === "dispatched" && prevStatus !== "dispatched") {
+      throw new Error(
+        "Manual status updates cannot move tickets into dispatched. Use the dispatch action."
+      );
+    }
     const { transitionClass, reason } = validateStatusTransitionForActor({
       from: prevStatus,
       to: args.status,
@@ -957,6 +962,11 @@ export const move = mutation({
       ownerType: ticket.ownerType ?? null,
       ownerDisplayName: ticket.ownerDisplayName ?? null,
     };
+    if (args.status === "dispatched" && prevStatus !== "dispatched") {
+      throw new Error(
+        "Manual status updates cannot move tickets into dispatched. Use the dispatch action."
+      );
+    }
     const { transitionClass, reason } = validateStatusTransitionForActor({
       from: prevStatus,
       to: args.status,

@@ -40,6 +40,11 @@ export function IssueSidebar({
   onForceReturnToUnclaimed,
   onPriorityChange,
 }: IssueSidebarProps) {
+  const statusOptions = Object.entries(STATUS_META).filter(([status]) => {
+    if (status !== "dispatched") return true;
+    return ticket.status === "dispatched";
+  });
+
   return (
     <aside className="space-y-0 lg:sticky lg:top-6 lg:self-start">
       <div className="border border-border/60 bg-card/40 divide-y divide-border/40">
@@ -51,7 +56,7 @@ export function IssueSidebar({
             value={ticket.status}
             onChange={(event) => onStatusChange(event.target.value as IssueStatus)}
           >
-            {Object.entries(STATUS_META).map(([status, config]) => (
+            {statusOptions.map(([status, config]) => (
               <option key={status} value={status}>
                 {config.label}
               </option>

@@ -154,6 +154,7 @@ export const TicketCard = memo(function TicketCard({
           )}
           <div className="opacity-0 transition-opacity group-hover:opacity-100">
             <TicketActionsMenu
+              currentStatus={ticket.status}
               isArchived={isArchived}
               onStatusChange={onStatusChange}
               onArchiveToggle={onArchiveToggle}

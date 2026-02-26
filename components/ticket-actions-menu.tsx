@@ -12,6 +12,7 @@ import {
 import { IssueStatus, STATUS_META } from "@/components/issue-status";
 
 interface TicketActionsMenuProps {
+  currentStatus?: IssueStatus;
   isArchived: boolean;
   onStatusChange: (status: IssueStatus) => void;
   onArchiveToggle: () => void;
@@ -19,11 +20,17 @@ interface TicketActionsMenuProps {
 }
 
 export function TicketActionsMenu({
+  currentStatus,
   isArchived,
   onStatusChange,
   onArchiveToggle,
   onDelete,
 }: TicketActionsMenuProps) {
+  const statusOptions = Object.entries(STATUS_META).filter(([status]) => {
+    if (status !== "dispatched") return true;
+    return currentStatus === "dispatched";
+  });
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -36,7 +43,7 @@ export function TicketActionsMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="rounded-none border-border bg-card text-foreground/90">
-        {Object.entries(STATUS_META).map(([status, config]) => (
+        {statusOptions.map(([status, config]) => (
           <DropdownMenuItem
             key={status}
             onClick={() => onStatusChange(status as IssueStatus)}
