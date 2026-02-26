@@ -83,6 +83,7 @@ function AccountPageContent() {
     token: string;
   } | null>(null);
   const [copiedTokenHelperId, setCopiedTokenHelperId] = useState<string | null>(null);
+  const [togglingModeInstanceId, setTogglingModeInstanceId] = useState<string | null>(null);
 
   const openClawInstances = (useQuery(
     api.openclawInstances.list,
@@ -405,6 +406,26 @@ function AccountPageContent() {
     }
   };
 
+  const handleToggleOpenClawMode = async (instance: OpenClawInstance) => {
+    setError(null);
+    setSuccess(null);
+    const currentMode = instance.integrationMode ?? "basic";
+    const newMode = currentMode === "basic" ? "enhanced" : "basic";
+    setTogglingModeInstanceId(instance._id);
+    try {
+      await updateOpenClawInstance({ id: instance._id, integrationMode: newMode });
+      setSuccess(
+        newMode === "enhanced"
+          ? `"${instance.name}" switched to enhanced mode. Plugin verification is required before dispatch.`
+          : `"${instance.name}" switched to basic mode. Plugin verification is now optional.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update integration mode");
+    } finally {
+      setTogglingModeInstanceId(null);
+    }
+  };
+
   const getTokenSyncMeta = (instance: OpenClawInstance) => {
     const isEnhanced = (instance.integrationMode ?? "basic") === "enhanced";
     switch (instance.tokenSyncStatus) {
@@ -550,64 +571,105 @@ function AccountPageContent() {
               Manage your personal OpenClaw gateways for ticket dispatch. Tokens are encrypted at rest.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Make sure your OpenClaw agent is configured with the correct workspace directory
-              and KanbanThing API key in its `.env` file. `Enhanced` mode requires the KanbanThing
-              OpenClaw plugin and plugin verification; `Basic` mode keeps the original webhook
-              dispatch flow and does not require the plugin.
-            </p>
+          <CardContent className="space-y-5">
+            <details className="group">
+              <summary className="kb-label cursor-pointer select-none transition-colors hover:text-foreground/70">
+                Configuration Guide
+              </summary>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                Make sure your OpenClaw agent is configured with the correct workspace directory
+                and KanbanThing API key in its <code className="border border-border/60 bg-muted/40 px-1 py-0.5 text-[11px]">.env</code> file.
+                <strong className="text-foreground/80"> Enhanced</strong> mode requires the KanbanThing
+                OpenClaw plugin and plugin verification;
+                <strong className="text-foreground/80"> Basic</strong> mode keeps the original webhook
+                dispatch flow and does not require the plugin.
+              </p>
+            </details>
 
             {openClawInstances.length === 0 ? (
-              <div className="rounded border border-border bg-background/50 p-3 text-sm text-muted-foreground">
-                No OpenClaw instances yet.
+              <div className="flex flex-col items-center gap-2 border border-dashed border-border/60 bg-background/30 px-4 py-8 text-center">
+                <Server className="h-8 w-8 text-muted-foreground/40" />
+                <p className="text-sm font-medium text-muted-foreground">No instances configured</p>
+                <p className="text-xs text-muted-foreground/70">Add your first OpenClaw gateway below.</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {openClawInstances.map((instance) => (
-                  <div
-                    key={instance._id}
-                    className="flex flex-col gap-3 rounded border border-border bg-background/50 p-3 md:flex-row md:items-center md:justify-between"
-                  >
-                    <div className="min-w-0">
-                      {(() => {
-                        const syncMeta = getTokenSyncMeta(instance);
-                        const Icon = syncMeta.Icon;
-                        return (
-                          <div className="mb-1 flex flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-medium">{instance.name}</p>
-                            <span className="inline-flex items-center border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
-                              {(instance.integrationMode ?? "basic") === "enhanced"
-                                ? "Enhanced (Plugin)"
-                                : "Basic"}
-                            </span>
-                            <span
-                              className={`inline-flex items-center gap-1 border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ${syncMeta.className}`}
-                            >
-                              <Icon className="h-3 w-3" />
-                              {syncMeta.label}
-                            </span>
-                          </div>
-                        );
-                      })()}
-                      <p className="truncate text-xs text-muted-foreground">{instance.url}</p>
-                      <p className="text-[11px] text-muted-foreground/80">
-                        Added {new Date(instance.createdAt).toLocaleDateString()}
-                      </p>
+              <div className="space-y-3">
+                {openClawInstances.map((instance) => {
+                  const syncMeta = getTokenSyncMeta(instance);
+                  const SyncIcon = syncMeta.Icon;
+                  const isEnhanced = (instance.integrationMode ?? "basic") === "enhanced";
+                  const accentBar =
+                    instance.tokenSyncStatus === "healthy"
+                      ? "bg-done"
+                      : instance.tokenSyncStatus === "token_rotation_pending"
+                        ? "bg-amber-400"
+                        : instance.tokenSyncStatus === "auth_failed"
+                          ? "bg-destructive"
+                          : "bg-muted-foreground/30";
+                  return (
+                    <div
+                      key={instance._id}
+                      className="group/card relative overflow-hidden border border-border bg-background/40"
+                    >
+                      {/* Status accent bar */}
+                      <div className={`absolute inset-y-0 left-0 w-[3px] ${accentBar}`} />
+
+                      {/* Header zone */}
+                      <div className="space-y-1.5 py-3 pl-5 pr-4">
+                        <div className="flex items-center gap-2.5">
+                          <h3 className="truncate text-sm font-semibold tracking-wide">
+                            {instance.name}
+                          </h3>
+                          <button
+                            type="button"
+                            className="group/mode inline-flex shrink-0 cursor-pointer items-center gap-1.5 border border-border/60 bg-muted/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground transition-all hover:border-primary/50 hover:bg-primary/10 hover:text-primary disabled:cursor-wait disabled:opacity-50"
+                            onClick={() => handleToggleOpenClawMode(instance)}
+                            disabled={togglingModeInstanceId === instance._id}
+                            title={`Switch to ${isEnhanced ? "basic" : "enhanced"} mode`}
+                          >
+                            {togglingModeInstanceId === instance._id ? (
+                              <RefreshCcw className="h-2.5 w-2.5 animate-spin" />
+                            ) : (
+                              <RefreshCcw className="h-2.5 w-2.5 opacity-0 transition-opacity group-hover/mode:opacity-100" />
+                            )}
+                            {isEnhanced ? "Enhanced" : "Basic"}
+                          </button>
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1.5 border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] ${syncMeta.className}`}
+                          >
+                            <SyncIcon className="h-3 w-3" />
+                            {syncMeta.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <code className="truncate font-mono text-[11px]">{instance.url}</code>
+                          <span className="text-[11px] text-border">|</span>
+                          <span className="shrink-0 text-[11px]">
+                            Added {new Date(instance.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Verify error callout */}
                       {instance.tokenLastVerifyError ? (
-                        <p className="mt-1 text-[11px] text-destructive">
-                          Last verify error: {instance.tokenLastVerifyError}
-                        </p>
+                        <div className="mx-4 mb-2 ml-5 flex items-start gap-2 border border-destructive/25 bg-destructive/5 px-2.5 py-1.5">
+                          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                          <p className="text-[11px] leading-relaxed text-destructive">
+                            {instance.tokenLastVerifyError}
+                          </p>
+                        </div>
                       ) : null}
+
+                      {/* Rotated token reveal */}
                       {revealedRotatedToken?.instanceId === instance._id ? (
-                        <div className="mt-2 space-y-2 rounded border border-amber-400/30 bg-amber-500/5 p-2">
+                        <div className="mx-4 mb-2 ml-5 space-y-2 border border-amber-400/30 bg-amber-500/5 p-3">
                           <p className="text-xs text-amber-100">
                             New bearer token (shown once). Update OpenClaw config
-                            {(instance.integrationMode ?? "basic") === "enhanced"
+                            {isEnhanced
                               ? ", then click Verify Plugin."
                               : ". Plugin verification is optional in basic mode."}
                           </p>
-                          <code className="block overflow-x-auto rounded bg-black/30 px-2 py-1 text-[11px] text-amber-100">
+                          <code className="block overflow-x-auto bg-black/30 px-2.5 py-1.5 font-mono text-[11px] text-amber-100">
                             {revealedRotatedToken.token}
                           </code>
                           <div className="flex flex-wrap gap-2">
@@ -622,7 +684,7 @@ function AccountPageContent() {
                                 )
                               }
                             >
-                              <Copy className="mr-2 h-4 w-4" />
+                              <Copy className="mr-1.5 h-3.5 w-3.5" />
                               {copiedTokenHelperId === `token:${instance._id}`
                                 ? "Copied"
                                 : "Copy Token"}
@@ -638,7 +700,7 @@ function AccountPageContent() {
                                 )
                               }
                             >
-                              <Copy className="mr-2 h-4 w-4" />
+                              <Copy className="mr-1.5 h-3.5 w-3.5" />
                               {copiedTokenHelperId === `cmd:${instance._id}`
                                 ? "Copied Command"
                                 : "Copy Update Command"}
@@ -646,111 +708,135 @@ function AccountPageContent() {
                           </div>
                         </div>
                       ) : null}
+
+                      {/* Actions bar */}
+                      <div className="flex items-center gap-1.5 border-t border-border/50 bg-card/30 py-2 pl-5 pr-4">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => handleVerifyOpenClawInstance(instance)}
+                          disabled={verifyingInstanceId === instance._id}
+                        >
+                          <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                          {verifyingInstanceId === instance._id ? "Verifying..." : "Verify"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground"
+                          onClick={() => handleRegenerateOpenClawToken(instance)}
+                          disabled={regeneratingInstanceId === instance._id}
+                        >
+                          <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
+                          {regeneratingInstanceId === instance._id ? "Rotating..." : "Rotate Token"}
+                        </Button>
+                        <div className="ml-auto flex items-center gap-0.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleEditOpenClawInstance(instance)}
+                            title="Edit instance"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => handleDeleteOpenClawInstance(instance)}
+                            title="Delete instance"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleVerifyOpenClawInstance(instance)}
-                        disabled={verifyingInstanceId === instance._id}
-                      >
-                        <ShieldCheck className="h-4 w-4 mr-2" />
-                        {verifyingInstanceId === instance._id ? "Verifying..." : "Verify Plugin"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRegenerateOpenClawToken(instance)}
-                        disabled={regeneratingInstanceId === instance._id}
-                      >
-                        <RefreshCcw className="h-4 w-4 mr-2" />
-                        {regeneratingInstanceId === instance._id ? "Regenerating..." : "Regenerate Token"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditOpenClawInstance(instance)}
-                      >
-                        <Pencil className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteOpenClawInstance(instance)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
-            <form onSubmit={handleSubmitOpenClawInstance} className="space-y-3 rounded border border-border p-3">
-              <p className="text-sm font-medium">
-                {editingInstanceId ? "Edit OpenClaw instance" : "Add OpenClaw instance"}
-              </p>
-              <div className="space-y-2">
-                <Label htmlFor="openclaw-name">Name</Label>
-                <Input
-                  id="openclaw-name"
-                  placeholder="Work Laptop"
-                  value={openClawName}
-                  onChange={(e) => setOpenClawName(e.target.value)}
-                  required
-                />
+            {/* Add/Edit form */}
+            <form onSubmit={handleSubmitOpenClawInstance} className="space-y-4 border border-border bg-background/30 p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-border/60" />
+                <span className="kb-label shrink-0">
+                  {editingInstanceId ? "Edit Instance" : "New Instance"}
+                </span>
+                <div className="h-px flex-1 bg-border/60" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="openclaw-url">URL</Label>
-                <Input
-                  id="openclaw-url"
-                  placeholder="https://openclaw.example.com"
-                  value={openClawUrl}
-                  onChange={(e) => setOpenClawUrl(e.target.value)}
-                  required
-                />
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="openclaw-name" className="text-xs">Name</Label>
+                  <Input
+                    id="openclaw-name"
+                    placeholder="Work Laptop"
+                    value={openClawName}
+                    onChange={(e) => setOpenClawName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="openclaw-url" className="text-xs">URL</Label>
+                  <Input
+                    id="openclaw-url"
+                    placeholder="https://openclaw.example.com"
+                    value={openClawUrl}
+                    onChange={(e) => setOpenClawUrl(e.target.value)}
+                    required
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="openclaw-token">
-                  Bearer Token {editingInstanceId ? "(leave blank to keep existing)" : ""}
-                </Label>
-                <Input
-                  id="openclaw-token"
-                  type="password"
-                  placeholder={editingInstanceId ? "Token saved" : "oc_..."}
-                  value={openClawToken}
-                  onChange={(e) => setOpenClawToken(e.target.value)}
-                  required={!editingInstanceId}
-                />
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="openclaw-token" className="text-xs">
+                    Bearer Token
+                    {editingInstanceId ? (
+                      <span className="ml-1 font-normal text-muted-foreground">(leave blank to keep)</span>
+                    ) : null}
+                  </Label>
+                  <Input
+                    id="openclaw-token"
+                    type="password"
+                    placeholder={editingInstanceId ? "Token saved" : "oc_..."}
+                    value={openClawToken}
+                    onChange={(e) => setOpenClawToken(e.target.value)}
+                    required={!editingInstanceId}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="openclaw-mode" className="text-xs">Integration Mode</Label>
+                  <select
+                    id="openclaw-mode"
+                    value={openClawIntegrationMode}
+                    onChange={(e) =>
+                      setOpenClawIntegrationMode(e.target.value as "basic" | "enhanced")
+                    }
+                    className="h-9 w-full border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="basic">Basic (webhook, no plugin)</option>
+                    <option value="enhanced">Enhanced (plugin required)</option>
+                  </select>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="openclaw-mode">Integration Mode</Label>
-                <select
-                  id="openclaw-mode"
-                  value={openClawIntegrationMode}
-                  onChange={(e) =>
-                    setOpenClawIntegrationMode(e.target.value as "basic" | "enhanced")
-                  }
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="basic">Basic (original webhook dispatch, no plugin required)</option>
-                  <option value="enhanced">Enhanced (plugin required for ACK/cancel/progress)</option>
-                </select>
-              </div>
-              <p className="text-xs text-muted-foreground">
+
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
                 {openClawIntegrationMode === "enhanced"
-                  ? "Enhanced mode requires the KanbanThing OpenClaw plugin. After add/update with a token, dispatch is blocked until you click Verify Plugin and the capabilities check succeeds."
-                  : "Basic mode uses the original webhook dispatch path. Plugin installation is optional, and plugin verification is not required for dispatch."}
+                  ? "Enhanced mode requires the KanbanThing OpenClaw plugin. Dispatch is blocked until plugin verification succeeds."
+                  : "Basic mode uses the original webhook dispatch path. Plugin installation and verification are optional."}
               </p>
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit" disabled={isSubmittingInstance}>
-                  <Plus className="h-4 w-4 mr-2" />
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button type="submit" size="sm" disabled={isSubmittingInstance}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
                   {isSubmittingInstance
                     ? "Saving..."
                     : editingInstanceId
@@ -758,7 +844,7 @@ function AccountPageContent() {
                       : "Add Instance"}
                 </Button>
                 {editingInstanceId ? (
-                  <Button type="button" variant="outline" onClick={resetOpenClawForm}>
+                  <Button type="button" variant="ghost" size="sm" onClick={resetOpenClawForm}>
                     Cancel
                   </Button>
                 ) : null}
