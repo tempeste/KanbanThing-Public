@@ -651,14 +651,13 @@ export function KanbanBoard({
               </span>
             </div>
 
-            <div ref={(el) => { columnRefs.current[status] = el; }} className="kb-scroll h-full overflow-auto px-3 py-3">
-              {isSortedViewDragHintActive && (
-                <div className="pointer-events-none sticky top-2 z-20 mb-2 rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 shadow-sm backdrop-blur-sm">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-amber-200/90">
-                    Sort View Active
-                  </div>
-                  <div className="mt-1 text-[11px] leading-4 text-amber-100/90">
-                    Board is sorted by <span className="font-semibold">{sortBy.replace("_", " ")}</span>. Dragging still changes ticket order, but this column is currently displayed by the active sort.
+            <div ref={(el) => { columnRefs.current[status] = el; }} className="kb-scroll relative h-full overflow-auto px-3 py-3">
+              {isSortedViewDragHintActive && dragOverStatus === status && (
+                <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/65 backdrop-blur-[2px]">
+                  <div className="text-center">
+                    <div className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-white/90">
+                      Ordered by {sortBy.replace("_", " ")}
+                    </div>
                   </div>
                 </div>
               )}
