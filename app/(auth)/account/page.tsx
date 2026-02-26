@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { authClient, useSession } from "@/lib/auth-client";
 import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,11 @@ import {
   Plus,
   Server,
   Trash2,
+  RefreshCcw,
+  Copy,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldQuestion,
 } from "lucide-react";
 import Link from "next/link";
 import { validateOpenClawInstanceInput } from "@/lib/openclaw-instance-validation";
@@ -31,9 +37,13 @@ type LinkedAccount = {
 };
 
 type OpenClawInstance = {
-  _id: string;
+  _id: Id<"openclawInstances">;
   name: string;
   url: string;
+  tokenSyncStatus?: "unknown" | "token_rotation_pending" | "healthy" | "auth_failed";
+  tokenRotatedAt?: number;
+  tokenVerifiedAt?: number;
+  tokenLastVerifyError?: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -58,17 +68,27 @@ function AccountPageContent() {
   const [openClawName, setOpenClawName] = useState("");
   const [openClawUrl, setOpenClawUrl] = useState("");
   const [openClawToken, setOpenClawToken] = useState("");
-  const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
+  const [editingInstanceId, setEditingInstanceId] = useState<Id<"openclawInstances"> | null>(
+    null
+  );
   const [isSubmittingInstance, setIsSubmittingInstance] = useState(false);
+  const [verifyingInstanceId, setVerifyingInstanceId] = useState<string | null>(null);
+  const [regeneratingInstanceId, setRegeneratingInstanceId] = useState<string | null>(null);
+  const [revealedRotatedToken, setRevealedRotatedToken] = useState<{
+    instanceId: Id<"openclawInstances">;
+    token: string;
+  } | null>(null);
+  const [copiedTokenHelperId, setCopiedTokenHelperId] = useState<string | null>(null);
 
-  const convexApi = api as any;
   const openClawInstances = (useQuery(
-    convexApi.openclawInstances.list,
+    api.openclawInstances.list,
     isAuthenticated ? {} : "skip"
   ) ?? []) as OpenClawInstance[];
-  const createOpenClawInstance = useAction(convexApi.openclawInstancesActions.create);
-  const updateOpenClawInstance = useAction(convexApi.openclawInstancesActions.update);
-  const removeOpenClawInstance = useMutation(convexApi.openclawInstances.remove);
+  const createOpenClawInstance = useAction(api.openclawInstancesActions.create);
+  const updateOpenClawInstance = useAction(api.openclawInstancesActions.update);
+  const regenerateOpenClawInstanceToken = useAction(api.openclawInstancesActions.regenerateToken);
+  const verifyOpenClawInstanceToken = useAction(api.openclawInstancesActions.verify);
+  const removeOpenClawInstance = useMutation(api.openclawInstances.remove);
 
   const fetchAccounts = useCallback(async () => {
     try {
@@ -242,6 +262,23 @@ function AccountPageContent() {
     setOpenClawToken("");
   };
 
+  const copyToClipboard = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+    setCopiedTokenHelperId(id);
+    setTimeout(() => setCopiedTokenHelperId(null), 1500);
+  };
+
   const handleSubmitOpenClawInstance = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -267,14 +304,18 @@ function AccountPageContent() {
           url: openClawUrl.trim(),
           ...(openClawToken.trim() ? { token: openClawToken.trim() } : {}),
         });
-        setSuccess("OpenClaw instance updated");
+        setSuccess(
+          openClawToken.trim()
+            ? "OpenClaw instance updated. Token verification is required before dispatch."
+            : "OpenClaw instance updated"
+        );
       } else {
         await createOpenClawInstance({
           name: openClawName.trim(),
           url: openClawUrl.trim(),
           token: openClawToken.trim(),
         });
-        setSuccess("OpenClaw instance created");
+        setSuccess("OpenClaw instance created. Token verification is required before dispatch.");
       }
       resetOpenClawForm();
     } catch (err) {
@@ -307,6 +348,73 @@ function AccountPageContent() {
       const message =
         err instanceof Error ? err.message : "Failed to delete OpenClaw instance";
       setError(message);
+    }
+  };
+
+  const handleVerifyOpenClawInstance = async (instance: OpenClawInstance) => {
+    setError(null);
+    setSuccess(null);
+    setVerifyingInstanceId(instance._id);
+    try {
+      await verifyOpenClawInstanceToken({ id: instance._id });
+      setSuccess(`Verified OpenClaw token for "${instance.name}"`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to verify OpenClaw token");
+    } finally {
+      setVerifyingInstanceId(null);
+    }
+  };
+
+  const handleRegenerateOpenClawToken = async (instance: OpenClawInstance) => {
+    setError(null);
+    setSuccess(null);
+    if (
+      !confirm(
+        `Regenerate bearer token for \"${instance.name}\"? This immediately invalidates the old token in KanbanThing and requires OpenClaw config to be updated and verified before dispatch.`
+      )
+    ) {
+      return;
+    }
+    setRegeneratingInstanceId(instance._id);
+    try {
+      const result = await regenerateOpenClawInstanceToken({ id: instance._id });
+      setRevealedRotatedToken({ instanceId: instance._id, token: result.token });
+      setSuccess(
+        `Token regenerated for "${instance.name}". Update OpenClaw config, then click Verify before dispatching.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to regenerate token");
+    } finally {
+      setRegeneratingInstanceId(null);
+    }
+  };
+
+  const getTokenSyncMeta = (instance: OpenClawInstance) => {
+    switch (instance.tokenSyncStatus) {
+      case "healthy":
+        return {
+          label: "Verified",
+          className: "border-done/45 bg-done/10 text-done",
+          Icon: ShieldCheck,
+        };
+      case "token_rotation_pending":
+        return {
+          label: "Verification Required",
+          className: "border-amber-400/40 bg-amber-500/10 text-amber-200",
+          Icon: ShieldAlert,
+        };
+      case "auth_failed":
+        return {
+          label: "Verify Failed",
+          className: "border-destructive/45 bg-destructive/10 text-destructive",
+          Icon: ShieldAlert,
+        };
+      default:
+        return {
+          label: "Unknown",
+          className: "border-border bg-muted/20 text-muted-foreground",
+          Icon: ShieldQuestion,
+        };
     }
   };
 
@@ -428,7 +536,8 @@ function AccountPageContent() {
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground">
               Make sure your OpenClaw agent is configured with the correct workspace directory
-              and KanbanThing API key in its `.env` file.
+              and KanbanThing API key in its `.env` file. New or rotated bearer tokens must be
+              manually updated in OpenClaw and verified here before dispatch is allowed.
             </p>
 
             {openClawInstances.length === 0 ? (
@@ -443,13 +552,97 @@ function AccountPageContent() {
                     className="flex flex-col gap-3 rounded border border-border bg-background/50 p-3 md:flex-row md:items-center md:justify-between"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{instance.name}</p>
+                      {(() => {
+                        const syncMeta = getTokenSyncMeta(instance);
+                        const Icon = syncMeta.Icon;
+                        return (
+                          <div className="mb-1 flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-medium">{instance.name}</p>
+                            <span
+                              className={`inline-flex items-center gap-1 border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ${syncMeta.className}`}
+                            >
+                              <Icon className="h-3 w-3" />
+                              {syncMeta.label}
+                            </span>
+                          </div>
+                        );
+                      })()}
                       <p className="truncate text-xs text-muted-foreground">{instance.url}</p>
                       <p className="text-[11px] text-muted-foreground/80">
                         Added {new Date(instance.createdAt).toLocaleDateString()}
                       </p>
+                      {instance.tokenLastVerifyError ? (
+                        <p className="mt-1 text-[11px] text-destructive">
+                          Last verify error: {instance.tokenLastVerifyError}
+                        </p>
+                      ) : null}
+                      {revealedRotatedToken?.instanceId === instance._id ? (
+                        <div className="mt-2 space-y-2 rounded border border-amber-400/30 bg-amber-500/5 p-2">
+                          <p className="text-xs text-amber-100">
+                            New bearer token (shown once). Update OpenClaw config, then click
+                            Verify.
+                          </p>
+                          <code className="block overflow-x-auto rounded bg-black/30 px-2 py-1 text-[11px] text-amber-100">
+                            {revealedRotatedToken.token}
+                          </code>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                copyToClipboard(
+                                  revealedRotatedToken.token,
+                                  `token:${instance._id}`
+                                )
+                              }
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              {copiedTokenHelperId === `token:${instance._id}`
+                                ? "Copied"
+                                : "Copy Token"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                copyToClipboard(
+                                  `NEW_OPENCLAW_TOKEN='${revealedRotatedToken.token}' perl -0777 -i -pe 's/(\"token\"\\s*:\\s*\")[^\"]+(\"\\s*[},])/$1'.$ENV{\"NEW_OPENCLAW_TOKEN\"}.'$2/ge' ~/.openclaw/openclaw.json`,
+                                  `cmd:${instance._id}`
+                                )
+                              }
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              {copiedTokenHelperId === `cmd:${instance._id}`
+                                ? "Copied Command"
+                                : "Copy Update Command"}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleVerifyOpenClawInstance(instance)}
+                        disabled={verifyingInstanceId === instance._id}
+                      >
+                        <ShieldCheck className="h-4 w-4 mr-2" />
+                        {verifyingInstanceId === instance._id ? "Verifying..." : "Verify"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRegenerateOpenClawToken(instance)}
+                        disabled={regeneratingInstanceId === instance._id}
+                      >
+                        <RefreshCcw className="h-4 w-4 mr-2" />
+                        {regeneratingInstanceId === instance._id ? "Regenerating..." : "Regenerate Token"}
+                      </Button>
                       <Button
                         type="button"
                         variant="outline"
@@ -511,6 +704,10 @@ function AccountPageContent() {
                   required={!editingInstanceId}
                 />
               </div>
+              <p className="text-xs text-muted-foreground">
+                After add/update with a token, dispatch will be blocked until you click Verify and
+                the OpenClaw plugin capabilities check succeeds.
+              </p>
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" disabled={isSubmittingInstance}>
                   <Plus className="h-4 w-4 mr-2" />

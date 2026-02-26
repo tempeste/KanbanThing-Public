@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 
 type DispatchTicket = {
-  _id: string;
+  _id: Id<"tickets">;
   title: string;
   number?: number;
 };
@@ -40,18 +40,29 @@ export function DispatchTicketsButton({
 }: DispatchTicketsButtonProps) {
   const { isAuthenticated } = useConvexAuth();
   const [open, setOpen] = useState(false);
-  const [selectedInstanceId, setSelectedInstanceId] = useState("");
+  const [selectedInstanceId, setSelectedInstanceId] = useState<Id<"openclawInstances"> | "">("");
   const [isDispatching, setIsDispatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const convexApi = api as any;
   const openClawInstances = (useQuery(
-    convexApi.openclawInstances.list,
+    api.openclawInstances.list,
     isAuthenticated ? {} : "skip"
-  ) ?? []) as Array<{ _id: string; name: string }>;
-  const dispatchTickets = useMutation(convexApi.openclawDispatch.dispatchTickets);
+  ) ?? []) as Array<{
+    _id: string;
+    name: string;
+    tokenSyncStatus?: "unknown" | "token_rotation_pending" | "healthy" | "auth_failed";
+  }>;
+  const dispatchTickets = useMutation(api.openclawDispatch.dispatchTickets);
+  const selectedInstance = openClawInstances.find((instance) => instance._id === selectedInstanceId);
+  const selectedInstanceIsVerified = selectedInstance?.tokenSyncStatus === "healthy";
 
   const handleDispatch = async () => {
     if (!selectedInstanceId || tickets.length === 0) return;
+    if (!selectedInstanceIsVerified) {
+      setError(
+        "OpenClaw instance token is not verified. Verify the bearer token in Account Settings before dispatching."
+      );
+      return;
+    }
     setError(null);
     setIsDispatching(true);
     try {
@@ -106,16 +117,30 @@ export function DispatchTicketsButton({
             </label>
             <select
               value={selectedInstanceId}
-              onChange={(event) => setSelectedInstanceId(event.target.value)}
+              onChange={(event) =>
+                setSelectedInstanceId(event.target.value as Id<"openclawInstances"> | "")
+              }
               className="h-9 w-full border border-border bg-background px-3 text-sm"
             >
               <option value="">Select instance...</option>
               {openClawInstances.map((instance) => (
                 <option key={instance._id} value={instance._id}>
                   {instance.name}
+                  {instance.tokenSyncStatus === "healthy"
+                    ? " (verified)"
+                    : " (verify required)"}
                 </option>
               ))}
             </select>
+            {selectedInstance && !selectedInstanceIsVerified ? (
+              <p className="text-xs text-amber-300">
+                This instance must be verified before dispatch. Go to{" "}
+                <Link href={`/account?returnTo=/workspace/${workspaceId}`} className="underline">
+                  account settings
+                </Link>{" "}
+                and click Verify for the instance.
+              </p>
+            ) : null}
           </div>
         )}
 
@@ -140,6 +165,7 @@ export function DispatchTicketsButton({
             disabled={
               isDispatching ||
               !selectedInstanceId ||
+              !selectedInstanceIsVerified ||
               tickets.length === 0 ||
               openClawInstances.length === 0
             }

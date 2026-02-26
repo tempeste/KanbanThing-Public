@@ -1,4 +1,11 @@
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { authComponent, getAuthUserOrNull } from "./auth";
@@ -42,7 +49,9 @@ const normalizeUrl = (url: string, options?: { allowLocal?: boolean }) => {
   return trimmed;
 };
 
-const requireAuthUserId = async (ctx: any) => {
+type AuthCtx = QueryCtx | MutationCtx;
+
+const requireAuthUserId = async (ctx: AuthCtx) => {
   const user = await authComponent.getAuthUser(ctx);
   if (!user) {
     throw new Error("Unauthorized");
@@ -51,14 +60,14 @@ const requireAuthUserId = async (ctx: any) => {
 };
 
 const ensureNameUnique = async (
-  ctx: any,
+  ctx: MutationCtx,
   userId: string,
   normalizedName: string,
   excludeId?: Id<"openclawInstances">
 ) => {
   const existing = await ctx.db
     .query("openclawInstances")
-    .withIndex("by_user_name", (q: any) =>
+    .withIndex("by_user_name", (q) =>
       q.eq("userId", userId).eq("name", normalizedName)
     )
     .first();
@@ -93,6 +102,10 @@ export const list = query({
       _id: instance._id,
       name: instance.name,
       url: instance.url,
+      tokenSyncStatus: instance.tokenSyncStatus ?? "unknown",
+      tokenRotatedAt: instance.tokenRotatedAt,
+      tokenVerifiedAt: instance.tokenVerifiedAt,
+      tokenLastVerifyError: instance.tokenLastVerifyError,
       createdAt: instance.createdAt,
       updatedAt: instance.updatedAt,
     }));
@@ -132,6 +145,8 @@ export const createEncrypted = internalMutation({
       name,
       url,
       encryptedToken: args.encryptedToken,
+      tokenSyncStatus: "token_rotation_pending",
+      tokenRotatedAt: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -157,6 +172,10 @@ export const updateEncrypted = internalMutation({
       name?: string;
       url?: string;
       encryptedToken?: { nonce: string; ciphertext: string };
+      tokenSyncStatus?: "unknown" | "token_rotation_pending" | "healthy" | "auth_failed";
+      tokenRotatedAt?: number;
+      tokenVerifiedAt?: number;
+      tokenLastVerifyError?: string;
       updatedAt: number;
     } = { updatedAt: Date.now() };
 
@@ -169,9 +188,73 @@ export const updateEncrypted = internalMutation({
     }
     if (args.encryptedToken !== undefined) {
       updates.encryptedToken = args.encryptedToken;
+      updates.tokenSyncStatus = "token_rotation_pending" as const;
+      updates.tokenRotatedAt = Date.now();
+      updates.tokenLastVerifyError = undefined;
     }
 
     await ctx.db.patch(args.id, updates);
+  },
+});
+
+export const markTokenRotationPending = internalMutation({
+  args: {
+    id: v.id("openclawInstances"),
+    userId: v.string(),
+    encryptedToken: encryptedTokenValidator,
+  },
+  handler: async (ctx, args) => {
+    const instance = await ctx.db.get(args.id);
+    if (!instance || instance.userId !== args.userId) {
+      throw new Error("Instance not found");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.id, {
+      encryptedToken: args.encryptedToken,
+      tokenSyncStatus: "token_rotation_pending",
+      tokenRotatedAt: now,
+      tokenLastVerifyError: undefined,
+      updatedAt: now,
+    });
+  },
+});
+
+export const markTokenHealthy = internalMutation({
+  args: {
+    id: v.id("openclawInstances"),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const instance = await ctx.db.get(args.id);
+    if (!instance || instance.userId !== args.userId) {
+      throw new Error("Instance not found");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.id, {
+      tokenSyncStatus: "healthy",
+      tokenVerifiedAt: now,
+      tokenLastVerifyError: undefined,
+      updatedAt: now,
+    });
+  },
+});
+
+export const markTokenVerifyFailed = internalMutation({
+  args: {
+    id: v.id("openclawInstances"),
+    userId: v.string(),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const instance = await ctx.db.get(args.id);
+    if (!instance || instance.userId !== args.userId) {
+      throw new Error("Instance not found");
+    }
+    await ctx.db.patch(args.id, {
+      tokenSyncStatus: "auth_failed",
+      tokenLastVerifyError: args.error.slice(0, 500),
+      updatedAt: Date.now(),
+    });
   },
 });
 

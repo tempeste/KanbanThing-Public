@@ -164,6 +164,17 @@ export default defineSchema({
       nonce: v.string(),
       ciphertext: v.string(),
     }),
+    tokenSyncStatus: v.optional(
+      v.union(
+        v.literal("unknown"),
+        v.literal("token_rotation_pending"),
+        v.literal("healthy"),
+        v.literal("auth_failed")
+      )
+    ),
+    tokenRotatedAt: v.optional(v.number()),
+    tokenVerifiedAt: v.optional(v.number()),
+    tokenLastVerifyError: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

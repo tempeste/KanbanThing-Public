@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { encryptOpenClawToken } from "../lib/openclaw-crypto";
+import { getOpenClawInstanceUrlValidationError } from "../lib/openclaw-instance-validation";
 
 const getEncryptionKey = () => {
   const key = process.env.OPENCLAW_ENCRYPTION_KEY;
@@ -12,6 +13,55 @@ const getEncryptionKey = () => {
     throw new Error("OPENCLAW_ENCRYPTION_KEY is not configured");
   }
   return key;
+};
+
+const generateOpenClawBearerToken = () => {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let token = "oc_";
+  for (let i = 0; i < 40; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+};
+
+const withPluginPath = (rawUrl: string, path: string) => {
+  const normalized = rawUrl.endsWith("/") ? rawUrl.slice(0, -1) : rawUrl;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${normalized}${normalizedPath}`;
+};
+
+const verifyOpenClawBearerToken = async (args: { url: string; token: string }) => {
+  const urlError = getOpenClawInstanceUrlValidationError(args.url);
+  if (urlError) throw new Error(urlError);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(withPluginPath(args.url, "/kanbanthing/capabilities"), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${args.token}`,
+      },
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let json: Record<string, unknown> | null = null;
+    try {
+      json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+    } catch {
+      json = null;
+    }
+    if (!response.ok) {
+      throw new Error(
+        (json?.error as string | undefined) ??
+          (json?.message as string | undefined) ??
+          `Verification failed (${response.status})`
+      );
+    }
+    return json;
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
 export const create = action({
@@ -57,5 +107,62 @@ export const update = action({
       ...(encryptedToken ? { encryptedToken } : {}),
       allowLocal,
     });
+  },
+});
+
+export const regenerateToken = action({
+  args: {
+    id: v.id("openclawInstances"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
+    const token = generateOpenClawBearerToken();
+    const encryptedToken = await encryptOpenClawToken(token, getEncryptionKey());
+
+    await ctx.runMutation(internal.openclawInstances.markTokenRotationPending, {
+      id: args.id as Id<"openclawInstances">,
+      userId,
+      encryptedToken,
+    });
+
+    return { token };
+  },
+});
+
+export const verify = action({
+  args: {
+    id: v.id("openclawInstances"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
+    const instance = await ctx.runQuery(internal.openclawInstances.getOwnedEncryptedForDispatch, {
+      id: args.id as Id<"openclawInstances">,
+      userId,
+    });
+    if (!instance) {
+      throw new Error("OpenClaw instance not found");
+    }
+
+    try {
+      const { decryptOpenClawToken } = await import("../lib/openclaw-crypto");
+      const token = await decryptOpenClawToken(instance.encryptedToken, getEncryptionKey());
+      const capabilities = await verifyOpenClawBearerToken({
+        url: instance.url,
+        token,
+      });
+      await ctx.runMutation(internal.openclawInstances.markTokenHealthy, {
+        id: args.id as Id<"openclawInstances">,
+        userId,
+      });
+      return { ok: true, capabilities };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Token verification failed";
+      await ctx.runMutation(internal.openclawInstances.markTokenVerifyFailed, {
+        id: args.id as Id<"openclawInstances">,
+        userId,
+        error: message,
+      });
+      throw new Error(message);
+    }
   },
 });
