@@ -31,10 +31,12 @@ Restart OpenClaw after enabling the plugin.
 
 ## Required Config
 
-- `kanbanthingBaseUrl`
-- `kanbanthingApiKey`
+Provide one of:
 
-Example config (shape may be entered via OpenClaw UI/CLI depending on your setup):
+- Explicit workspace routing in plugin config: `kanbanthingTargets[]`
+- Repo-mapped credentials (recommended for per-repo API keys): `workspaceMappingFile`
+
+Multi-target example (strict routing by `workspaceId`, no default fallback):
 
 ```json
 {
@@ -43,13 +45,45 @@ Example config (shape may be entered via OpenClaw UI/CLI depending on your setup
       "kanbanthing-dispatch-protocol": {
         "enabled": true,
         "config": {
-          "kanbanthingBaseUrl": "http://localhost:3000",
-          "kanbanthingApiKey": "sk_...",
+          "kanbanthingTargets": [
+            {
+              "id": "local-dev",
+              "kanbanthingBaseUrl": "http://127.0.0.1:3000",
+              "kanbanthingApiKey": "sk_local_...",
+              "workspaceIds": ["ws_local_123"]
+            },
+            {
+              "id": "hosted",
+              "kanbanthingBaseUrl": "https://kanban.example.test",
+              "kanbanthingApiKey": "sk_prod_...",
+              "workspaceIds": ["ws_prod_abc", "ws_prod_xyz"]
+            }
+          ],
           "callbackPath": "/api/openclaw/dispatch-events",
           "emitReceivedCallbacks": true,
           "enforceCancellation": true,
-          "emitProgressEvents": true,
-          "hardKillMode": "best_effort"
+          "emitProgressEvents": true
+        }
+      }
+    }
+  }
+}
+```
+
+Mapping-file example (workspace -> repo dir -> `.kanbanthing` / `.env.local` / `.env`):
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "kanbanthing-dispatch-protocol": {
+        "enabled": true,
+        "config": {
+          "workspaceMappingFile": "~/.openclaw/kanbanthing-workspaces.json",
+          "callbackPath": "/api/openclaw/dispatch-events",
+          "emitReceivedCallbacks": true,
+          "enforceCancellation": true,
+          "emitProgressEvents": true
         }
       }
     }
@@ -59,12 +93,24 @@ Example config (shape may be entered via OpenClaw UI/CLI depending on your setup
 
 ## Config Options
 
-- `kanbanthingBaseUrl` (`string`, required)
-  - Base URL for KanbanThing (use `http://` for local dev unless you actually run TLS)
-- `kanbanthingApiKey` (`string`, required)
-  - Workspace-scoped API key used for callbacks
+- `kanbanthingTargets` (`array`, required in multi-target mode)
+  - Per-instance callback targets. Each entry supports:
+  - `kanbanthingBaseUrl` (`string`, required)
+  - `kanbanthingApiKey` (`string`, required)
+  - `workspaceIds` (`string[]`, optional)
+  - `id` (`string`, optional, operator label)
+  - `callbackPath` (`string`, optional, overrides global `callbackPath`)
+  - Routing behavior:
+  - If `workspaceId` matches an entry's `workspaceIds`, that target is used
+  - If no match, callback is skipped and the plugin logs a warning (fail-closed)
+- `workspaceMappingFile` (`string`, optional)
+  - Path to a workspace mapping JSON (same shape used by the KanbanThing OpenClaw helper script)
+  - Plugin resolves `workspaceId -> repo dir`, then loads credentials from repo-local `.kanbanthing`, `.env.local`, `.env`
+  - Fail-closed: unmapped workspace, missing repo dir, or missing repo credentials skip callback with warning
 - `callbackPath` (`string`, optional)
   - Defaults to `/api/openclaw/dispatch-events`
+  - Applies to all targets unless overridden per `kanbanthingTargets[]` entry
+  - Also used for `workspaceMappingFile` mode
 - `pluginSecret` (`string`, optional)
   - If set, plugin HTTP routes require `x-kanbanthing-plugin-secret`
 - `emitReceivedCallbacks` (`boolean`, optional, default `true`)
@@ -176,6 +222,8 @@ Key fields:
   - `emitProgressEvents=true`
   - `hardKillMode="off"` or `"best_effort"`
 - If your OpenClaw build exposes `sessionKey` in `session_start/session_end`, `hardKillMode="internal_api"` enables deterministic `sessionKey -> sessionId` abort targeting for tracked sessions (plugin still keeps enforcement hooks as fallback)
+- For local+hosted setups with per-repo API keys, prefer `workspaceMappingFile` so the plugin resolves credentials from the correct repo
+- If using `kanbanthingTargets[]`, explicitly assign every `workspaceId`; unmapped workspaces are skipped by design
 - Turn on `pluginSecret` for non-local deployments
 - Treat `best_effort` hard-kill as an optimization, not a guarantee
 - Use KanbanThing execution badges + activity feed as the source of dispatch lifecycle visibility

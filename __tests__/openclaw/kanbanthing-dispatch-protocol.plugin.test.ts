@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,18 +54,37 @@ const makeRes = () => {
 describe("kanbanthing-dispatch-protocol plugin", () => {
   const hooks: Record<string, HookHandler> = {};
   const routes = new Map<string, RouteHandler>();
+  const commonWorkspaceIds = [
+    "ws_123",
+    "ws_dedupe",
+    "ws_lifecycle",
+    "ws_cancel",
+    "ws_cancel_late",
+    "ws_cancel_block",
+    "ws_progress",
+    "ws_blocked",
+    "ws_detkill",
+  ];
   // Test harness uses partial plugin API mocks that intentionally don't satisfy full Node http typings.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const api: any = {
     pluginConfig: {
-      kanbanthingBaseUrl: "http://localhost:3000",
-      kanbanthingApiKey: "sk_test",
+      kanbanthingTargets: [
+        {
+          id: "test-default",
+          kanbanthingBaseUrl: "http://localhost:3000",
+          kanbanthingApiKey: "sk_test",
+          workspaceIds: commonWorkspaceIds,
+        },
+      ],
       emitReceivedCallbacks: true,
     },
     logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
-    registerHttpRoute: vi.fn(({ path, handler }: { path: string; handler: RouteHandler }) => {
-      routes.set(path, handler);
-    }),
+    registerHttpRoute: vi.fn(
+      ({ path, handler }: { path: string; handler: RouteHandler }) => {
+        routes.set(path, handler);
+      },
+    ),
     on: vi.fn((hookName: string, handler: HookHandler) => {
       hooks[hookName] = handler;
     }),
@@ -78,14 +97,22 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
     routes.clear();
     for (const key of Object.keys(hooks)) delete hooks[key];
     api.pluginConfig = {
-      kanbanthingBaseUrl: "http://localhost:3000",
-      kanbanthingApiKey: "sk_test",
+      kanbanthingTargets: [
+        {
+          id: "test-default",
+          kanbanthingBaseUrl: "http://localhost:3000",
+          kanbanthingApiKey: "sk_test",
+          workspaceIds: commonWorkspaceIds,
+        },
+      ],
       emitReceivedCallbacks: true,
     };
     originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true }), { status: 200 })
-    ) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ success: true }), { status: 200 }),
+      ) as unknown as typeof globalThis.fetch;
   });
 
   afterEach(() => {
@@ -98,11 +125,26 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
     expect(api.registerHttpRoute).toHaveBeenCalledTimes(2);
     expect(routes.has("/kanbanthing/capabilities")).toBe(true);
     expect(routes.has("/kanbanthing/dispatch/cancel")).toBe(true);
-    expect(api.on).toHaveBeenCalledWith("message_received", expect.any(Function));
-    expect(api.on).toHaveBeenCalledWith("subagent_spawning", expect.any(Function));
-    expect(api.on).toHaveBeenCalledWith("before_tool_call", expect.any(Function));
-    expect(api.on).toHaveBeenCalledWith("after_tool_call", expect.any(Function));
-    expect(api.on).toHaveBeenCalledWith("subagent_spawned", expect.any(Function));
+    expect(api.on).toHaveBeenCalledWith(
+      "message_received",
+      expect.any(Function),
+    );
+    expect(api.on).toHaveBeenCalledWith(
+      "subagent_spawning",
+      expect.any(Function),
+    );
+    expect(api.on).toHaveBeenCalledWith(
+      "before_tool_call",
+      expect.any(Function),
+    );
+    expect(api.on).toHaveBeenCalledWith(
+      "after_tool_call",
+      expect.any(Function),
+    );
+    expect(api.on).toHaveBeenCalledWith(
+      "subagent_spawned",
+      expect.any(Function),
+    );
     expect(api.on).toHaveBeenCalledWith("subagent_ended", expect.any(Function));
     expect(api.on).toHaveBeenCalledWith("session_start", expect.any(Function));
     expect(api.on).toHaveBeenCalledWith("session_end", expect.any(Function));
@@ -145,12 +187,12 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
         tickets: [{ id: "ticket_1", number: 1, title: "Test" }],
       },
       null,
-      2
+      2,
     )}\n\`\`\`\n`;
 
     await hooks.message_received(
       { content: message },
-      { channelId: "slack", accountId: "acc_1", conversationId: "C123" }
+      { channelId: "slack", accountId: "acc_1", conversationId: "C123" },
     );
 
     expect(globalThis.fetch).toHaveBeenCalledOnce();
@@ -180,21 +222,140 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
     expect(typeof payload.dispatchId).toBe("string");
   });
 
-  it("dedupes repeated identical dispatch.received callbacks", async () => {
+  it("routes callbacks by workspaceId and fails closed for unmapped workspaces", async () => {
+    api.pluginConfig = {
+      kanbanthingTargets: [
+        {
+          id: "local",
+          kanbanthingBaseUrl: "http://127.0.0.1:3000",
+          kanbanthingApiKey: "sk_local",
+          workspaceIds: ["ws_local_only"],
+        },
+        {
+          id: "hosted",
+          kanbanthingBaseUrl: "https://kanban.example.test",
+          kanbanthingApiKey: "sk_hosted",
+          workspaceIds: ["ws_hosted_1"],
+        },
+        {
+          id: "unused-no-workspaces",
+          kanbanthingBaseUrl: "https://kanban.example.test",
+          kanbanthingApiKey: "sk_unused",
+        },
+      ],
+      emitReceivedCallbacks: true,
+    };
     register(api);
-    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify({
-      kanbanthing_dispatch_v: 1,
-      workspaceId: "ws_dedupe",
-      tickets: [{ id: "ticket_dedupe" }],
-    })}\n\`\`\``;
+
+    const makeDispatchMessage = (workspaceId: string, ticketId: string) =>
+      `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify({
+        kanbanthing_dispatch_v: 1,
+        workspaceId,
+        tickets: [{ id: ticketId }],
+      })}\n\`\`\``;
+
+    await hooks.message_received(
+      { content: makeDispatchMessage("ws_local_only", "ticket_local_1") },
+      { channelId: "slack", conversationId: "CMULTI_LOCAL" },
+    );
+    await hooks.message_received(
+      { content: makeDispatchMessage("ws_hosted_1", "ticket_hosted_1") },
+      { channelId: "slack", conversationId: "CMULTI_HOSTED" },
+    );
+    await hooks.message_received(
+      { content: makeDispatchMessage("ws_unmapped", "ticket_unmapped_1") },
+      { channelId: "slack", conversationId: "CMULTI_UNMAPPED" },
+    );
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+
+    const [localUrl, localInit] = vi.mocked(globalThis.fetch).mock.calls[0]!;
+    const [hostedUrl, hostedInit] = vi.mocked(globalThis.fetch).mock.calls[1]!;
+
+    expect(localUrl).toBe("http://127.0.0.1:3000/api/openclaw/dispatch-events");
+    expect(localInit?.headers).toMatchObject({ "x-api-key": "sk_local" });
+
+    expect(hostedUrl).toBe(
+      "https://kanban.example.test/api/openclaw/dispatch-events",
+    );
+    expect(hostedInit?.headers).toMatchObject({ "x-api-key": "sk_hosted" });
+    expect(api.logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "no explicit kanbanthingTargets match workspace=ws_unmapped",
+      ),
+    );
+  });
+
+  it("routes callbacks via workspaceMappingFile and repo-local .kanbanthing credentials", async () => {
+    const tempRoot = mkdtempSync(path.join(tmpdir(), "kt-plugin-routing-"));
+    const repoDir = path.join(tempRoot, "repo-openclaw");
+    mkdirSync(repoDir, { recursive: true });
+    writeFileSync(
+      path.join(repoDir, ".kanbanthing"),
+      [
+        "KANBANTHING_BASE_URL=http://127.0.0.1:3219",
+        "KANBANTHING_WORKSPACE_ID=ws_repo_1",
+        "KANBANTHING_API_KEY=sk_repo_1",
+      ].join("\n"),
+      "utf8",
+    );
+    const mappingFile = path.join(tempRoot, "kanbanthing-workspaces.json");
+    writeFileSync(
+      mappingFile,
+      JSON.stringify({
+        workspaces: {
+          openclaw: {
+            workspaceId: "ws_repo_1",
+            dir: repoDir,
+          },
+        },
+      }),
+      "utf8",
+    );
+
+    api.pluginConfig = {
+      workspaceMappingFile: mappingFile,
+      emitReceivedCallbacks: true,
+    };
+    register(api);
+
+    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify(
+      {
+        kanbanthing_dispatch_v: 1,
+        workspaceId: "ws_repo_1",
+        tickets: [{ id: "ticket_repo_1" }],
+      },
+    )}\n\`\`\``;
 
     await hooks.message_received(
       { content: message },
-      { channelId: "slack", conversationId: "CDEDUPE" }
+      { channelId: "slack", conversationId: "CMAP1" },
+    );
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0]!;
+    expect(url).toBe("http://127.0.0.1:3219/api/openclaw/dispatch-events");
+    expect(init?.headers).toMatchObject({ "x-api-key": "sk_repo_1" });
+    rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  it("dedupes repeated identical dispatch.received callbacks", async () => {
+    register(api);
+    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify(
+      {
+        kanbanthing_dispatch_v: 1,
+        workspaceId: "ws_dedupe",
+        tickets: [{ id: "ticket_dedupe" }],
+      },
+    )}\n\`\`\``;
+
+    await hooks.message_received(
+      { content: message },
+      { channelId: "slack", conversationId: "CDEDUPE" },
     );
     await hooks.message_received(
       { content: message },
-      { channelId: "slack", conversationId: "CDEDUPE" }
+      { channelId: "slack", conversationId: "CDEDUPE" },
     );
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
@@ -202,16 +363,18 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
 
   it("emits dispatch.started and dispatch.finished callbacks from subagent lifecycle hooks", async () => {
     register(api);
-    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify({
-      kanbanthing_dispatch_v: 1,
-      workspaceId: "ws_lifecycle",
-      workspaceName: "Lifecycle",
-      tickets: [{ id: "ticket_lifecycle" }],
-    })}\n\`\`\``;
+    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify(
+      {
+        kanbanthing_dispatch_v: 1,
+        workspaceId: "ws_lifecycle",
+        workspaceName: "Lifecycle",
+        tickets: [{ id: "ticket_lifecycle" }],
+      },
+    )}\n\`\`\``;
 
     await hooks.message_received(
       { content: message },
-      { channelId: "slack", conversationId: "CLIFE" }
+      { channelId: "slack", conversationId: "CLIFE" },
     );
     await hooks.subagent_spawned(
       {
@@ -219,7 +382,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
         mode: "run",
         requester: { channel: "slack", to: "CLIFE" },
       },
-      {}
+      {},
     );
     await hooks.subagent_ended(
       {
@@ -228,7 +391,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
         reason: "done",
         targetKind: "subagent",
       },
-      {}
+      {},
     );
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(3);
@@ -258,7 +421,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
           ticketIds: ["ticket_1"],
         }),
       }),
-      res
+      res,
     );
 
     expect(res.statusCode).toBe(200);
@@ -287,19 +450,21 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
   it("emits dispatch.cancel_result (too_late_to_cancel) if a run starts after cancel was requested", async () => {
     register(api);
 
-    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify({
-      kanbanthing_dispatch_v: 1,
-      workspaceId: "ws_cancel_late",
-      tickets: [{ id: "ticket_cancel_late" }],
-    })}\n\`\`\``;
+    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify(
+      {
+        kanbanthing_dispatch_v: 1,
+        workspaceId: "ws_cancel_late",
+        tickets: [{ id: "ticket_cancel_late" }],
+      },
+    )}\n\`\`\``;
 
     await hooks.message_received(
       { content: message },
-      { channelId: "slack", conversationId: "CCANCEL" }
+      { channelId: "slack", conversationId: "CCANCEL" },
     );
 
     const receivedPayload = JSON.parse(
-      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)
+      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body),
     );
     const handler = routes.get("/kanbanthing/dispatch/cancel");
     expect(handler).toBeDefined();
@@ -314,7 +479,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
           ticketIds: ["ticket_cancel_late"],
         }),
       }),
-      res
+      res,
     );
 
     await hooks.subagent_spawned(
@@ -322,7 +487,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
         runId: "run_cancel_late_1",
         requester: { channel: "slack", to: "CCANCEL" },
       },
-      {}
+      {},
     );
 
     const callbackEvents = vi
@@ -336,7 +501,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
     ]);
 
     const cancelResultPayload = JSON.parse(
-      String(vi.mocked(globalThis.fetch).mock.calls[3]?.[1]?.body)
+      String(vi.mocked(globalThis.fetch).mock.calls[3]?.[1]?.body),
     );
     expect(cancelResultPayload).toMatchObject({
       event: "dispatch.cancel_result",
@@ -353,18 +518,20 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
   it("blocks subagent spawn when cancel was requested before spawn and emits cancelled result", async () => {
     register(api);
 
-    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify({
-      kanbanthing_dispatch_v: 1,
-      workspaceId: "ws_cancel_block",
-      tickets: [{ id: "ticket_cancel_block" }],
-    })}\n\`\`\``;
+    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify(
+      {
+        kanbanthing_dispatch_v: 1,
+        workspaceId: "ws_cancel_block",
+        tickets: [{ id: "ticket_cancel_block" }],
+      },
+    )}\n\`\`\``;
 
     await hooks.message_received(
       { content: message },
-      { channelId: "slack", conversationId: "CBLOCK" }
+      { channelId: "slack", conversationId: "CBLOCK" },
     );
     const receivedPayload = JSON.parse(
-      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)
+      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body),
     );
 
     const cancelHandler = routes.get("/kanbanthing/dispatch/cancel");
@@ -378,7 +545,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
           ticketIds: ["ticket_cancel_block"],
         }),
       }),
-      cancelRes
+      cancelRes,
     );
 
     const spawnResult = await hooks.subagent_spawning(
@@ -389,7 +556,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
         requester: { channel: "slack", to: "CBLOCK" },
         threadRequested: false,
       },
-      {}
+      {},
     );
 
     expect(spawnResult).toMatchObject({
@@ -406,7 +573,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
     ]);
 
     const cancelResultPayload = JSON.parse(
-      String(vi.mocked(globalThis.fetch).mock.calls[2]?.[1]?.body)
+      String(vi.mocked(globalThis.fetch).mock.calls[2]?.[1]?.body),
     );
     expect(cancelResultPayload).toMatchObject({
       event: "dispatch.cancel_result",
@@ -422,15 +589,17 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
   it("emits throttled ticket.progress callbacks from tool hooks", async () => {
     register(api);
 
-    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify({
-      kanbanthing_dispatch_v: 1,
-      workspaceId: "ws_progress",
-      tickets: [{ id: "ticket_progress_1" }],
-    })}\n\`\`\``;
+    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify(
+      {
+        kanbanthing_dispatch_v: 1,
+        workspaceId: "ws_progress",
+        tickets: [{ id: "ticket_progress_1" }],
+      },
+    )}\n\`\`\``;
 
     await hooks.message_received(
       { content: message },
-      { channelId: "slack", conversationId: "CPROG" }
+      { channelId: "slack", conversationId: "CPROG" },
     );
     await hooks.subagent_spawned(
       {
@@ -438,26 +607,28 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
         childSessionKey: "sess_prog_1",
         requester: { channel: "slack", to: "CPROG" },
       },
-      {}
+      {},
     );
 
     await hooks.before_tool_call(
       { toolName: "bash" },
-      { sessionKey: "sess_prog_1", toolName: "bash" }
+      { sessionKey: "sess_prog_1", toolName: "bash" },
     );
     await hooks.before_tool_call(
       { toolName: "bash" },
-      { sessionKey: "sess_prog_1", toolName: "bash" }
+      { sessionKey: "sess_prog_1", toolName: "bash" },
     );
     await hooks.after_tool_call(
       { toolName: "bash", durationMs: 1200 },
-      { sessionKey: "sess_prog_1", toolName: "bash" }
+      { sessionKey: "sess_prog_1", toolName: "bash" },
     );
 
     const callbackPayloads = vi
       .mocked(globalThis.fetch)
       .mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
-    const progressPayloads = callbackPayloads.filter((payload) => payload.event === "ticket.progress");
+    const progressPayloads = callbackPayloads.filter(
+      (payload) => payload.event === "ticket.progress",
+    );
 
     expect(progressPayloads).toHaveLength(2);
     expect(progressPayloads[0]).toMatchObject({
@@ -486,15 +657,17 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
   it("emits ticket.blocked callback on tool error", async () => {
     register(api);
 
-    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify({
-      kanbanthing_dispatch_v: 1,
-      workspaceId: "ws_blocked",
-      tickets: [{ id: "ticket_blocked_1" }],
-    })}\n\`\`\``;
+    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify(
+      {
+        kanbanthing_dispatch_v: 1,
+        workspaceId: "ws_blocked",
+        tickets: [{ id: "ticket_blocked_1" }],
+      },
+    )}\n\`\`\``;
 
     await hooks.message_received(
       { content: message },
-      { channelId: "slack", conversationId: "CBLOCKEDTOOL" }
+      { channelId: "slack", conversationId: "CBLOCKEDTOOL" },
     );
     await hooks.subagent_spawned(
       {
@@ -502,12 +675,12 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
         childSessionKey: "sess_blocked_1",
         requester: { channel: "slack", to: "CBLOCKEDTOOL" },
       },
-      {}
+      {},
     );
 
     await hooks.after_tool_call(
       { toolName: "bash", error: "command failed", durationMs: 250 },
-      { sessionKey: "sess_blocked_1", toolName: "bash" }
+      { sessionKey: "sess_blocked_1", toolName: "bash" },
     );
 
     const payloads = vi
@@ -545,7 +718,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
         "  return false;",
         "}",
       ].join("\n"),
-      "utf8"
+      "utf8",
     );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -561,19 +734,21 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
 
     register(api);
 
-    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify({
-      kanbanthing_dispatch_v: 1,
-      workspaceId: "ws_detkill",
-      tickets: [{ id: "ticket_detkill_1" }],
-    })}\n\`\`\``;
+    const message = `Dispatch metadata (machine-readable):\n\`\`\`json\n${JSON.stringify(
+      {
+        kanbanthing_dispatch_v: 1,
+        workspaceId: "ws_detkill",
+        tickets: [{ id: "ticket_detkill_1" }],
+      },
+    )}\n\`\`\``;
 
     await hooks.message_received(
       { content: message },
-      { channelId: "slack", conversationId: "CDET" }
+      { channelId: "slack", conversationId: "CDET" },
     );
 
     const receivedPayload = JSON.parse(
-      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)
+      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body),
     );
 
     await hooks.subagent_spawned(
@@ -582,12 +757,12 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
         childSessionKey: "sess_det_1",
         requester: { channel: "slack", to: "CDET" },
       },
-      {}
+      {},
     );
 
     await hooks.session_start(
       { sessionId: "sid_det_1", sessionKey: "sess_det_1" },
-      { sessionId: "sid_det_1", sessionKey: "sess_det_1" }
+      { sessionId: "sid_det_1", sessionKey: "sess_det_1" },
     );
 
     const cancelHandler = routes.get("/kanbanthing/dispatch/cancel");
@@ -601,7 +776,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
           ticketIds: ["ticket_detkill_1"],
         }),
       }),
-      cancelRes
+      cancelRes,
     );
 
     expect(cancelRes.statusCode).toBe(200);
@@ -628,7 +803,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
 
     await hooks.session_end(
       { sessionId: "sid_det_1", sessionKey: "sess_det_1" },
-      { sessionId: "sid_det_1", sessionKey: "sess_det_1" }
+      { sessionId: "sid_det_1", sessionKey: "sess_det_1" },
     );
 
     const cancelRes2 = makeRes();
@@ -641,14 +816,18 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
           ticketIds: ["ticket_detkill_1"],
         }),
       }),
-      cancelRes2
+      cancelRes2,
     );
 
     const payloads2 = vi
       .mocked(globalThis.fetch)
       .mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
-    const lastCancelAck = payloads2.filter((p) => p.event === "dispatch.cancel_ack").at(-1);
-    expect(lastCancelAck?.metadata?.hardKillAttempt?.sessionsResolvedToSessionId).toBe(0);
+    const lastCancelAck = payloads2
+      .filter((p) => p.event === "dispatch.cancel_ack")
+      .at(-1);
+    expect(
+      lastCancelAck?.metadata?.hardKillAttempt?.sessionsResolvedToSessionId,
+    ).toBe(0);
 
     rmSync(tempDir, { recursive: true, force: true });
   });

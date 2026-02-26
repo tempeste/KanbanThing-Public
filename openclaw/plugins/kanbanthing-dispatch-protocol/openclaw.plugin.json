@@ -6,10 +6,36 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "kanbanthingBaseUrl": {
-        "type": "string"
+      "kanbanthingTargets": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kanbanthingBaseUrl": {
+              "type": "string"
+            },
+            "kanbanthingApiKey": {
+              "type": "string"
+            },
+            "workspaceIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "callbackPath": {
+              "type": "string"
+            }
+          },
+          "required": ["kanbanthingBaseUrl", "kanbanthingApiKey"]
+        }
       },
-      "kanbanthingApiKey": {
+      "workspaceMappingFile": {
         "type": "string"
       },
       "callbackPath": {
@@ -35,6 +61,6 @@
         "type": "string"
       }
     },
-    "required": ["kanbanthingBaseUrl", "kanbanthingApiKey"]
+    "required": []
   }
 }

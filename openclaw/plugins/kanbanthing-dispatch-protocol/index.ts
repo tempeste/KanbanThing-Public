@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -92,28 +92,37 @@ type SubagentSpawningResult =
   | { status: "error"; error: string };
 
 type PluginHooks = {
-  message_received: (event: MessageReceivedEvent, ctx: MessageReceivedContext) => Promise<void> | void;
+  message_received: (
+    event: MessageReceivedEvent,
+    ctx: MessageReceivedContext,
+  ) => Promise<void> | void;
   before_tool_call: (
     event: BeforeToolCallEvent,
-    ctx: BeforeToolCallContext
+    ctx: BeforeToolCallContext,
   ) => Promise<BeforeToolCallResult | void> | BeforeToolCallResult | void;
   after_tool_call: (
     event: AfterToolCallEvent,
-    ctx: AfterToolCallContext
+    ctx: AfterToolCallContext,
   ) => Promise<void> | void;
   subagent_spawning: (
     event: SubagentSpawningEvent,
-    ctx: SubagentSpawningContext
+    ctx: SubagentSpawningContext,
   ) => Promise<SubagentSpawningResult | void> | SubagentSpawningResult | void;
-  subagent_spawned: (event: SubagentSpawnedEvent, ctx: unknown) => Promise<void> | void;
-  subagent_ended: (event: SubagentEndedEvent, ctx: unknown) => Promise<void> | void;
+  subagent_spawned: (
+    event: SubagentSpawnedEvent,
+    ctx: unknown,
+  ) => Promise<void> | void;
+  subagent_ended: (
+    event: SubagentEndedEvent,
+    ctx: unknown,
+  ) => Promise<void> | void;
   session_start: (
     event: { sessionId?: string; sessionKey?: string },
-    ctx: { sessionId?: string; sessionKey?: string }
+    ctx: { sessionId?: string; sessionKey?: string },
   ) => Promise<void> | void;
   session_end: (
     event: { sessionId?: string; sessionKey?: string },
-    ctx: { sessionId?: string; sessionKey?: string }
+    ctx: { sessionId?: string; sessionKey?: string },
   ) => Promise<void> | void;
 };
 
@@ -122,9 +131,15 @@ type PluginApi = {
   logger?: LoggerLike;
   registerHttpRoute: (params: {
     path: string;
-    handler: (req: IncomingMessage, res: ServerResponse) => Promise<void> | void;
+    handler: (
+      req: IncomingMessage,
+      res: ServerResponse,
+    ) => Promise<void> | void;
   }) => void;
-  on: <K extends keyof PluginHooks>(hookName: K, handler: PluginHooks[K]) => void;
+  on: <K extends keyof PluginHooks>(
+    hookName: K,
+    handler: PluginHooks[K],
+  ) => void;
 };
 
 type DispatchMetadata = {
@@ -136,8 +151,14 @@ type DispatchMetadata = {
 };
 
 type PluginConfig = {
-  kanbanthingBaseUrl?: string;
-  kanbanthingApiKey?: string;
+  kanbanthingTargets?: Array<{
+    id?: string;
+    kanbanthingBaseUrl?: string;
+    kanbanthingApiKey?: string;
+    workspaceIds?: string[];
+    callbackPath?: string;
+  }>;
+  workspaceMappingFile?: string;
   callbackPath?: string;
   pluginSecret?: string;
   emitReceivedCallbacks?: boolean;
@@ -160,7 +181,10 @@ const MAX_SEEN_EVENTS = 500;
 
 const receiptDedupe = new Map<string, number>();
 const lifecycleDedupe = new Map<string, number>();
-const cancelRegistry = new Map<string, { createdAt: number; payload: CancelRequest }>();
+const cancelRegistry = new Map<
+  string,
+  { createdAt: number; payload: CancelRequest }
+>();
 const dispatchByConversation = new Map<
   string,
   {
@@ -236,6 +260,12 @@ function normalizeBaseUrl(input?: string) {
   return `http://${trimmed}`;
 }
 
+function normalizeCallbackPath(input: string | undefined, fallback: string) {
+  if (typeof input !== "string") return fallback;
+  const trimmed = input.trim();
+  return trimmed || fallback;
+}
+
 type OpenClawInternalApis = {
   abortEmbeddedPiRun?: (sessionId: string) => boolean;
   queueEmbeddedPiMessage?: (sessionId: string, text: string) => boolean;
@@ -243,21 +273,31 @@ type OpenClawInternalApis = {
 
 let cachedInternalApis: OpenClawInternalApis | null | undefined;
 
-async function loadOpenClawInternalApis(api: PluginApi): Promise<OpenClawInternalApis | null> {
+async function loadOpenClawInternalApis(
+  api: PluginApi,
+): Promise<OpenClawInternalApis | null> {
   if (cachedInternalApis !== undefined) {
     return cachedInternalApis;
   }
   const cfg = getConfig(api);
   const candidates = [
-    typeof cfg.internalApiPathHint === "string" ? cfg.internalApiPathHint.trim() : "",
+    typeof cfg.internalApiPathHint === "string"
+      ? cfg.internalApiPathHint.trim()
+      : "",
     path.join(process.cwd(), "dist/agents/pi-embedded.js"),
-    path.join(process.cwd(), "node_modules/openclaw/dist/agents/pi-embedded.js"),
+    path.join(
+      process.cwd(),
+      "node_modules/openclaw/dist/agents/pi-embedded.js",
+    ),
   ].filter(Boolean);
 
   for (const candidate of candidates) {
     try {
       if (!existsSync(candidate)) continue;
-      const mod = (await import(pathToFileURL(candidate).href)) as Record<string, unknown>;
+      const mod = (await import(pathToFileURL(candidate).href)) as Record<
+        string,
+        unknown
+      >;
       const apis: OpenClawInternalApis = {
         abortEmbeddedPiRun:
           typeof mod.abortEmbeddedPiRun === "function"
@@ -265,7 +305,10 @@ async function loadOpenClawInternalApis(api: PluginApi): Promise<OpenClawInterna
             : undefined,
         queueEmbeddedPiMessage:
           typeof mod.queueEmbeddedPiMessage === "function"
-            ? (mod.queueEmbeddedPiMessage as (sessionId: string, text: string) => boolean)
+            ? (mod.queueEmbeddedPiMessage as (
+                sessionId: string,
+                text: string,
+              ) => boolean)
             : undefined,
       };
       if (apis.abortEmbeddedPiRun || apis.queueEmbeddedPiMessage) {
@@ -288,31 +331,414 @@ async function loadOpenClawInternalApis(api: PluginApi): Promise<OpenClawInterna
   return null;
 }
 
-function getConfig(api: PluginApi): Required<
+function getConfig(
+  api: PluginApi,
+): Required<
   Pick<
     PluginConfig,
-    "callbackPath" | "emitReceivedCallbacks" | "enforceCancellation" | "hardKillMode" | "emitProgressEvents"
+    | "callbackPath"
+    | "emitReceivedCallbacks"
+    | "enforceCancellation"
+    | "hardKillMode"
+    | "emitProgressEvents"
   >
 > &
   PluginConfig {
   const cfg = (api.pluginConfig ?? {}) as PluginConfig;
   return {
     ...cfg,
-    callbackPath:
-      typeof cfg.callbackPath === "string" && cfg.callbackPath.trim()
-        ? cfg.callbackPath.trim()
-        : DEFAULT_CALLBACK_PATH,
+    callbackPath: normalizeCallbackPath(
+      cfg.callbackPath,
+      DEFAULT_CALLBACK_PATH,
+    ),
     emitReceivedCallbacks:
-      typeof cfg.emitReceivedCallbacks === "boolean" ? cfg.emitReceivedCallbacks : true,
+      typeof cfg.emitReceivedCallbacks === "boolean"
+        ? cfg.emitReceivedCallbacks
+        : true,
     enforceCancellation:
-      typeof cfg.enforceCancellation === "boolean" ? cfg.enforceCancellation : true,
+      typeof cfg.enforceCancellation === "boolean"
+        ? cfg.enforceCancellation
+        : true,
     hardKillMode:
       cfg.hardKillMode === "best_effort" || cfg.hardKillMode === "internal_api"
         ? cfg.hardKillMode
         : "off",
     emitProgressEvents:
-      typeof cfg.emitProgressEvents === "boolean" ? cfg.emitProgressEvents : true,
+      typeof cfg.emitProgressEvents === "boolean"
+        ? cfg.emitProgressEvents
+        : true,
   };
+}
+
+type ResolvedCallbackTarget = {
+  baseUrl: string;
+  apiKey: string;
+  callbackPath: string;
+  source: "multi" | "mapping_file";
+  targetId?: string;
+};
+
+type WorkspaceTargetConfig = {
+  baseUrl: string;
+  apiKey: string;
+  callbackPath: string;
+  targetId?: string;
+};
+
+type RoutingMapCache = {
+  configFingerprint: string;
+  byWorkspaceId: Map<string, WorkspaceTargetConfig>;
+  hasAnyValidTarget: boolean;
+};
+
+type WorkspaceMappingEntry = {
+  alias?: string;
+  workspaceId: string;
+  dir?: string;
+  apiUrl?: string;
+  envFiles?: string[];
+};
+
+type WorkspaceMappingFileCache = {
+  path: string;
+  mtimeMs: number;
+  byWorkspaceId: Map<string, WorkspaceMappingEntry>;
+};
+
+type RepoCredentialCacheEntry = {
+  fingerprint: string;
+  value: { baseUrl: string; apiKey: string } | null;
+};
+
+let routingMapCache: RoutingMapCache | null = null;
+let workspaceMappingFileCache: WorkspaceMappingFileCache | null = null;
+const repoCredentialCache = new Map<string, RepoCredentialCacheEntry>();
+
+function trimString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseEnvStyleFile(contents: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const rawLine of contents.split(/\r?\n/)) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("export ")) {
+      line = line.slice("export ".length).trim();
+    }
+    const idx = line.indexOf("=");
+    if (idx <= 0) continue;
+    const key = line.slice(0, idx).trim();
+    let value = line.slice(idx + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key) out[key] = value;
+  }
+  return out;
+}
+
+function parseRepoCredentialsFromDir(
+  repoDir: string,
+  mappingEntry: WorkspaceMappingEntry,
+): { baseUrl: string; apiKey: string } | null {
+  const defaultEnvFiles = [".env", ".env.local"];
+  const envFiles =
+    Array.isArray(mappingEntry.envFiles) && mappingEntry.envFiles.length > 0
+      ? mappingEntry.envFiles
+          .filter((f): f is string => typeof f === "string")
+          .map((f) => f.trim())
+          .filter(Boolean)
+      : defaultEnvFiles;
+  const filesToRead = [".kanbanthing", ...envFiles];
+  const mtimes: string[] = [];
+  const merged: Record<string, string> = {};
+
+  for (const rel of filesToRead) {
+    const filePath = path.join(repoDir, rel);
+    if (!existsSync(filePath)) continue;
+    try {
+      const st = statSync(filePath);
+      mtimes.push(`${rel}:${st.mtimeMs}:${st.size}`);
+      const parsed = parseEnvStyleFile(readFileSync(filePath, "utf8"));
+      for (const [key, value] of Object.entries(parsed)) {
+        merged[key] = value;
+      }
+    } catch {
+      mtimes.push(`${rel}:err`);
+    }
+  }
+
+  const cacheKey = `${repoDir}::${mappingEntry.workspaceId}`;
+  const fingerprint = mtimes.join("|");
+  const cached = repoCredentialCache.get(cacheKey);
+  if (cached && cached.fingerprint === fingerprint) {
+    return cached.value;
+  }
+
+  const apiKey = trimString(merged.KANBANTHING_API_KEY);
+  const rawBase =
+    trimString(merged.KANBANTHING_API_URL) ||
+    trimString(merged.KANBANTHING_BASE_URL) ||
+    trimString(merged.KANBANTHING_URL) ||
+    trimString(mappingEntry.apiUrl);
+  const declaredWorkspaceId = trimString(merged.KANBANTHING_WORKSPACE_ID);
+  if (declaredWorkspaceId && declaredWorkspaceId !== mappingEntry.workspaceId) {
+    const mismatch = null;
+    repoCredentialCache.set(cacheKey, { fingerprint, value: mismatch });
+    trimOldEntries(repoCredentialCache, MAX_SEEN_EVENTS * 4);
+    return mismatch;
+  }
+  const baseUrl = normalizeBaseUrl(rawBase);
+  const resolved = apiKey && baseUrl ? { apiKey, baseUrl } : null;
+
+  repoCredentialCache.set(cacheKey, { fingerprint, value: resolved });
+  trimOldEntries(repoCredentialCache, MAX_SEEN_EVENTS * 4);
+  return resolved;
+}
+
+function parseWorkspaceMappingEntries(
+  raw: unknown,
+  mappingFilePath: string,
+): Map<string, WorkspaceMappingEntry> {
+  const result = new Map<string, WorkspaceMappingEntry>();
+  if (!raw || typeof raw !== "object") return result;
+  const workspaces = (raw as Record<string, unknown>).workspaces;
+
+  const addEntry = (entryRaw: unknown, aliasHint?: string) => {
+    if (!entryRaw || typeof entryRaw !== "object") return;
+    const entry = entryRaw as Record<string, unknown>;
+    const workspaceId = trimString(entry.workspaceId);
+    if (!workspaceId) return;
+    const dirRaw = trimString(entry.dir);
+    const dir = dirRaw
+      ? path.isAbsolute(dirRaw)
+        ? dirRaw
+        : path.resolve(path.dirname(mappingFilePath), dirRaw)
+      : "";
+    result.set(workspaceId, {
+      workspaceId,
+      alias: trimString(entry.alias) || aliasHint,
+      dir: dir || undefined,
+      apiUrl: trimString(entry.apiUrl) || undefined,
+      envFiles: Array.isArray(entry.envFiles)
+        ? entry.envFiles.filter((f): f is string => typeof f === "string")
+        : undefined,
+    });
+  };
+
+  if (Array.isArray(workspaces)) {
+    for (const entry of workspaces) addEntry(entry);
+    return result;
+  }
+  if (workspaces && typeof workspaces === "object") {
+    for (const [alias, entry] of Object.entries(
+      workspaces as Record<string, unknown>,
+    )) {
+      addEntry(entry, alias);
+    }
+  }
+  return result;
+}
+
+function getWorkspaceMappingFileCache(
+  api: PluginApi,
+  mappingFilePath: string,
+): WorkspaceMappingFileCache | null {
+  const fullPath = path.resolve(mappingFilePath);
+  if (!existsSync(fullPath)) {
+    api.logger?.warn?.(
+      `[kanbanthing-dispatch] workspaceMappingFile not found: ${fullPath}`,
+    );
+    return null;
+  }
+
+  let st;
+  try {
+    st = statSync(fullPath);
+  } catch (error) {
+    api.logger?.warn?.(
+      `[kanbanthing-dispatch] failed to stat workspaceMappingFile ${fullPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+
+  if (
+    workspaceMappingFileCache &&
+    workspaceMappingFileCache.path === fullPath &&
+    workspaceMappingFileCache.mtimeMs === st.mtimeMs
+  ) {
+    return workspaceMappingFileCache;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(fullPath, "utf8")) as unknown;
+    workspaceMappingFileCache = {
+      path: fullPath,
+      mtimeMs: st.mtimeMs,
+      byWorkspaceId: parseWorkspaceMappingEntries(parsed, fullPath),
+    };
+    return workspaceMappingFileCache;
+  } catch (error) {
+    api.logger?.warn?.(
+      `[kanbanthing-dispatch] failed to parse workspaceMappingFile ${fullPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
+function getRoutingMapCache(api: PluginApi): RoutingMapCache {
+  const cfg = getConfig(api);
+  const rawTargets = Array.isArray(cfg.kanbanthingTargets)
+    ? cfg.kanbanthingTargets
+    : [];
+  const configFingerprint = JSON.stringify(
+    rawTargets.map((t) => ({
+      id: trimString(t?.id),
+      baseUrl: trimString(t?.kanbanthingBaseUrl),
+      callbackPath: trimString(t?.callbackPath),
+      workspaceIds: Array.isArray(t?.workspaceIds)
+        ? t.workspaceIds
+            .map((id) => trimString(id))
+            .filter(Boolean)
+            .sort()
+        : [],
+      apiKeyPresent: Boolean(trimString(t?.kanbanthingApiKey)),
+    })),
+  );
+
+  if (
+    routingMapCache &&
+    routingMapCache.configFingerprint === configFingerprint
+  ) {
+    return routingMapCache;
+  }
+
+  const byWorkspaceId = new Map<string, WorkspaceTargetConfig>();
+  let hasAnyValidTarget = false;
+  rawTargets.forEach((target, idx) => {
+    const baseUrl = normalizeBaseUrl(target?.kanbanthingBaseUrl);
+    const apiKey = trimString(target?.kanbanthingApiKey);
+    if (!baseUrl || !apiKey) {
+      api.logger?.warn?.(
+        `[kanbanthing-dispatch] skipping invalid kanbanthingTargets[${idx}] (missing baseUrl/apiKey)`,
+      );
+      return;
+    }
+    hasAnyValidTarget = true;
+    const callbackPath = normalizeCallbackPath(
+      target?.callbackPath,
+      cfg.callbackPath,
+    );
+    const targetId = trimString(target?.id) || undefined;
+    const workspaceIds = Array.isArray(target?.workspaceIds)
+      ? target.workspaceIds.map((id) => trimString(id)).filter(Boolean)
+      : [];
+    for (const workspaceId of workspaceIds) {
+      if (byWorkspaceId.has(workspaceId)) {
+        api.logger?.warn?.(
+          `[kanbanthing-dispatch] duplicate workspace mapping in kanbanthingTargets for workspace=${workspaceId}; keeping first`,
+        );
+        continue;
+      }
+      byWorkspaceId.set(workspaceId, {
+        baseUrl,
+        apiKey,
+        callbackPath,
+        targetId,
+      });
+    }
+  });
+
+  routingMapCache = { configFingerprint, byWorkspaceId, hasAnyValidTarget };
+  return routingMapCache;
+}
+
+function resolveCallbackTarget(
+  api: PluginApi,
+  payload: Record<string, unknown>,
+): ResolvedCallbackTarget | null {
+  const cfg = getConfig(api);
+  const workspaceId =
+    typeof payload.workspaceId === "string" ? payload.workspaceId.trim() : "";
+  const mappingFile = trimString(cfg.workspaceMappingFile);
+
+  if (mappingFile) {
+    if (!workspaceId) {
+      api.logger?.warn?.(
+        "[kanbanthing-dispatch] callback skipped: missing workspaceId for workspaceMappingFile routing",
+      );
+      return null;
+    }
+    const mappingCache = getWorkspaceMappingFileCache(api, mappingFile);
+    const mappingEntry = mappingCache?.byWorkspaceId.get(workspaceId);
+    if (!mappingEntry) {
+      api.logger?.warn?.(
+        `[kanbanthing-dispatch] callback skipped: workspaceId ${workspaceId} not found in workspaceMappingFile`,
+      );
+      return null;
+    }
+    const repoDir = trimString(mappingEntry.dir);
+    if (!repoDir || !existsSync(repoDir)) {
+      api.logger?.warn?.(
+        `[kanbanthing-dispatch] callback skipped: mapped repo dir missing for workspace=${workspaceId}`,
+      );
+      return null;
+    }
+    const creds = parseRepoCredentialsFromDir(repoDir, mappingEntry);
+    if (!creds) {
+      api.logger?.warn?.(
+        `[kanbanthing-dispatch] callback skipped: missing repo credentials for workspace=${workspaceId} dir=${repoDir}`,
+      );
+      return null;
+    }
+    return {
+      baseUrl: creds.baseUrl,
+      apiKey: creds.apiKey,
+      callbackPath: cfg.callbackPath,
+      source: "mapping_file",
+      ...(mappingEntry.alias ? { targetId: mappingEntry.alias } : {}),
+    };
+  }
+
+  const targetRouting =
+    Array.isArray(cfg.kanbanthingTargets) && cfg.kanbanthingTargets.length > 0
+      ? getRoutingMapCache(api)
+      : null;
+  if (targetRouting) {
+    if (!workspaceId) {
+      api.logger?.warn?.(
+        "[kanbanthing-dispatch] callback skipped: missing workspaceId for kanbanthingTargets routing",
+      );
+      return null;
+    }
+    const selected = targetRouting.byWorkspaceId.get(workspaceId);
+    if (selected) {
+      return {
+        baseUrl: selected.baseUrl,
+        apiKey: selected.apiKey,
+        callbackPath: selected.callbackPath,
+        source: "multi",
+        ...(selected.targetId ? { targetId: selected.targetId } : {}),
+      };
+    }
+    api.logger?.warn?.(
+      `[kanbanthing-dispatch] callback skipped: no explicit kanbanthingTargets match workspace=${workspaceId}`,
+    );
+    return null;
+  }
+
+  api.logger?.warn?.(
+    "[kanbanthing-dispatch] callback skipped: no routing configured (set workspaceMappingFile or kanbanthingTargets)",
+  );
+  return null;
 }
 
 function isAuthorized(req: IncomingMessage, api: PluginApi) {
@@ -361,27 +787,26 @@ function buildReceiptEventId(params: {
 }
 
 async function postCallback(api: PluginApi, payload: Record<string, unknown>) {
-  const cfg = getConfig(api);
-  const baseUrl = normalizeBaseUrl(cfg.kanbanthingBaseUrl);
-  const apiKey = typeof cfg.kanbanthingApiKey === "string" ? cfg.kanbanthingApiKey.trim() : "";
-  if (!baseUrl || !apiKey) {
-    api.logger?.warn?.("[kanbanthing-dispatch] callback skipped: missing kanbanthingBaseUrl/apiKey");
+  const target = resolveCallbackTarget(api, payload);
+  if (!target) {
     return;
   }
 
-  const url = `${baseUrl}${cfg.callbackPath.startsWith("/") ? "" : "/"}${cfg.callbackPath}`;
+  const url = `${target.baseUrl}${target.callbackPath.startsWith("/") ? "" : "/"}${target.callbackPath}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": apiKey,
+      "x-api-key": target.apiKey,
     },
     body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`KanbanThing callback failed (${response.status}): ${text.slice(0, 200)}`);
+    throw new Error(
+      `KanbanThing callback failed (${response.status}): ${text.slice(0, 200)}`,
+    );
   }
 }
 
@@ -392,17 +817,28 @@ function dispatchKeyFromCancel(payload: CancelRequest) {
   if (typeof payload.runId === "string" && payload.runId.trim()) {
     return `run:${payload.runId.trim()}`;
   }
-  const tickets = Array.isArray(payload.ticketIds) ? payload.ticketIds.filter(Boolean).sort() : [];
-  const workspaceId = typeof payload.workspaceId === "string" ? payload.workspaceId : "";
+  const tickets = Array.isArray(payload.ticketIds)
+    ? payload.ticketIds.filter(Boolean).sort()
+    : [];
+  const workspaceId =
+    typeof payload.workspaceId === "string" ? payload.workspaceId : "";
   if (!workspaceId && tickets.length === 0) return null;
   return `fallback:${workspaceId}:${tickets.join(",")}`;
 }
 
-function trackedDispatchKey(tracked: { dispatchId: string; workspaceId: string; ticketIds: string[] }) {
+function trackedDispatchKey(tracked: {
+  dispatchId: string;
+  workspaceId: string;
+  ticketIds: string[];
+}) {
   return `dispatch:${tracked.dispatchId}`;
 }
 
-function trackedFallbackKey(tracked: { dispatchId: string; workspaceId: string; ticketIds: string[] }) {
+function trackedFallbackKey(tracked: {
+  dispatchId: string;
+  workspaceId: string;
+  ticketIds: string[];
+}) {
   return `fallback:${tracked.workspaceId}:${tracked.ticketIds.slice().sort().join(",")}`;
 }
 
@@ -423,7 +859,9 @@ type CancelMode =
   | "best_effort_hard_kill"
   | "deterministic_hard_kill";
 
-function getConfiguredCancelMode(cfg: ReturnType<typeof getConfig>): CancelMode {
+function getConfiguredCancelMode(
+  cfg: ReturnType<typeof getConfig>,
+): CancelMode {
   if (cfg.hardKillMode === "internal_api") return "deterministic_hard_kill";
   if (cfg.hardKillMode === "best_effort") return "best_effort_hard_kill";
   if (cfg.enforceCancellation) return "enforced";
@@ -432,7 +870,7 @@ function getConfiguredCancelMode(cfg: ReturnType<typeof getConfig>): CancelMode 
 
 function getCancelModeFromAttempt(
   cfg: ReturnType<typeof getConfig>,
-  hardKillAttempt: HardKillAttemptSummary | null
+  hardKillAttempt: HardKillAttemptSummary | null,
 ): CancelMode {
   if (!hardKillAttempt) return getConfiguredCancelMode(cfg);
   if (
@@ -444,7 +882,8 @@ function getCancelModeFromAttempt(
   }
   if (
     hardKillAttempt.mode === "best_effort" &&
-    (hardKillAttempt.abortCallsSucceeded > 0 || hardKillAttempt.stopMessagesQueued > 0)
+    (hardKillAttempt.abortCallsSucceeded > 0 ||
+      hardKillAttempt.stopMessagesQueued > 0)
   ) {
     return "best_effort_hard_kill";
   }
@@ -454,9 +893,11 @@ function getCancelModeFromAttempt(
 async function attemptHardKillForDispatch(
   api: PluginApi,
   params: {
-    tracked:
-      | { dispatchId: string; workspaceId: string; ticketIds: string[] }
-      | null;
+    tracked: {
+      dispatchId: string;
+      workspaceId: string;
+      ticketIds: string[];
+    } | null;
     cancelPayload: CancelRequest;
   },
 ): Promise<HardKillAttemptSummary> {
@@ -475,7 +916,9 @@ async function attemptHardKillForDispatch(
 
   const tracked = params.tracked;
   const sessionEntries = tracked
-    ? Array.from(dispatchBySessionKey.entries()).filter(([, value]) => value.dispatchId === tracked.dispatchId)
+    ? Array.from(dispatchBySessionKey.entries()).filter(
+        ([, value]) => value.dispatchId === tracked.dispatchId,
+      )
     : [];
 
   const internalApis = await loadOpenClawInternalApis(api);
@@ -489,7 +932,10 @@ async function attemptHardKillForDispatch(
     internalApiLoaded: Boolean(internalApis),
   };
 
-  if (!internalApis || (!internalApis.abortEmbeddedPiRun && !internalApis.queueEmbeddedPiMessage)) {
+  if (
+    !internalApis ||
+    (!internalApis.abortEmbeddedPiRun && !internalApis.queueEmbeddedPiMessage)
+  ) {
     summary.limitations =
       "OpenClaw internal APIs unavailable in plugin runtime; hard-kill downgraded to cancellation enforcement only.";
     return summary;
@@ -498,7 +944,8 @@ async function attemptHardKillForDispatch(
   for (const [sessionKey] of sessionEntries) {
     const resolvedSessionId = sessionIdBySessionKey.get(sessionKey) ?? null;
     if (resolvedSessionId) {
-      summary.sessionsResolvedToSessionId = (summary.sessionsResolvedToSessionId ?? 0) + 1;
+      summary.sessionsResolvedToSessionId =
+        (summary.sessionsResolvedToSessionId ?? 0) + 1;
     }
     const abortTarget = resolvedSessionId ?? sessionKey;
     const stopTarget = resolvedSessionId ?? sessionKey;
@@ -656,7 +1103,9 @@ async function emitTicketProgress(
     metadata: {
       phase: params.phase,
       toolName: params.toolName,
-      ...(typeof params.durationMs === "number" ? { durationMs: params.durationMs } : {}),
+      ...(typeof params.durationMs === "number"
+        ? { durationMs: params.durationMs }
+        : {}),
       ...(params.error ? { error: params.error } : {}),
       pluginId: "kanbanthing-dispatch-protocol",
     },
@@ -751,7 +1200,8 @@ export default function register(api: PluginApi) {
         supportsCancelResult: true,
         supportsCancellationEnforcement: cfg.enforceCancellation,
         supportsHardKill:
-          cfg.hardKillMode === "best_effort" || cfg.hardKillMode === "internal_api",
+          cfg.hardKillMode === "best_effort" ||
+          cfg.hardKillMode === "internal_api",
         hardKillMode: cfg.hardKillMode,
         supportsHeartbeat: false,
         supportsProgressEvents: cfg.emitProgressEvents,
@@ -764,8 +1214,28 @@ export default function register(api: PluginApi) {
           emitProgressEvents: cfg.emitProgressEvents,
           hasPluginSecret: Boolean(cfg.pluginSecret),
           hasKanbanThingConfig:
-            Boolean(normalizeBaseUrl(cfg.kanbanthingBaseUrl)) &&
-            Boolean(typeof cfg.kanbanthingApiKey === "string" && cfg.kanbanthingApiKey.trim()),
+            Boolean(
+              typeof cfg.workspaceMappingFile === "string" &&
+              cfg.workspaceMappingFile.trim(),
+            ) ||
+            Boolean(
+              Array.isArray(cfg.kanbanthingTargets) &&
+              cfg.kanbanthingTargets.some(
+                (target) =>
+                  Boolean(normalizeBaseUrl(target?.kanbanthingBaseUrl)) &&
+                  Boolean(
+                    typeof target?.kanbanthingApiKey === "string" &&
+                    target.kanbanthingApiKey.trim(),
+                  ),
+              ),
+            ),
+          kanbanthingTargetCount: Array.isArray(cfg.kanbanthingTargets)
+            ? cfg.kanbanthingTargets.length
+            : 0,
+          workspaceMappingFileConfigured: Boolean(
+            typeof cfg.workspaceMappingFile === "string" &&
+            cfg.workspaceMappingFile.trim(),
+          ),
         },
         now: now(),
       });
@@ -788,13 +1258,18 @@ export default function register(api: PluginApi) {
       try {
         payload = await readJsonBody<CancelRequest>(req);
       } catch (error) {
-        writeJson(res, 400, { error: "Invalid JSON body", detail: String(error) });
+        writeJson(res, 400, {
+          error: "Invalid JSON body",
+          detail: String(error),
+        });
         return;
       }
 
       const key = dispatchKeyFromCancel(payload);
       if (!key) {
-        writeJson(res, 400, { error: "dispatchId, runId, or (workspaceId + ticketIds) required" });
+        writeJson(res, 400, {
+          error: "dispatchId, runId, or (workspaceId + ticketIds) required",
+        });
         return;
       }
 
@@ -818,11 +1293,11 @@ export default function register(api: PluginApi) {
         }
         if (typeof payload.dispatchId === "string" && payload.dispatchId) {
           const convMatches = Array.from(dispatchByConversation.values()).find(
-            (v) => v.dispatchId === payload.dispatchId
+            (v) => v.dispatchId === payload.dispatchId,
           );
           if (convMatches) return convMatches;
           const runMatches = Array.from(dispatchByRunId.values()).find(
-            (v) => v.dispatchId === payload.dispatchId
+            (v) => v.dispatchId === payload.dispatchId,
           );
           if (runMatches) return runMatches;
         }
@@ -843,7 +1318,11 @@ export default function register(api: PluginApi) {
         );
       }
 
-      if (payload.workspaceId && Array.isArray(payload.ticketIds) && payload.ticketIds.length > 0) {
+      if (
+        payload.workspaceId &&
+        Array.isArray(payload.ticketIds) &&
+        payload.ticketIds.length > 0
+      ) {
         const eventId = createHash("sha256")
           .update(JSON.stringify({ type: "dispatch.cancel_ack", key, payload }))
           .digest("hex");
@@ -851,13 +1330,17 @@ export default function register(api: PluginApi) {
           workspaceId: payload.workspaceId,
           event: "dispatch.cancel_ack",
           eventId,
-          ...(typeof payload.dispatchId === "string" ? { dispatchId: payload.dispatchId } : {}),
-          ...(typeof payload.runId === "string" ? { runId: payload.runId } : {}),
+          ...(typeof payload.dispatchId === "string"
+            ? { dispatchId: payload.dispatchId }
+            : {}),
+          ...(typeof payload.runId === "string"
+            ? { runId: payload.runId }
+            : {}),
           ticketIds: payload.ticketIds,
           occurredAt: now(),
           message: `OpenClaw plugin accepted cancellation request (${getCancelModeFromAttempt(
             cfg,
-            hardKillAttempt
+            hardKillAttempt,
           ).replace(/_/g, " ")} mode).`,
           metadata: {
             cancelMode: getCancelModeFromAttempt(cfg, hardKillAttempt),
@@ -878,7 +1361,11 @@ export default function register(api: PluginApi) {
   api.on("message_received", async (event, ctx) => {
     const cfg = getConfig(api);
     if (!cfg.emitReceivedCallbacks) return;
-    if (!event || typeof event.content !== "string" || !event.content.includes("kanbanthing_dispatch_v")) {
+    if (
+      !event ||
+      typeof event.content !== "string" ||
+      !event.content.includes("kanbanthing_dispatch_v")
+    ) {
       return;
     }
 
@@ -988,18 +1475,27 @@ export default function register(api: PluginApi) {
   });
 
   api.on("subagent_spawning", async (event) => {
-    const convKey = conversationKey(event?.requester?.channel, event?.requester?.to);
+    const convKey = conversationKey(
+      event?.requester?.channel,
+      event?.requester?.to,
+    );
     if (!convKey) return;
     const tracked = dispatchByConversation.get(convKey);
     if (!tracked) return;
     const cfg = getConfig(api);
 
     if (typeof event?.childSessionKey === "string" && event.childSessionKey) {
-      dispatchBySessionKey.set(event.childSessionKey, { ...tracked, createdAt: now() });
+      dispatchBySessionKey.set(event.childSessionKey, {
+        ...tracked,
+        createdAt: now(),
+      });
       trimOldEntries(dispatchBySessionKey, MAX_SEEN_EVENTS);
     }
 
-    const cancelRequest = findCancelForTrackedDispatch({ tracked, runId: null });
+    const cancelRequest = findCancelForTrackedDispatch({
+      tracked,
+      runId: null,
+    });
     if (!cancelRequest || !cfg.enforceCancellation) {
       return { status: "ok" };
     }
@@ -1020,12 +1516,16 @@ export default function register(api: PluginApi) {
 
     return {
       status: "error",
-      error: "Dispatch was cancelled before subagent spawn; blocked by KanbanThing plugin.",
+      error:
+        "Dispatch was cancelled before subagent spawn; blocked by KanbanThing plugin.",
     };
   });
 
   api.on("subagent_spawned", async (event) => {
-    const convKey = conversationKey(event?.requester?.channel, event?.requester?.to);
+    const convKey = conversationKey(
+      event?.requester?.channel,
+      event?.requester?.to,
+    );
     if (!convKey) return;
     const tracked = dispatchByConversation.get(convKey);
     if (!tracked || typeof event?.runId !== "string" || !event.runId) return;
@@ -1033,7 +1533,10 @@ export default function register(api: PluginApi) {
     dispatchByRunId.set(event.runId, { ...tracked, createdAt: now() });
     trimOldEntries(dispatchByRunId, MAX_SEEN_EVENTS);
     if (typeof event?.childSessionKey === "string" && event.childSessionKey) {
-      dispatchBySessionKey.set(event.childSessionKey, { ...tracked, createdAt: now() });
+      dispatchBySessionKey.set(event.childSessionKey, {
+        ...tracked,
+        createdAt: now(),
+      });
       const existing = dispatchBySessionKey.get(event.childSessionKey);
       if (existing) {
         dispatchBySessionKey.set(event.childSessionKey, {
@@ -1046,7 +1549,13 @@ export default function register(api: PluginApi) {
     }
 
     const eventId = createHash("sha256")
-      .update(JSON.stringify({ type: "dispatch.started", runId: event.runId, dispatchId: tracked.dispatchId }))
+      .update(
+        JSON.stringify({
+          type: "dispatch.started",
+          runId: event.runId,
+          dispatchId: tracked.dispatchId,
+        }),
+      )
       .digest("hex");
     if (lifecycleDedupe.has(eventId)) return;
     lifecycleDedupe.set(eventId, now());
@@ -1090,7 +1599,8 @@ export default function register(api: PluginApi) {
 
   api.on("before_tool_call", async (event, ctx) => {
     const cfg = getConfig(api);
-    const sessionKey = typeof ctx?.sessionKey === "string" ? ctx.sessionKey : null;
+    const sessionKey =
+      typeof ctx?.sessionKey === "string" ? ctx.sessionKey : null;
     if (!sessionKey) return;
     const tracked = dispatchBySessionKey.get(sessionKey);
     if (!tracked) return;
@@ -1098,7 +1608,10 @@ export default function register(api: PluginApi) {
       (typeof event?.toolName === "string" && event.toolName) ||
       (typeof ctx?.toolName === "string" && ctx.toolName) ||
       "unknown";
-    const cancelRequest = findCancelForTrackedDispatch({ tracked, runId: null });
+    const cancelRequest = findCancelForTrackedDispatch({
+      tracked,
+      runId: null,
+    });
     if (cancelRequest) {
       if (cfg.enforceCancellation) {
         try {
@@ -1117,7 +1630,8 @@ export default function register(api: PluginApi) {
 
         return {
           block: true,
-          blockReason: "Blocked by KanbanThing plugin: dispatch cancellation requested.",
+          blockReason:
+            "Blocked by KanbanThing plugin: dispatch cancellation requested.",
         };
       }
       return;
@@ -1141,7 +1655,8 @@ export default function register(api: PluginApi) {
   });
 
   api.on("after_tool_call", async (event, ctx) => {
-    const sessionKey = typeof ctx?.sessionKey === "string" ? ctx.sessionKey : null;
+    const sessionKey =
+      typeof ctx?.sessionKey === "string" ? ctx.sessionKey : null;
     if (!sessionKey) return;
     const tracked = dispatchBySessionKey.get(sessionKey);
     if (!tracked) return;
@@ -1149,7 +1664,10 @@ export default function register(api: PluginApi) {
       (typeof event?.toolName === "string" && event.toolName) ||
       (typeof ctx?.toolName === "string" && ctx.toolName) ||
       "unknown";
-    const cancelRequest = findCancelForTrackedDispatch({ tracked, runId: null });
+    const cancelRequest = findCancelForTrackedDispatch({
+      tracked,
+      runId: null,
+    });
     if (cancelRequest) return;
 
     try {
@@ -1160,7 +1678,8 @@ export default function register(api: PluginApi) {
         phase: "tool_end",
         toolName,
         error: typeof event?.error === "string" ? event.error : null,
-        durationMs: typeof event?.durationMs === "number" ? event.durationMs : null,
+        durationMs:
+          typeof event?.durationMs === "number" ? event.durationMs : null,
       });
       if (typeof event?.error === "string" && event.error.trim()) {
         await emitTicketBlocked(api, {
@@ -1190,7 +1709,14 @@ export default function register(api: PluginApi) {
     const isFailure = outcome === "error" || outcome === "timeout";
     const eventType = isFailure ? "dispatch.failed" : "dispatch.finished";
     const eventId = createHash("sha256")
-      .update(JSON.stringify({ type: eventType, runId, outcome, dispatchId: tracked.dispatchId }))
+      .update(
+        JSON.stringify({
+          type: eventType,
+          runId,
+          outcome,
+          dispatchId: tracked.dispatchId,
+        }),
+      )
       .digest("hex");
     if (lifecycleDedupe.has(eventId)) return;
     lifecycleDedupe.set(eventId, now());
@@ -1212,13 +1738,16 @@ export default function register(api: PluginApi) {
         metadata: {
           outcome,
           reason: typeof event?.reason === "string" ? event.reason : null,
-          targetKind: typeof event?.targetKind === "string" ? event.targetKind : null,
+          targetKind:
+            typeof event?.targetKind === "string" ? event.targetKind : null,
         },
       });
       const cancelRequest = findCancelForTrackedDispatch({ tracked, runId });
       if (cancelRequest) {
-        const outcomeText = typeof event?.outcome === "string" ? event.outcome.toLowerCase() : "";
-        const reasonText = typeof event?.reason === "string" ? event.reason.toLowerCase() : "";
+        const outcomeText =
+          typeof event?.outcome === "string" ? event.outcome.toLowerCase() : "";
+        const reasonText =
+          typeof event?.reason === "string" ? event.reason.toLowerCase() : "";
         const indicatesCancellation =
           outcomeText.includes("cancel") ||
           outcomeText.includes("abort") ||
