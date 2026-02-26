@@ -3,7 +3,7 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import { encryptOpenClawToken } from "../lib/openclaw-crypto";
 import { getOpenClawInstanceUrlValidationError } from "../lib/openclaw-instance-validation";
 
@@ -64,6 +64,13 @@ const verifyOpenClawBearerToken = async (args: { url: string; token: string }) =
   } finally {
     clearTimeout(timeout);
   }
+};
+
+type VerifyOpenClawInstanceResult = {
+  ok: true;
+  capabilities: Record<string, unknown> | null;
+  pluginInstalled: boolean;
+  verificationMode: "plugin" | "basic";
 };
 
 export const create = action({
@@ -139,12 +146,15 @@ export const verify = action({
   args: {
     id: v.id("openclawInstances"),
   },
-  handler: async (ctx, args) => {
-    const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
-    const instance = await ctx.runQuery(internal.openclawInstances.getOwnedEncryptedForDispatch, {
-      id: args.id as Id<"openclawInstances">,
-      userId,
-    });
+  handler: async (ctx, args): Promise<VerifyOpenClawInstanceResult> => {
+    const userId: string = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
+    const instance: Doc<"openclawInstances"> | null = await ctx.runQuery(
+      internal.openclawInstances.getOwnedEncryptedForDispatch,
+      {
+        id: args.id as Id<"openclawInstances">,
+        userId,
+      }
+    );
     if (!instance) {
       throw new Error("OpenClaw instance not found");
     }
@@ -152,7 +162,7 @@ export const verify = action({
     try {
       const { decryptOpenClawToken } = await import("../lib/openclaw-crypto");
       const token = await decryptOpenClawToken(instance.encryptedToken, getEncryptionKey());
-      const isEnhanced = (instance.integrationMode ?? "basic") === "enhanced";
+      const isEnhanced: boolean = (instance.integrationMode ?? "basic") === "enhanced";
       let capabilities: Record<string, unknown> | null = null;
       try {
         capabilities = await verifyOpenClawBearerToken({
