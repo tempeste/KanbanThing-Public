@@ -384,6 +384,26 @@ export default function WorkspaceSettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2 rounded-md border border-border/60 bg-background/40 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="kb-label mb-1">Workspace ID</div>
+                  <code className="text-xs text-muted-foreground break-all">{workspaceId}</code>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyToClipboard(String(workspaceId), "workspace-id")}
+                >
+                  {copiedKeyId === "workspace-id" ? "Copied" : "Copy ID"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Use this when mapping KanbanThing workspaces to local directories in OpenClaw or
+                other integrations.
+              </p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="workspace-prefix">Prefix</Label>
               <Input
