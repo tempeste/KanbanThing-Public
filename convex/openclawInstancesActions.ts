@@ -66,12 +66,48 @@ const verifyOpenClawBearerToken = async (args: { url: string; token: string }) =
   }
 };
 
-type VerifyOpenClawInstanceResult = {
+const getVerificationFailureMessage = (args: {
+  error: unknown;
+  isEnhanced: boolean;
+}) => {
+  const status =
+    typeof (args.error as { status?: unknown })?.status === "number"
+      ? ((args.error as { status?: number }).status ?? null)
+      : null;
+  if (status === 404 && args.isEnhanced) {
+    return "Plugin verification failed: KanbanThing plugin capabilities endpoint was not found (404). Install or update the plugin, then verify again.";
+  }
+  if (status === 404 && !args.isEnhanced) {
+    return "Connection verification failed";
+  }
+  if (args.error instanceof Error) {
+    if (args.error.name === "AbortError") {
+      return args.isEnhanced
+        ? "Plugin verification timed out while contacting OpenClaw"
+        : "Connection verification timed out while contacting OpenClaw";
+    }
+    return args.error.message;
+  }
+  return args.isEnhanced ? "Plugin verification failed" : "Connection verification failed";
+};
+
+type VerifyOpenClawInstanceSuccessResult = {
   ok: true;
   capabilities: Record<string, unknown> | null;
   pluginInstalled: boolean;
   verificationMode: "plugin" | "basic";
 };
+
+type VerifyOpenClawInstanceFailureResult = {
+  ok: false;
+  error: string;
+  pluginInstalled: boolean;
+  verificationMode: "plugin" | "basic";
+};
+
+type VerifyOpenClawInstanceResult =
+  | VerifyOpenClawInstanceSuccessResult
+  | VerifyOpenClawInstanceFailureResult;
 
 export const create = action({
   args: {
@@ -159,10 +195,10 @@ export const verify = action({
       throw new Error("OpenClaw instance not found");
     }
 
+    const isEnhanced: boolean = (instance.integrationMode ?? "basic") === "enhanced";
     try {
       const { decryptOpenClawToken } = await import("../lib/openclaw-crypto");
       const token = await decryptOpenClawToken(instance.encryptedToken, getEncryptionKey());
-      const isEnhanced: boolean = (instance.integrationMode ?? "basic") === "enhanced";
       let capabilities: Record<string, unknown> | null = null;
       try {
         capabilities = await verifyOpenClawBearerToken({
@@ -181,6 +217,7 @@ export const verify = action({
       await ctx.runMutation(internal.openclawInstances.markTokenHealthy, {
         id: args.id as Id<"openclawInstances">,
         userId,
+        mode: isEnhanced ? "enhanced" : "basic",
       });
       return {
         ok: true,
@@ -189,13 +226,19 @@ export const verify = action({
         verificationMode: isEnhanced ? "plugin" : "basic",
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Token verification failed";
+      const message = getVerificationFailureMessage({ error, isEnhanced });
       await ctx.runMutation(internal.openclawInstances.markTokenVerifyFailed, {
         id: args.id as Id<"openclawInstances">,
         userId,
         error: message,
+        mode: isEnhanced ? "enhanced" : "basic",
       });
-      throw new Error(message);
+      return {
+        ok: false,
+        error: message,
+        pluginInstalled: false,
+        verificationMode: isEnhanced ? "plugin" : "basic",
+      };
     }
   },
 });

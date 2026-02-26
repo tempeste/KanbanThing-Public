@@ -268,6 +268,9 @@ function AccountPageContent() {
     setOpenClawIntegrationMode("basic");
   };
 
+  const getVerificationSubject = (mode: "basic" | "enhanced") =>
+    mode === "enhanced" ? "plugin" : "connection";
+
   const copyToClipboard = async (text: string, id: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -315,7 +318,7 @@ function AccountPageContent() {
           openClawToken.trim()
             ? openClawIntegrationMode === "enhanced"
               ? "OpenClaw instance updated. Plugin verification is required before enhanced dispatch."
-              : "OpenClaw instance updated. Basic dispatch is available after updating OpenClaw with the new token (plugin verification optional)."
+              : "OpenClaw instance updated. Basic dispatch is available after updating OpenClaw with the new token (connection verification optional)."
             : "OpenClaw instance updated"
         );
       } else {
@@ -328,7 +331,7 @@ function AccountPageContent() {
         setSuccess(
           openClawIntegrationMode === "enhanced"
             ? "OpenClaw instance created in enhanced mode. Install the KanbanThing OpenClaw plugin and verify plugin capabilities before dispatch."
-            : "OpenClaw instance created in basic mode. Plugin installation is optional."
+            : "OpenClaw instance created in basic mode. Connection verification is optional."
         );
       }
       resetOpenClawForm();
@@ -370,11 +373,23 @@ function AccountPageContent() {
     setError(null);
     setSuccess(null);
     setVerifyingInstanceId(instance._id);
+    const mode = instance.integrationMode ?? "basic";
+    const subject = getVerificationSubject(mode);
     try {
-      await verifyOpenClawInstanceToken({ id: instance._id });
-      setSuccess(`Verified OpenClaw token for "${instance.name}"`);
+      const result = await verifyOpenClawInstanceToken({ id: instance._id });
+      if (result.ok) {
+        setSuccess(
+          result.verificationMode === "plugin"
+            ? `Verified OpenClaw plugin for "${instance.name}"`
+            : `Verified OpenClaw connection for "${instance.name}"`
+        );
+      } else {
+        setError(result.error);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to verify OpenClaw token");
+      setError(
+        err instanceof Error ? err.message : `Failed to verify OpenClaw ${subject}`
+      );
     } finally {
       setVerifyingInstanceId(null);
     }
@@ -397,7 +412,7 @@ function AccountPageContent() {
       setSuccess(
         (instance.integrationMode ?? "basic") === "enhanced"
           ? `Token regenerated for "${instance.name}". Update OpenClaw config, then click Verify Plugin before enhanced dispatching.`
-          : `Token regenerated for "${instance.name}". Update OpenClaw config before dispatching. Plugin verification is optional in basic mode.`
+          : `Token regenerated for "${instance.name}". Update OpenClaw config before dispatching. Connection verification is optional in basic mode.`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to regenerate token");
@@ -417,7 +432,7 @@ function AccountPageContent() {
       setSuccess(
         newMode === "enhanced"
           ? `"${instance.name}" switched to enhanced mode. Plugin verification is required before dispatch.`
-          : `"${instance.name}" switched to basic mode. Plugin verification is now optional.`
+          : `"${instance.name}" switched to basic mode. Connection verification is now optional.`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update integration mode");
@@ -431,25 +446,25 @@ function AccountPageContent() {
     switch (instance.tokenSyncStatus) {
       case "healthy":
         return {
-          label: isEnhanced ? "Plugin Verified" : "Plugin Verified (Optional)",
+          label: isEnhanced ? "Plugin Verified" : "Connection Verified",
           className: "border-done/45 bg-done/10 text-done",
           Icon: ShieldCheck,
         };
       case "token_rotation_pending":
         return {
-          label: isEnhanced ? "Plugin Verify Required" : "Plugin Verify Optional",
+          label: isEnhanced ? "Plugin Verify Required" : "Connection Verify Recommended",
           className: "border-amber-400/40 bg-amber-500/10 text-amber-200",
           Icon: ShieldAlert,
         };
       case "auth_failed":
         return {
-          label: isEnhanced ? "Plugin Verify Failed" : "Plugin Verify Failed (Optional)",
+          label: isEnhanced ? "Plugin Verify Failed" : "Connection Verify Failed",
           className: "border-destructive/45 bg-destructive/10 text-destructive",
           Icon: ShieldAlert,
         };
       default:
         return {
-          label: isEnhanced ? "Plugin Verify Unknown" : "Plugin Not Verified",
+          label: isEnhanced ? "Plugin Verify Unknown" : "Connection Not Verified",
           className: "border-border bg-muted/20 text-muted-foreground",
           Icon: ShieldQuestion,
         };
@@ -667,7 +682,7 @@ function AccountPageContent() {
                             New bearer token (shown once). Update OpenClaw config
                             {isEnhanced
                               ? ", then click Verify Plugin."
-                              : ". Plugin verification is optional in basic mode."}
+                              : ". Connection verification is optional in basic mode."}
                           </p>
                           <code className="block overflow-x-auto bg-black/30 px-2.5 py-1.5 font-mono text-[11px] text-amber-100">
                             {revealedRotatedToken.token}
@@ -720,7 +735,13 @@ function AccountPageContent() {
                           disabled={verifyingInstanceId === instance._id}
                         >
                           <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                          {verifyingInstanceId === instance._id ? "Verifying..." : "Verify"}
+                          {verifyingInstanceId === instance._id
+                            ? (instance.integrationMode ?? "basic") === "enhanced"
+                              ? "Verifying Plugin..."
+                              : "Verifying Connection..."
+                            : (instance.integrationMode ?? "basic") === "enhanced"
+                              ? "Verify Plugin"
+                              : "Verify Connection"}
                         </Button>
                         <Button
                           type="button"

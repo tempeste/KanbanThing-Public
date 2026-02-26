@@ -6,7 +6,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { authComponent, getAuthUserOrNull } from "./auth";
 import { getOpenClawInstanceUrlValidationError } from "../lib/openclaw-instance-validation";
@@ -15,6 +15,108 @@ const encryptedTokenValidator = v.object({
   nonce: v.string(),
   ciphertext: v.string(),
 });
+
+type TokenVerificationStatus = "unknown" | "token_rotation_pending" | "healthy" | "auth_failed";
+type VerificationMode = "basic" | "enhanced";
+
+const getModeScopedVerificationState = (
+  instance: Doc<"openclawInstances">,
+  mode: VerificationMode
+) => {
+  const hasLegacyEnhanced404FailureAfterPriorSuccess =
+    instance.basicTokenSyncStatus === undefined &&
+    instance.tokenSyncStatus === "auth_failed" &&
+    typeof instance.tokenVerifiedAt === "number" &&
+    typeof instance.tokenLastVerifyError === "string" &&
+    instance.tokenLastVerifyError.includes("404");
+
+  if (mode === "enhanced") {
+    if (instance.enhancedTokenSyncStatus !== undefined) {
+      return {
+        tokenSyncStatus: instance.enhancedTokenSyncStatus,
+        tokenVerifiedAt: instance.enhancedTokenVerifiedAt,
+        tokenLastVerifyError: instance.enhancedTokenLastVerifyError,
+      };
+    }
+    return {
+      tokenSyncStatus: instance.enhancedTokenSyncStatus ?? instance.tokenSyncStatus ?? "unknown",
+      tokenVerifiedAt: instance.enhancedTokenVerifiedAt ?? instance.tokenVerifiedAt,
+      tokenLastVerifyError:
+        instance.enhancedTokenLastVerifyError ?? instance.tokenLastVerifyError,
+    };
+  }
+  if (hasLegacyEnhanced404FailureAfterPriorSuccess) {
+    return {
+      tokenSyncStatus: "healthy" as const,
+      tokenVerifiedAt: instance.tokenVerifiedAt,
+      tokenLastVerifyError: undefined,
+    };
+  }
+  if (instance.basicTokenSyncStatus !== undefined) {
+    return {
+      tokenSyncStatus: instance.basicTokenSyncStatus,
+      tokenVerifiedAt: instance.basicTokenVerifiedAt,
+      tokenLastVerifyError: instance.basicTokenLastVerifyError,
+    };
+  }
+  return {
+    tokenSyncStatus: instance.basicTokenSyncStatus ?? instance.tokenSyncStatus ?? "unknown",
+    tokenVerifiedAt: instance.basicTokenVerifiedAt ?? instance.tokenVerifiedAt,
+    tokenLastVerifyError: instance.basicTokenLastVerifyError ?? instance.tokenLastVerifyError,
+  };
+};
+
+const applyScopedVerificationState = (
+  updates: {
+    basicTokenSyncStatus?: TokenVerificationStatus;
+    basicTokenVerifiedAt?: number;
+    basicTokenLastVerifyError?: string;
+    enhancedTokenSyncStatus?: TokenVerificationStatus;
+    enhancedTokenVerifiedAt?: number;
+    enhancedTokenLastVerifyError?: string;
+  },
+  args: {
+    mode: VerificationMode;
+    tokenSyncStatus: TokenVerificationStatus;
+    tokenVerifiedAt?: number;
+    tokenLastVerifyError?: string;
+  }
+) => {
+  if (args.mode === "enhanced") {
+    updates.enhancedTokenSyncStatus = args.tokenSyncStatus;
+    updates.enhancedTokenVerifiedAt = args.tokenVerifiedAt;
+    updates.enhancedTokenLastVerifyError = args.tokenLastVerifyError;
+    return;
+  }
+  updates.basicTokenSyncStatus = args.tokenSyncStatus;
+  updates.basicTokenVerifiedAt = args.tokenVerifiedAt;
+  updates.basicTokenLastVerifyError = args.tokenLastVerifyError;
+};
+
+const invalidateAllVerificationStates = (
+  updates: {
+    tokenSyncStatus?: TokenVerificationStatus;
+    tokenVerifiedAt?: number;
+    tokenLastVerifyError?: string;
+    basicTokenSyncStatus?: TokenVerificationStatus;
+    basicTokenVerifiedAt?: number;
+    basicTokenLastVerifyError?: string;
+    enhancedTokenSyncStatus?: TokenVerificationStatus;
+    enhancedTokenVerifiedAt?: number;
+    enhancedTokenLastVerifyError?: string;
+  },
+  status: TokenVerificationStatus
+) => {
+  updates.tokenSyncStatus = status;
+  updates.tokenVerifiedAt = undefined;
+  updates.tokenLastVerifyError = undefined;
+  updates.basicTokenSyncStatus = status;
+  updates.basicTokenVerifiedAt = undefined;
+  updates.basicTokenLastVerifyError = undefined;
+  updates.enhancedTokenSyncStatus = status;
+  updates.enhancedTokenVerifiedAt = undefined;
+  updates.enhancedTokenLastVerifyError = undefined;
+};
 
 const normalizeName = (name: string) => {
   const trimmed = name.trim();
@@ -99,14 +201,12 @@ export const list = query({
       .collect();
 
     return instances.map((instance) => ({
+      ...getModeScopedVerificationState(instance, instance.integrationMode ?? "basic"),
       _id: instance._id,
       name: instance.name,
       url: instance.url,
       integrationMode: instance.integrationMode ?? "basic",
-      tokenSyncStatus: instance.tokenSyncStatus ?? "unknown",
       tokenRotatedAt: instance.tokenRotatedAt,
-      tokenVerifiedAt: instance.tokenVerifiedAt,
-      tokenLastVerifyError: instance.tokenLastVerifyError,
       createdAt: instance.createdAt,
       updatedAt: instance.updatedAt,
     }));
@@ -149,6 +249,8 @@ export const createEncrypted = internalMutation({
       encryptedToken: args.encryptedToken,
       integrationMode: args.integrationMode ?? "basic",
       tokenSyncStatus: "token_rotation_pending",
+      basicTokenSyncStatus: "token_rotation_pending",
+      enhancedTokenSyncStatus: "token_rotation_pending",
       tokenRotatedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -171,16 +273,23 @@ export const updateEncrypted = internalMutation({
     if (!instance || instance.userId !== args.userId) {
       throw new Error("Instance not found");
     }
+    let shouldInvalidateVerificationState = false;
 
     const updates: {
       name?: string;
       url?: string;
       encryptedToken?: { nonce: string; ciphertext: string };
       integrationMode?: "basic" | "enhanced";
-      tokenSyncStatus?: "unknown" | "token_rotation_pending" | "healthy" | "auth_failed";
+      tokenSyncStatus?: TokenVerificationStatus;
       tokenRotatedAt?: number;
       tokenVerifiedAt?: number;
       tokenLastVerifyError?: string;
+      basicTokenSyncStatus?: TokenVerificationStatus;
+      basicTokenVerifiedAt?: number;
+      basicTokenLastVerifyError?: string;
+      enhancedTokenSyncStatus?: TokenVerificationStatus;
+      enhancedTokenVerifiedAt?: number;
+      enhancedTokenLastVerifyError?: string;
       updatedAt: number;
     } = { updatedAt: Date.now() };
 
@@ -190,15 +299,19 @@ export const updateEncrypted = internalMutation({
     }
     if (args.url !== undefined) {
       updates.url = normalizeUrl(args.url, { allowLocal: args.allowLocal });
+      shouldInvalidateVerificationState ||= updates.url !== instance.url;
     }
     if (args.encryptedToken !== undefined) {
       updates.encryptedToken = args.encryptedToken;
-      updates.tokenSyncStatus = "token_rotation_pending" as const;
+      invalidateAllVerificationStates(updates, "token_rotation_pending");
       updates.tokenRotatedAt = Date.now();
-      updates.tokenLastVerifyError = undefined;
     }
     if (args.integrationMode !== undefined) {
       updates.integrationMode = args.integrationMode;
+    }
+
+    if (shouldInvalidateVerificationState && args.encryptedToken === undefined) {
+      invalidateAllVerificationStates(updates, "unknown");
     }
 
     await ctx.db.patch(args.id, updates);
@@ -220,8 +333,15 @@ export const markTokenRotationPending = internalMutation({
     await ctx.db.patch(args.id, {
       encryptedToken: args.encryptedToken,
       tokenSyncStatus: "token_rotation_pending",
+      basicTokenSyncStatus: "token_rotation_pending",
+      enhancedTokenSyncStatus: "token_rotation_pending",
       tokenRotatedAt: now,
       tokenLastVerifyError: undefined,
+      tokenVerifiedAt: undefined,
+      basicTokenVerifiedAt: undefined,
+      basicTokenLastVerifyError: undefined,
+      enhancedTokenVerifiedAt: undefined,
+      enhancedTokenLastVerifyError: undefined,
       updatedAt: now,
     });
   },
@@ -231,6 +351,7 @@ export const markTokenHealthy = internalMutation({
   args: {
     id: v.id("openclawInstances"),
     userId: v.string(),
+    mode: v.union(v.literal("basic"), v.literal("enhanced")),
   },
   handler: async (ctx, args) => {
     const instance = await ctx.db.get(args.id);
@@ -238,11 +359,31 @@ export const markTokenHealthy = internalMutation({
       throw new Error("Instance not found");
     }
     const now = Date.now();
-    await ctx.db.patch(args.id, {
+    const updates: {
+      tokenSyncStatus: TokenVerificationStatus;
+      tokenVerifiedAt: number;
+      tokenLastVerifyError?: string;
+      basicTokenSyncStatus?: TokenVerificationStatus;
+      basicTokenVerifiedAt?: number;
+      basicTokenLastVerifyError?: string;
+      enhancedTokenSyncStatus?: TokenVerificationStatus;
+      enhancedTokenVerifiedAt?: number;
+      enhancedTokenLastVerifyError?: string;
+      updatedAt: number;
+    } = {
       tokenSyncStatus: "healthy",
       tokenVerifiedAt: now,
       tokenLastVerifyError: undefined,
       updatedAt: now,
+    };
+    applyScopedVerificationState(updates, {
+      mode: args.mode,
+      tokenSyncStatus: "healthy",
+      tokenVerifiedAt: now,
+      tokenLastVerifyError: undefined,
+    });
+    await ctx.db.patch(args.id, {
+      ...updates,
     });
   },
 });
@@ -252,16 +393,37 @@ export const markTokenVerifyFailed = internalMutation({
     id: v.id("openclawInstances"),
     userId: v.string(),
     error: v.string(),
+    mode: v.union(v.literal("basic"), v.literal("enhanced")),
   },
   handler: async (ctx, args) => {
     const instance = await ctx.db.get(args.id);
     if (!instance || instance.userId !== args.userId) {
       throw new Error("Instance not found");
     }
-    await ctx.db.patch(args.id, {
+    const trimmedError = args.error.slice(0, 500);
+    const updates: {
+      tokenSyncStatus: TokenVerificationStatus;
+      tokenLastVerifyError: string;
+      basicTokenSyncStatus?: TokenVerificationStatus;
+      basicTokenVerifiedAt?: number;
+      basicTokenLastVerifyError?: string;
+      enhancedTokenSyncStatus?: TokenVerificationStatus;
+      enhancedTokenVerifiedAt?: number;
+      enhancedTokenLastVerifyError?: string;
+      updatedAt: number;
+    } = {
       tokenSyncStatus: "auth_failed",
-      tokenLastVerifyError: args.error.slice(0, 500),
+      tokenLastVerifyError: trimmedError,
       updatedAt: Date.now(),
+    };
+    applyScopedVerificationState(updates, {
+      mode: args.mode,
+      tokenSyncStatus: "auth_failed",
+      tokenVerifiedAt: undefined,
+      tokenLastVerifyError: trimmedError,
+    });
+    await ctx.db.patch(args.id, {
+      ...updates,
     });
   },
 });

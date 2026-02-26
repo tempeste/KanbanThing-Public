@@ -176,6 +176,26 @@ export default defineSchema({
     tokenRotatedAt: v.optional(v.number()),
     tokenVerifiedAt: v.optional(v.number()),
     tokenLastVerifyError: v.optional(v.string()),
+    basicTokenSyncStatus: v.optional(
+      v.union(
+        v.literal("unknown"),
+        v.literal("token_rotation_pending"),
+        v.literal("healthy"),
+        v.literal("auth_failed")
+      )
+    ),
+    basicTokenVerifiedAt: v.optional(v.number()),
+    basicTokenLastVerifyError: v.optional(v.string()),
+    enhancedTokenSyncStatus: v.optional(
+      v.union(
+        v.literal("unknown"),
+        v.literal("token_rotation_pending"),
+        v.literal("healthy"),
+        v.literal("auth_failed")
+      )
+    ),
+    enhancedTokenVerifiedAt: v.optional(v.number()),
+    enhancedTokenLastVerifyError: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
