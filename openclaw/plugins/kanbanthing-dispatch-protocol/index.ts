@@ -1,8 +1,15 @@
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+  loadWorkspaceMappingSnapshot,
+  resolveRepoCredentials,
+  type RepoCredentialResolution,
+  type WorkspaceMappingEntry,
+  type WorkspaceMappingSnapshot,
+} from "@/lib/kanbanthing-workspace-mapping";
 
 type LoggerLike = {
   info?: (message: string) => void;
@@ -391,204 +398,73 @@ type RoutingMapCache = {
   hasAnyValidTarget: boolean;
 };
 
-type WorkspaceMappingEntry = {
-  alias?: string;
-  workspaceId: string;
-  dir?: string;
-  apiUrl?: string;
-  envFiles?: string[];
-};
-
-type WorkspaceMappingFileCache = {
-  path: string;
-  mtimeMs: number;
-  byWorkspaceId: Map<string, WorkspaceMappingEntry>;
-};
-
 type RepoCredentialCacheEntry = {
   fingerprint: string;
   value: { baseUrl: string; apiKey: string } | null;
 };
 
 let routingMapCache: RoutingMapCache | null = null;
-let workspaceMappingFileCache: WorkspaceMappingFileCache | null = null;
+let workspaceMappingFileCache: WorkspaceMappingSnapshot | null = null;
 const repoCredentialCache = new Map<string, RepoCredentialCacheEntry>();
 
 function trimString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function parseEnvStyleFile(contents: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const rawLine of contents.split(/\r?\n/)) {
-    let line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    if (line.startsWith("export ")) {
-      line = line.slice("export ".length).trim();
-    }
-    const idx = line.indexOf("=");
-    if (idx <= 0) continue;
-    const key = line.slice(0, idx).trim();
-    let value = line.slice(idx + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (key) out[key] = value;
-  }
-  return out;
-}
-
 function parseRepoCredentialsFromDir(
   repoDir: string,
   mappingEntry: WorkspaceMappingEntry,
 ): { baseUrl: string; apiKey: string } | null {
-  const defaultEnvFiles = [".env", ".env.local"];
-  const envFiles =
-    Array.isArray(mappingEntry.envFiles) && mappingEntry.envFiles.length > 0
-      ? mappingEntry.envFiles
-          .filter((f): f is string => typeof f === "string")
-          .map((f) => f.trim())
-          .filter(Boolean)
-      : defaultEnvFiles;
-  const filesToRead = [".kanbanthing", ...envFiles];
-  const mtimes: string[] = [];
-  const merged: Record<string, string> = {};
-
-  for (const rel of filesToRead) {
-    const filePath = path.join(repoDir, rel);
-    if (!existsSync(filePath)) continue;
-    try {
-      const st = statSync(filePath);
-      mtimes.push(`${rel}:${st.mtimeMs}:${st.size}`);
-      const parsed = parseEnvStyleFile(readFileSync(filePath, "utf8"));
-      for (const [key, value] of Object.entries(parsed)) {
-        merged[key] = value;
-      }
-    } catch {
-      mtimes.push(`${rel}:err`);
-    }
-  }
-
   const cacheKey = `${repoDir}::${mappingEntry.workspaceId}`;
-  const fingerprint = mtimes.join("|");
+  const resolution: RepoCredentialResolution = resolveRepoCredentials({
+    repoDir,
+    workspaceId: mappingEntry.workspaceId,
+    apiUrlFallback: mappingEntry.apiUrl,
+    envFiles: mappingEntry.envFiles,
+  });
   const cached = repoCredentialCache.get(cacheKey);
-  if (cached && cached.fingerprint === fingerprint) {
+  if (cached && cached.fingerprint === resolution.fingerprint) {
     return cached.value;
   }
-
-  const apiKey = trimString(merged.KANBANTHING_API_KEY);
-  const rawBase =
-    trimString(merged.KANBANTHING_API_URL) ||
-    trimString(merged.KANBANTHING_BASE_URL) ||
-    trimString(merged.KANBANTHING_URL) ||
-    trimString(mappingEntry.apiUrl);
-  const declaredWorkspaceId = trimString(merged.KANBANTHING_WORKSPACE_ID);
-  if (declaredWorkspaceId && declaredWorkspaceId !== mappingEntry.workspaceId) {
-    const mismatch = null;
-    repoCredentialCache.set(cacheKey, { fingerprint, value: mismatch });
-    trimOldEntries(repoCredentialCache, MAX_SEEN_EVENTS * 4);
-    return mismatch;
-  }
-  const baseUrl = normalizeBaseUrl(rawBase);
-  const resolved = apiKey && baseUrl ? { apiKey, baseUrl } : null;
-
-  repoCredentialCache.set(cacheKey, { fingerprint, value: resolved });
+  const resolved = resolution.ok ? resolution.credentials : null;
+  repoCredentialCache.set(cacheKey, {
+    fingerprint: resolution.fingerprint,
+    value: resolved,
+  });
   trimOldEntries(repoCredentialCache, MAX_SEEN_EVENTS * 4);
   return resolved;
-}
-
-function parseWorkspaceMappingEntries(
-  raw: unknown,
-  mappingFilePath: string,
-): Map<string, WorkspaceMappingEntry> {
-  const result = new Map<string, WorkspaceMappingEntry>();
-  if (!raw || typeof raw !== "object") return result;
-  const workspaces = (raw as Record<string, unknown>).workspaces;
-
-  const addEntry = (entryRaw: unknown, aliasHint?: string) => {
-    if (!entryRaw || typeof entryRaw !== "object") return;
-    const entry = entryRaw as Record<string, unknown>;
-    const workspaceId = trimString(entry.workspaceId);
-    if (!workspaceId) return;
-    const dirRaw = trimString(entry.dir);
-    const dir = dirRaw
-      ? path.isAbsolute(dirRaw)
-        ? dirRaw
-        : path.resolve(path.dirname(mappingFilePath), dirRaw)
-      : "";
-    result.set(workspaceId, {
-      workspaceId,
-      alias: trimString(entry.alias) || aliasHint,
-      dir: dir || undefined,
-      apiUrl: trimString(entry.apiUrl) || undefined,
-      envFiles: Array.isArray(entry.envFiles)
-        ? entry.envFiles.filter((f): f is string => typeof f === "string")
-        : undefined,
-    });
-  };
-
-  if (Array.isArray(workspaces)) {
-    for (const entry of workspaces) addEntry(entry);
-    return result;
-  }
-  if (workspaces && typeof workspaces === "object") {
-    for (const [alias, entry] of Object.entries(
-      workspaces as Record<string, unknown>,
-    )) {
-      addEntry(entry, alias);
-    }
-  }
-  return result;
 }
 
 function getWorkspaceMappingFileCache(
   api: PluginApi,
   mappingFilePath: string,
-): WorkspaceMappingFileCache | null {
+): WorkspaceMappingSnapshot | null {
   const fullPath = path.resolve(mappingFilePath);
-  if (!existsSync(fullPath)) {
-    api.logger?.warn?.(
-      `[kanbanthing-dispatch] workspaceMappingFile not found: ${fullPath}`,
-    );
-    return null;
-  }
-
-  let st;
-  try {
-    st = statSync(fullPath);
-  } catch (error) {
-    api.logger?.warn?.(
-      `[kanbanthing-dispatch] failed to stat workspaceMappingFile ${fullPath}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
-
   if (
     workspaceMappingFileCache &&
     workspaceMappingFileCache.path === fullPath &&
-    workspaceMappingFileCache.mtimeMs === st.mtimeMs
+    existsSync(fullPath)
   ) {
-    return workspaceMappingFileCache;
+    try {
+      const current = loadWorkspaceMappingSnapshot(fullPath);
+      if (current.mtimeMs === workspaceMappingFileCache.mtimeMs) {
+        return workspaceMappingFileCache;
+      }
+      workspaceMappingFileCache = current;
+      return workspaceMappingFileCache;
+    } catch (error) {
+      api.logger?.warn?.(
+        `[kanbanthing-dispatch] ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
-
   try {
-    const parsed = JSON.parse(readFileSync(fullPath, "utf8")) as unknown;
-    workspaceMappingFileCache = {
-      path: fullPath,
-      mtimeMs: st.mtimeMs,
-      byWorkspaceId: parseWorkspaceMappingEntries(parsed, fullPath),
-    };
+    workspaceMappingFileCache = loadWorkspaceMappingSnapshot(fullPath);
     return workspaceMappingFileCache;
   } catch (error) {
     api.logger?.warn?.(
-      `[kanbanthing-dispatch] failed to parse workspaceMappingFile ${fullPath}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[kanbanthing-dispatch] ${error instanceof Error ? error.message : String(error)}`,
     );
     return null;
   }
