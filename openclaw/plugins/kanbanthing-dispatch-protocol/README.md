@@ -27,7 +27,9 @@ Restart OpenClaw after enabling the plugin.
 ## Plugin Files
 
 - `openclaw.plugin.json` — manifest + config schema
+- `package.json` — OpenClaw extension metadata (`openclaw.extensions`) for plugin install/link commands
 - `index.ts` — plugin implementation
+- `kanbanthing-workspace-mapping.ts` — vendored mapping resolver kept inside plugin root for OpenClaw loader path sandbox compatibility
 
 ## Required Config
 
