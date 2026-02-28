@@ -1,4 +1,12 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 export type WorkspaceMappingEntry = {
@@ -73,6 +81,29 @@ export type RepoCredentialResolution =
       code: RepoCredentialErrorCode;
       declaredWorkspaceId?: string;
     };
+
+export type RepoCredentialInspection = {
+  fingerprint: string;
+  apiKeyPresent: boolean;
+  baseUrl: string | null;
+  declaredWorkspaceId?: string;
+};
+
+export type UpsertWorkspaceMappingParams = {
+  mappingFilePath: string;
+  workspaceId: string;
+  repoDir: string;
+  alias?: string;
+  apiUrl?: string;
+  envFiles?: string[];
+  force?: boolean;
+};
+
+export type UpsertWorkspaceMappingResult = {
+  mappingFile: string;
+  alias: string;
+  created: boolean;
+};
 
 function trimString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -223,12 +254,15 @@ export function loadWorkspaceMappingSnapshot(
   };
 }
 
-export function resolveRepoCredentials(params: {
+function loadRepoCredentialInputs(params: {
   repoDir: string;
-  workspaceId: string;
-  apiUrlFallback?: string;
   envFiles?: string[];
-}): RepoCredentialResolution {
+}): {
+  fingerprint: string;
+  apiKey: string;
+  baseUrl: string | null;
+  declaredWorkspaceId?: string;
+} {
   const defaultEnvFiles = [".env", ".env.local"];
   const envFiles =
     Array.isArray(params.envFiles) && params.envFiles.length > 0
@@ -256,23 +290,52 @@ export function resolveRepoCredentials(params: {
     }
   }
 
-  const fingerprint = mtimes.join("|");
-  const apiKey = trimString(merged.KANBANTHING_API_KEY);
+  return {
+    fingerprint: mtimes.join("|"),
+    apiKey: trimString(merged.KANBANTHING_API_KEY),
+    baseUrl: normalizeBaseUrl(
+      trimString(merged.KANBANTHING_API_URL) ||
+        trimString(merged.KANBANTHING_BASE_URL) ||
+        trimString(merged.KANBANTHING_URL),
+    ),
+    declaredWorkspaceId:
+      trimString(merged.KANBANTHING_WORKSPACE_ID) || undefined,
+  };
+}
+
+export function inspectRepoCredentials(params: {
+  repoDir: string;
+  envFiles?: string[];
+  apiUrlFallback?: string;
+}): RepoCredentialInspection {
+  const loaded = loadRepoCredentialInputs(params);
+  const fallback = normalizeBaseUrl(params.apiUrlFallback);
+  return {
+    fingerprint: loaded.fingerprint,
+    apiKeyPresent: Boolean(loaded.apiKey),
+    baseUrl: loaded.baseUrl ?? fallback,
+    declaredWorkspaceId: loaded.declaredWorkspaceId,
+  };
+}
+
+export function resolveRepoCredentials(params: {
+  repoDir: string;
+  workspaceId: string;
+  apiUrlFallback?: string;
+  envFiles?: string[];
+}): RepoCredentialResolution {
+  const loaded = loadRepoCredentialInputs(params);
+  const fingerprint = loaded.fingerprint;
+  const apiKey = loaded.apiKey;
   if (!apiKey) {
     return { ok: false, fingerprint, code: "missing_api_key" };
   }
-
-  const rawBase =
-    trimString(merged.KANBANTHING_API_URL) ||
-    trimString(merged.KANBANTHING_BASE_URL) ||
-    trimString(merged.KANBANTHING_URL) ||
-    trimString(params.apiUrlFallback);
-  const baseUrl = normalizeBaseUrl(rawBase);
+  const baseUrl =
+    loaded.baseUrl ?? normalizeBaseUrl(trimString(params.apiUrlFallback));
   if (!baseUrl) {
     return { ok: false, fingerprint, code: "missing_base_url" };
   }
-
-  const declaredWorkspaceId = trimString(merged.KANBANTHING_WORKSPACE_ID);
+  const declaredWorkspaceId = loaded.declaredWorkspaceId;
   if (declaredWorkspaceId && declaredWorkspaceId !== params.workspaceId) {
     return {
       ok: false,
@@ -439,5 +502,156 @@ export function runWorkspaceMappingDoctor(params: {
     },
     entries,
     issues,
+  };
+}
+
+function normalizeWorkspacesObject(
+  raw: unknown,
+): Record<string, WorkspaceMappingEntry> {
+  if (!raw || typeof raw !== "object") return {};
+  const workspaces = (raw as Record<string, unknown>).workspaces;
+  if (
+    workspaces &&
+    typeof workspaces === "object" &&
+    !Array.isArray(workspaces)
+  ) {
+    const out: Record<string, WorkspaceMappingEntry> = {};
+    for (const [alias, value] of Object.entries(
+      workspaces as Record<string, unknown>,
+    )) {
+      if (!value || typeof value !== "object") continue;
+      const entry = value as Record<string, unknown>;
+      const workspaceId = trimString(entry.workspaceId);
+      if (!workspaceId) continue;
+      const dir = trimString(entry.dir);
+      out[alias] = {
+        workspaceId,
+        ...(dir ? { dir } : {}),
+        ...(trimString(entry.apiUrl)
+          ? { apiUrl: trimString(entry.apiUrl) }
+          : {}),
+        ...(Array.isArray(entry.envFiles)
+          ? {
+              envFiles: entry.envFiles.filter(
+                (f): f is string => typeof f === "string",
+              ),
+            }
+          : {}),
+      };
+    }
+    return out;
+  }
+  if (Array.isArray(workspaces)) {
+    const out: Record<string, WorkspaceMappingEntry> = {};
+    for (const [idx, value] of workspaces.entries()) {
+      if (!value || typeof value !== "object") continue;
+      const entry = value as Record<string, unknown>;
+      const workspaceId = trimString(entry.workspaceId);
+      if (!workspaceId) continue;
+      const alias = trimString(entry.alias) || `entry_${idx + 1}`;
+      const dir = trimString(entry.dir);
+      out[alias] = {
+        workspaceId,
+        ...(dir ? { dir } : {}),
+        ...(trimString(entry.apiUrl)
+          ? { apiUrl: trimString(entry.apiUrl) }
+          : {}),
+        ...(Array.isArray(entry.envFiles)
+          ? {
+              envFiles: entry.envFiles.filter(
+                (f): f is string => typeof f === "string",
+              ),
+            }
+          : {}),
+      };
+    }
+    return out;
+  }
+  return {};
+}
+
+function writeJsonAtomic(filePath: string, value: unknown) {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  try {
+    renameSync(tmpPath, filePath);
+  } catch (error) {
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      // ignore cleanup errors
+    }
+    throw error;
+  }
+}
+
+export function upsertWorkspaceMappingEntry(
+  params: UpsertWorkspaceMappingParams,
+): UpsertWorkspaceMappingResult {
+  const mappingFile = path.resolve(params.mappingFilePath);
+  const alias =
+    trimString(params.alias) ||
+    path.basename(path.resolve(params.repoDir)).trim() ||
+    "workspace";
+  const workspaceId = trimString(params.workspaceId);
+  const repoDir = path.resolve(params.repoDir);
+  if (!workspaceId) {
+    throw new Error("workspaceId is required");
+  }
+  if (!repoDir) {
+    throw new Error("repoDir is required");
+  }
+
+  let raw: unknown = { workspaces: {} };
+  if (existsSync(mappingFile)) {
+    raw = JSON.parse(readFileSync(mappingFile, "utf8")) as unknown;
+  }
+  const workspaces = normalizeWorkspacesObject(raw);
+  const existing = workspaces[alias];
+  const existingAliasByWorkspaceId = Object.entries(workspaces).find(
+    ([a, entry]) => entry.workspaceId === workspaceId && a !== alias,
+  )?.[0];
+
+  if (existing && existing.workspaceId !== workspaceId && !params.force) {
+    throw new Error(
+      `Alias ${alias} already maps to ${existing.workspaceId}; use force to replace`,
+    );
+  }
+  if (existingAliasByWorkspaceId && !params.force) {
+    throw new Error(
+      `Workspace ${workspaceId} already mapped by alias ${existingAliasByWorkspaceId}; use force to replace`,
+    );
+  }
+  if (existingAliasByWorkspaceId && params.force) {
+    delete workspaces[existingAliasByWorkspaceId];
+  }
+
+  workspaces[alias] = {
+    workspaceId,
+    dir: repoDir,
+    ...(trimString(params.apiUrl) ? { apiUrl: trimString(params.apiUrl) } : {}),
+    ...(Array.isArray(params.envFiles)
+      ? {
+          envFiles: params.envFiles.filter(
+            (f): f is string => typeof f === "string",
+          ),
+        }
+      : {}),
+  };
+
+  const sortedAliases = Object.keys(workspaces).sort((a, b) =>
+    a.localeCompare(b),
+  );
+  const sortedWorkspaces: Record<string, WorkspaceMappingEntry> = {};
+  sortedAliases.forEach((key) => {
+    sortedWorkspaces[key] = workspaces[key]!;
+  });
+
+  writeJsonAtomic(mappingFile, { workspaces: sortedWorkspaces });
+  return {
+    mappingFile,
+    alias,
+    created: !existing,
   };
 }

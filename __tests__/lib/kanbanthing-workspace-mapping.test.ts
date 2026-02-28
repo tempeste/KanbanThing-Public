@@ -3,10 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  inspectRepoCredentials,
   loadWorkspaceMappingSnapshot,
   parseEnvStyleFile,
   runWorkspaceMappingDoctor,
   resolveRepoCredentials,
+  upsertWorkspaceMappingEntry,
 } from "@/lib/kanbanthing-workspace-mapping";
 
 const tempDirs: string[] = [];
@@ -149,5 +151,57 @@ describe("kanbanthing workspace mapping shared module", () => {
     expect(codes).toContain("duplicate_workspace_id");
     expect(codes).toContain("not_mapped");
     expect(report.ok).toBe(false);
+  });
+
+  it("upserts mapping entries atomically with conflict checks", () => {
+    const dir = makeTempDir();
+    const mappingFile = path.join(dir, "mapping.json");
+
+    const first = upsertWorkspaceMappingEntry({
+      mappingFilePath: mappingFile,
+      workspaceId: "ws_1",
+      repoDir: path.join(dir, "repo-a"),
+      alias: "openclaw",
+    });
+    expect(first.created).toBe(true);
+
+    expect(() =>
+      upsertWorkspaceMappingEntry({
+        mappingFilePath: mappingFile,
+        workspaceId: "ws_2",
+        repoDir: path.join(dir, "repo-b"),
+        alias: "openclaw",
+      }),
+    ).toThrow(/Alias openclaw already maps to ws_1/);
+
+    const forced = upsertWorkspaceMappingEntry({
+      mappingFilePath: mappingFile,
+      workspaceId: "ws_2",
+      repoDir: path.join(dir, "repo-b"),
+      alias: "openclaw",
+      force: true,
+    });
+    expect(forced.created).toBe(false);
+    const snapshot = loadWorkspaceMappingSnapshot(mappingFile);
+    expect(snapshot.byWorkspaceId.get("ws_2")?.dir).toBe(
+      path.join(dir, "repo-b"),
+    );
+  });
+
+  it("inspects repo credentials without exposing raw api key", () => {
+    const dir = makeTempDir();
+    writeFileSync(
+      path.join(dir, ".kanbanthing"),
+      [
+        "KANBANTHING_WORKSPACE_ID=ws_x",
+        "KANBANTHING_API_KEY=sk_secret",
+        "KANBANTHING_BASE_URL=http://localhost:3000",
+      ].join("\n"),
+      "utf8",
+    );
+    const inspected = inspectRepoCredentials({ repoDir: dir });
+    expect(inspected.apiKeyPresent).toBe(true);
+    expect(inspected.baseUrl).toBe("http://localhost:3000");
+    expect(inspected.declaredWorkspaceId).toBe("ws_x");
   });
 });
