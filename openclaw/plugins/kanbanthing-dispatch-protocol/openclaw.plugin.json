@@ -62,5 +62,73 @@
       }
     },
     "required": []
+  },
+  "uiHints": {
+    "kanbanthingTargets": {
+      "label": "KanbanThing Targets",
+      "help": "Explicit workspace routing table. Use this or workspaceMappingFile."
+    },
+    "kanbanthingTargets.*.id": {
+      "label": "Target ID",
+      "help": "Optional operator label for this target entry.",
+      "placeholder": "local-dev"
+    },
+    "kanbanthingTargets.*.kanbanthingBaseUrl": {
+      "label": "KanbanThing Base URL",
+      "help": "Base URL for this KanbanThing instance.",
+      "placeholder": "https://your-deployment-url"
+    },
+    "kanbanthingTargets.*.kanbanthingApiKey": {
+      "label": "KanbanThing API Key",
+      "help": "Workspace-scoped API key for this target.",
+      "sensitive": true,
+      "placeholder": "sk_..."
+    },
+    "kanbanthingTargets.*.workspaceIds": {
+      "label": "Workspace IDs",
+      "help": "Workspace IDs routed to this target."
+    },
+    "kanbanthingTargets.*.callbackPath": {
+      "label": "Target Callback Path",
+      "help": "Optional per-target callback path override.",
+      "placeholder": "/api/openclaw/dispatch-events"
+    },
+    "workspaceMappingFile": {
+      "label": "Workspace Mapping File",
+      "help": "Recommended mode for per-repo keys. Maps workspaceId to local repo dir.",
+      "placeholder": "~/.openclaw/kanbanthing-workspaces.json"
+    },
+    "callbackPath": {
+      "label": "Callback Path",
+      "help": "Path on KanbanThing that receives plugin lifecycle callbacks.",
+      "placeholder": "/api/openclaw/dispatch-events"
+    },
+    "pluginSecret": {
+      "label": "Plugin Secret",
+      "help": "If set, plugin HTTP routes require x-kanbanthing-plugin-secret.",
+      "sensitive": true
+    },
+    "emitReceivedCallbacks": {
+      "label": "Emit Received Callbacks",
+      "help": "Emit dispatch.received on message intake."
+    },
+    "enforceCancellation": {
+      "label": "Enforce Cancellation",
+      "help": "Block subagent spawn/tool calls when cancellation is active."
+    },
+    "hardKillMode": {
+      "label": "Hard Kill Mode",
+      "help": "Best-effort cancel behavior for active runs.",
+      "advanced": true
+    },
+    "emitProgressEvents": {
+      "label": "Emit Progress Events",
+      "help": "Emit throttled ticket.progress callbacks from tool hooks."
+    },
+    "internalApiPathHint": {
+      "label": "Internal API Path Hint",
+      "help": "Optional absolute path hint to OpenClaw internal dist for hard-kill imports.",
+      "advanced": true
+    }
   }
 }
