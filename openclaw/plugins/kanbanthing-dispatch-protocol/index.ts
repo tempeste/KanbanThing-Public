@@ -9,7 +9,7 @@ import {
   type RepoCredentialResolution,
   type WorkspaceMappingEntry,
   type WorkspaceMappingSnapshot,
-} from "@/lib/kanbanthing-workspace-mapping";
+} from "./kanbanthing-workspace-mapping";
 
 type LoggerLike = {
   info?: (message: string) => void;
