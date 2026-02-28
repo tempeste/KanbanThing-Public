@@ -12,6 +12,7 @@
 ## Same-Session Ticket Lifecycle
 
 When you create tickets and implement fixes in the same session:
+
 - Claim each ticket before starting its fix.
 - Complete each ticket immediately after committing its fix.
 - Do not leave tickets in `unclaimed` after the work is done.
@@ -42,3 +43,45 @@ When you create tickets and implement fixes in the same session:
 - If claim fails, refresh ticket state first (another agent may have claimed it).
 - If claim fails with "backlog" status, promote to unclaimed first.
 - If completion fails due to validation, leave an explicit blocker note and stop.
+
+## Agent Wizard Flow (No UI)
+
+When an agent needs to configure OpenClaw workspace mapping without using Workspace Settings UI:
+
+1. Inspect repo credentials and workspace metadata
+2. Upsert mapping entry (dry-run first, then write)
+3. Run mapping doctor verification
+
+### Helper Script Path (preferred)
+
+```bash
+{baseDir}/scripts/kanbanthing.sh mapping add --auto --dry-run
+{baseDir}/scripts/kanbanthing.sh mapping add --auto
+{baseDir}/scripts/kanbanthing.sh mapping doctor
+```
+
+### Direct API Path (for custom agent flows)
+
+```bash
+# Inspect
+curl -sS -X POST -H "X-API-Key: $KANBANTHING_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"repoPath":"/abs/path/to/repo"}' \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/openclaw/workspace-mapping/inspect" | jq .
+
+# Upsert (dry run)
+curl -sS -X POST -H "X-API-Key: $KANBANTHING_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"repoPath":"/abs/path/to/repo","dryRun":true}' \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/openclaw/workspace-mapping/upsert" | jq .
+
+# Upsert (write)
+curl -sS -X POST -H "X-API-Key: $KANBANTHING_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"repoPath":"/abs/path/to/repo"}' \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/openclaw/workspace-mapping/upsert" | jq .
+
+# Doctor
+curl -sS -H "X-API-Key: $KANBANTHING_API_KEY" \
+  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/openclaw/workspace-mapping/doctor" | jq .
+```
