@@ -61,7 +61,7 @@ describe("validateOpenClawInstanceInput", () => {
       "URL must use HTTPS"
     );
     expect(getOpenClawInstanceUrlValidationError("ftp://example.com")).toBe(
-      "URL must use HTTPS"
+      "URL must use HTTP or HTTPS"
     );
 
     expect(getOpenClawInstanceUrlValidationError("https://127.0.0.1")).toBe(

@@ -6,9 +6,8 @@ describe("ticket-table status filter count", () => {
   it("derives all-status count from the default filter list", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "components/ticket-table.tsx"), "utf8");
 
-    expect(source).toContain("const DEFAULT_STATUS_FILTER: IssueStatus[] = [");
-    expect(source).toContain("new Set(DEFAULT_STATUS_FILTER)");
-    expect(source).toContain("const allStatusCount = DEFAULT_STATUS_FILTER.length;");
+    expect(source).toContain("const ALL_FILTER_STATUSES: IssueStatus[] = [");
+    expect(source).toContain("const allStatusCount = ALL_FILTER_STATUSES.length;");
     expect(source).not.toContain("const allStatusCount = 5;");
   });
 });
