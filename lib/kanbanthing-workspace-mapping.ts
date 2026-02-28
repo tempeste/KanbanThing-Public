@@ -15,6 +15,46 @@ export type WorkspaceMappingSnapshot = {
   byWorkspaceId: Map<string, WorkspaceMappingEntry>;
 };
 
+export type MappingIssueCode =
+  | "not_mapped"
+  | "invalid_mapping_file"
+  | "duplicate_workspace_id"
+  | "missing_repo_dir"
+  | "missing_api_key"
+  | "missing_base_url"
+  | "workspace_id_mismatch"
+  | "unsupported_entry_shape";
+
+export type MappingIssue = {
+  code: MappingIssueCode;
+  severity: "error" | "warning";
+  message: string;
+  alias?: string;
+  workspaceId?: string;
+};
+
+export type MappingDoctorEntry = {
+  alias: string;
+  workspaceId: string;
+  dir?: string;
+  apiUrl?: string;
+  status: "ok" | "error";
+  issues: MappingIssue[];
+};
+
+export type MappingDoctorReport = {
+  ok: boolean;
+  mappingFile: string;
+  summary: {
+    entries: number;
+    okEntries: number;
+    warnings: number;
+    errors: number;
+  };
+  entries: MappingDoctorEntry[];
+  issues: MappingIssue[];
+};
+
 export type RepoCredentialErrorCode =
   | "missing_api_key"
   | "missing_base_url"
@@ -113,6 +153,60 @@ export function parseWorkspaceMappingEntries(
   return result;
 }
 
+type RawMappingEntry = {
+  alias: string;
+  workspaceId?: string;
+  dir?: string;
+  apiUrl?: string;
+  envFiles?: string[];
+  validShape: boolean;
+};
+
+function extractRawEntries(
+  raw: unknown,
+  mappingFilePath: string,
+): RawMappingEntry[] {
+  if (!raw || typeof raw !== "object") return [];
+  const workspaces = (raw as Record<string, unknown>).workspaces;
+  const out: RawMappingEntry[] = [];
+
+  const makeEntry = (aliasHint: string, entryRaw: unknown) => {
+    if (!entryRaw || typeof entryRaw !== "object") {
+      out.push({ alias: aliasHint, validShape: false });
+      return;
+    }
+    const entry = entryRaw as Record<string, unknown>;
+    const workspaceId = trimString(entry.workspaceId) || undefined;
+    const dirRaw = trimString(entry.dir);
+    const dir = dirRaw
+      ? path.isAbsolute(dirRaw)
+        ? dirRaw
+        : path.resolve(path.dirname(mappingFilePath), dirRaw)
+      : undefined;
+    out.push({
+      alias: trimString(entry.alias) || aliasHint || workspaceId || "unknown",
+      workspaceId,
+      dir,
+      apiUrl: trimString(entry.apiUrl) || undefined,
+      envFiles: Array.isArray(entry.envFiles)
+        ? entry.envFiles.filter((f): f is string => typeof f === "string")
+        : undefined,
+      validShape: true,
+    });
+  };
+
+  if (Array.isArray(workspaces)) {
+    workspaces.forEach((entry, idx) => makeEntry(`entry_${idx + 1}`, entry));
+    return out;
+  }
+  if (workspaces && typeof workspaces === "object") {
+    Object.entries(workspaces as Record<string, unknown>).forEach(
+      ([alias, entry]) => makeEntry(alias, entry),
+    );
+  }
+  return out;
+}
+
 export function loadWorkspaceMappingSnapshot(
   mappingFilePath: string,
 ): WorkspaceMappingSnapshot {
@@ -193,5 +287,157 @@ export function resolveRepoCredentials(params: {
     fingerprint,
     declaredWorkspaceId: declaredWorkspaceId || undefined,
     credentials: { apiKey, baseUrl },
+  };
+}
+
+export function runWorkspaceMappingDoctor(params: {
+  mappingFilePath: string;
+  workspaceId?: string;
+}): MappingDoctorReport {
+  const mappingFile = path.resolve(params.mappingFilePath);
+  const issues: MappingIssue[] = [];
+  const entries: MappingDoctorEntry[] = [];
+
+  if (!existsSync(mappingFile)) {
+    issues.push({
+      code: "invalid_mapping_file",
+      severity: "error",
+      message: `Mapping file not found: ${mappingFile}`,
+    });
+    return {
+      ok: false,
+      mappingFile,
+      summary: { entries: 0, okEntries: 0, warnings: 0, errors: 1 },
+      entries,
+      issues,
+    };
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(mappingFile, "utf8")) as unknown;
+  } catch (error) {
+    issues.push({
+      code: "invalid_mapping_file",
+      severity: "error",
+      message: `Invalid mapping JSON: ${error instanceof Error ? error.message : String(error)}`,
+    });
+    return {
+      ok: false,
+      mappingFile,
+      summary: { entries: 0, okEntries: 0, warnings: 0, errors: 1 },
+      entries,
+      issues,
+    };
+  }
+
+  const rawEntries = extractRawEntries(raw, mappingFile);
+  const workspaceCounts = new Map<string, number>();
+  rawEntries.forEach((entry) => {
+    if (entry.workspaceId) {
+      workspaceCounts.set(
+        entry.workspaceId,
+        (workspaceCounts.get(entry.workspaceId) ?? 0) + 1,
+      );
+    }
+  });
+
+  for (const entry of rawEntries) {
+    const entryIssues: MappingIssue[] = [];
+    if (!entry.validShape) {
+      entryIssues.push({
+        code: "unsupported_entry_shape",
+        severity: "error",
+        alias: entry.alias,
+        message: `Unsupported entry shape for alias ${entry.alias}`,
+      });
+    }
+    if (!entry.workspaceId) {
+      entryIssues.push({
+        code: "unsupported_entry_shape",
+        severity: "error",
+        alias: entry.alias,
+        message: `Missing workspaceId for alias ${entry.alias}`,
+      });
+    } else if ((workspaceCounts.get(entry.workspaceId) ?? 0) > 1) {
+      entryIssues.push({
+        code: "duplicate_workspace_id",
+        severity: "error",
+        alias: entry.alias,
+        workspaceId: entry.workspaceId,
+        message: `Workspace ID ${entry.workspaceId} appears multiple times`,
+      });
+    }
+
+    if (!entry.dir || !existsSync(entry.dir)) {
+      entryIssues.push({
+        code: "missing_repo_dir",
+        severity: "error",
+        alias: entry.alias,
+        workspaceId: entry.workspaceId,
+        message: `Mapped repo directory missing for alias ${entry.alias}`,
+      });
+    } else if (entry.workspaceId) {
+      const creds = resolveRepoCredentials({
+        repoDir: entry.dir,
+        workspaceId: entry.workspaceId,
+        apiUrlFallback: entry.apiUrl,
+        envFiles: entry.envFiles,
+      });
+      if (!creds.ok) {
+        const codeMap: Record<RepoCredentialErrorCode, MappingIssueCode> = {
+          missing_api_key: "missing_api_key",
+          missing_base_url: "missing_base_url",
+          workspace_id_mismatch: "workspace_id_mismatch",
+        };
+        entryIssues.push({
+          code: codeMap[creds.code],
+          severity: "error",
+          alias: entry.alias,
+          workspaceId: entry.workspaceId,
+          message: `Credential validation failed: ${creds.code}`,
+        });
+      }
+    }
+
+    entries.push({
+      alias: entry.alias,
+      workspaceId: entry.workspaceId ?? "",
+      dir: entry.dir,
+      apiUrl: entry.apiUrl,
+      status: entryIssues.length === 0 ? "ok" : "error",
+      issues: entryIssues,
+    });
+    issues.push(...entryIssues);
+  }
+
+  if (params.workspaceId) {
+    const matched = entries.find(
+      (entry) => entry.workspaceId === params.workspaceId,
+    );
+    if (!matched) {
+      issues.push({
+        code: "not_mapped",
+        severity: "error",
+        workspaceId: params.workspaceId,
+        message: `Workspace ${params.workspaceId} is not mapped`,
+      });
+    }
+  }
+
+  const errorCount = issues.filter((i) => i.severity === "error").length;
+  const warningCount = issues.filter((i) => i.severity === "warning").length;
+  const okEntries = entries.filter((e) => e.status === "ok").length;
+  return {
+    ok: errorCount === 0,
+    mappingFile,
+    summary: {
+      entries: entries.length,
+      okEntries,
+      warnings: warningCount,
+      errors: errorCount,
+    },
+    entries,
+    issues,
   };
 }

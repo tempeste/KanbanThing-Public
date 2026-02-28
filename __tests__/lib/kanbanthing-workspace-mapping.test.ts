@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   loadWorkspaceMappingSnapshot,
   parseEnvStyleFile,
+  runWorkspaceMappingDoctor,
   resolveRepoCredentials,
 } from "@/lib/kanbanthing-workspace-mapping";
 
@@ -102,5 +103,51 @@ describe("kanbanthing workspace mapping shared module", () => {
       expect(resolved.credentials.apiKey).toBe("sk_repo");
       expect(resolved.credentials.baseUrl).toBe("http://localhost:3000");
     }
+  });
+
+  it("produces doctor issues for duplicate and unmapped workspace", () => {
+    const dir = makeTempDir();
+    const repoA = path.join(dir, "repo-a");
+    const repoB = path.join(dir, "repo-b");
+    mkdirSync(repoA, { recursive: true });
+    mkdirSync(repoB, { recursive: true });
+    writeFileSync(
+      path.join(repoA, ".kanbanthing"),
+      [
+        "KANBANTHING_WORKSPACE_ID=ws_dup",
+        "KANBANTHING_API_KEY=sk_a",
+        "KANBANTHING_BASE_URL=http://localhost:3000",
+      ].join("\n"),
+      "utf8",
+    );
+    writeFileSync(
+      path.join(repoB, ".kanbanthing"),
+      [
+        "KANBANTHING_WORKSPACE_ID=ws_dup",
+        "KANBANTHING_API_KEY=sk_b",
+        "KANBANTHING_BASE_URL=http://localhost:3000",
+      ].join("\n"),
+      "utf8",
+    );
+    const mappingFile = path.join(dir, "mapping.json");
+    writeFileSync(
+      mappingFile,
+      JSON.stringify({
+        workspaces: [
+          { alias: "a", workspaceId: "ws_dup", dir: repoA },
+          { alias: "b", workspaceId: "ws_dup", dir: repoB },
+        ],
+      }),
+      "utf8",
+    );
+
+    const report = runWorkspaceMappingDoctor({
+      mappingFilePath: mappingFile,
+      workspaceId: "ws_missing",
+    });
+    const codes = report.issues.map((i) => i.code);
+    expect(codes).toContain("duplicate_workspace_id");
+    expect(codes).toContain("not_mapped");
+    expect(report.ok).toBe(false);
   });
 });
