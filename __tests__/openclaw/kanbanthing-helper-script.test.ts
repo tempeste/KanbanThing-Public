@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -192,5 +192,37 @@ describe("kanbanthing helper script routing", () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("Use only one of --auto or --repo");
+  });
+
+  it("resolves object-shaped mapping by cwd path without jq indexing errors", () => {
+    const cwd = makeTempDir();
+    const repoDir = path.join(cwd, "repo");
+    const childDir = path.join(repoDir, "nested");
+    mkdirSync(childDir, { recursive: true });
+    write(
+      cwd,
+      "mapping.json",
+      JSON.stringify({
+        workspaces: {
+          local: {
+            workspaceId: "w_local",
+            dir: repoDir,
+          },
+        },
+      }),
+    );
+    write(
+      repoDir,
+      ".env",
+      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n",
+    );
+
+    const result = runHelper(childDir, ["--mapping-file", path.join(cwd, "mapping.json"), "doctor"]);
+
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.routing.mappingUsed).toBe(true);
+    expect(parsed.routing.workspaceId).toBe("w_local");
   });
 });

@@ -215,9 +215,11 @@ resolve_mapping_entry() {
         empty
       end;
     [entries
-      | select((.dir // "") != "")
-      | . + { _dirLen: (.dir | length) }
-      | select($cwd == .dir or ($cwd | startswith(.dir + "/")))]
+      | . as $entry
+      | ($entry.dir // "") as $dir
+      | select($dir != "")
+      | $entry + { _dirLen: ($dir | length) }
+      | select($cwd == $dir or ($cwd | startswith($dir + "/")))]
     | sort_by(._dirLen)
     | last
     | del(._dirLen)
