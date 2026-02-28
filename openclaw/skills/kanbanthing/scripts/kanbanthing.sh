@@ -9,6 +9,10 @@ Usage:
   kanbanthing.sh [--workspace ALIAS | --workspace-id ID] [--mapping-file FILE] <command> [args...]
 
 Commands:
+  kanbanthing.sh mapping add --auto [--alias NAME] [--dry-run] [--force]
+  kanbanthing.sh mapping add --repo /path/to/repo [--alias NAME] [--dry-run] [--force]
+  kanbanthing.sh mapping doctor
+  kanbanthing.sh mapping list
   kanbanthing.sh doctor
   kanbanthing.sh workspace-docs
   kanbanthing.sh tickets-list [--status STATUS] [--fields full|summary] [--limit N] [--parent-id ID|root|null]
@@ -139,7 +143,7 @@ load_env_file_if_present() {
     value="${value%"${value##*[![:space:]]}"}"
 
     case "$key" in
-      KANBANTHING_API_KEY|KANBANTHING_API_URL|KANBANTHING_URL)
+      KANBANTHING_API_KEY|KANBANTHING_API_URL|KANBANTHING_URL|KANBANTHING_BASE_URL|KANBANTHING_WORKSPACE_ID)
         # Strip matching surrounding quotes if present.
         if [[ "$value" =~ ^\".*\"$ ]]; then
           value="${value:1:${#value}-2}"
@@ -271,6 +275,7 @@ apply_mapping_entry "$RESOLVED_MAPPING_ENTRY"
 # Support OpenClaw agents that run in a workspace with credentials in local .env files.
 # Environment variables already exported by the runtime take precedence.
 if [[ "$EXPLICIT_SELECTOR_MODE" != "true" ]] && [[ -z "${KANBANTHING_API_KEY:-}" || -z "${KANBANTHING_API_URL:-${KANBANTHING_URL:-}}" ]]; then
+  load_env_file_if_present ".kanbanthing"
   load_env_file_if_present ".env.local"
   load_env_file_if_present ".env"
 fi
@@ -279,7 +284,7 @@ if [[ -z "${KANBANTHING_API_KEY:-}" ]]; then
   die "KANBANTHING_API_KEY is required"
 fi
 
-raw_base="${KANBANTHING_API_URL:-${KANBANTHING_URL:-}}"
+raw_base="${KANBANTHING_API_URL:-${KANBANTHING_BASE_URL:-${KANBANTHING_URL:-}}}"
 if [[ -z "$raw_base" ]]; then
   die "Set KANBANTHING_API_URL (preferred) or KANBANTHING_URL"
 fi
@@ -522,6 +527,74 @@ case "$cmd" in
     fi
     validated_json="$(printf '%s' "$raw_json" | jq -c 'if type == "object" then . else error("JSON body must be an object") end')"
     http_json PATCH "/api/tickets/${ticket_id}" "$validated_json"
+    ;;
+
+  mapping)
+    subcmd="${1:-}"
+    [[ -n "$subcmd" ]] || die "mapping requires a subcommand (add|doctor|list)"
+    shift || true
+    case "$subcmd" in
+      add)
+        repo_path=""
+        alias=""
+        dry_run="false"
+        force="false"
+        auto="false"
+        while [[ $# -gt 0 ]]; do
+          case "$1" in
+            --auto) auto="true"; shift ;;
+            --repo) repo_path="${2:-}"; [[ -n "$repo_path" ]] || die "--repo requires a value"; shift 2 ;;
+            --alias) alias="${2:-}"; [[ -n "$alias" ]] || die "--alias requires a value"; shift 2 ;;
+            --dry-run) dry_run="true"; shift ;;
+            --force) force="true"; shift ;;
+            *) die "Unknown mapping add arg: $1" ;;
+          esac
+        done
+        if [[ "$auto" == "true" && -n "$repo_path" ]]; then
+          die "Use only one of --auto or --repo"
+        fi
+        if [[ "$auto" == "true" ]]; then
+          repo_path="$(pwd -P)"
+        fi
+        [[ -n "$repo_path" ]] || die "mapping add requires --auto or --repo"
+
+        payload="$(jq -n \
+          --arg repoPath "$repo_path" \
+          --arg workspaceId "$workspace_id" \
+          --arg alias "$alias" \
+          --arg mappingFile "$mapping_file" \
+          --arg dryRun "$dry_run" \
+          --arg force "$force" \
+          '{
+            repoPath: $repoPath,
+            dryRun: ($dryRun == "true"),
+            force: ($force == "true")
+          }
+          + (if $workspaceId != "" then {workspaceId: $workspaceId} else {} end)
+          + (if $alias != "" then {alias: $alias} else {} end)
+          + (if $mappingFile != "" then {mappingFile: $mappingFile} else {} end)')"
+        http_json POST "/api/openclaw/workspace-mapping/upsert" "$payload"
+        ;;
+
+      doctor)
+        query="$(build_query mappingFile "$mapping_file" workspaceId "$workspace_id")"
+        http_json GET "/api/openclaw/workspace-mapping/doctor${query}"
+        ;;
+
+      list)
+        query="$(build_query mappingFile "$mapping_file")"
+        report="$(http_json GET "/api/openclaw/workspace-mapping/doctor${query}")"
+        printf '%s' "$report" | jq '{
+          ok,
+          mappingFile,
+          entries: [.entries[] | {alias, workspaceId, dir, status}]
+        }'
+        ;;
+
+      *)
+        die "Unknown mapping subcommand: ${subcmd}"
+        ;;
+    esac
     ;;
 
   -h|--help|help)

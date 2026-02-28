@@ -2,7 +2,11 @@
 name: kanbanthing
 description: Manage KanbanThing tickets via the KanbanThing REST API from OpenClaw. Curl-first docs with optional helper script for deterministic workspace routing.
 homepage: https://github.com/tempeste/KanbanThing-Public
-metadata: { "openclaw": { "emoji": "🗂️", "requires": { "bins": ["curl", "jq", "bash"] } } }
+metadata:
+  {
+    "openclaw":
+      { "emoji": "🗂️", "requires": { "bins": ["curl", "jq", "bash"] } },
+  }
 ---
 
 # KanbanThing Skill (OpenClaw)
@@ -192,6 +196,7 @@ Use it when you want:
 - consistent error handling/timeouts
 - mapping-based workspace routing (`workspaceId` / alias -> local dir -> `.env`)
 - simpler command surface for repetitive calls
+- mapping wizard helpers (`mapping add`, `mapping doctor`, `mapping list`)
 
 ### Helper script routing modes
 
@@ -213,6 +218,18 @@ Retry behavior:
 ### Helper examples
 
 ```bash
+# Add/update mapping for current repo (wizard-friendly)
+{baseDir}/scripts/kanbanthing.sh mapping add --auto
+
+# Dry-run mapping update without writing
+{baseDir}/scripts/kanbanthing.sh mapping add --auto --dry-run
+
+# Verify mapping health and issue codes
+{baseDir}/scripts/kanbanthing.sh mapping doctor
+
+# List known mapping entries
+{baseDir}/scripts/kanbanthing.sh mapping list
+
 # Inspect resolved routing/env (shows alias/workspaceId/dir if mapping matched)
 {baseDir}/scripts/kanbanthing.sh --workspace-id <workspace-id> doctor
 

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const scriptPath = path.resolve(
   process.cwd(),
-  "openclaw/skills/kanbanthing/scripts/kanbanthing.sh"
+  "openclaw/skills/kanbanthing/scripts/kanbanthing.sh",
 );
 
 const tempDirs: string[] = [];
@@ -27,6 +27,13 @@ const runHelper = (cwd: string, args: string[]) =>
   spawnSync("bash", [scriptPath, ...args], {
     cwd,
     encoding: "utf8",
+    env: {
+      ...process.env,
+      KANBANTHING_WORKSPACES_FILE: path.join(
+        cwd,
+        "kanbanthing-workspaces.test.json",
+      ),
+    },
   });
 
 afterEach(() => {
@@ -46,12 +53,12 @@ describe("kanbanthing helper script routing", () => {
         workspaces: {
           known: { workspaceId: "w_known", dir: "/nonexistent" },
         },
-      })
+      }),
     );
     write(
       cwd,
       ".env",
-      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n"
+      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n",
     );
 
     const result = runHelper(cwd, [
@@ -76,12 +83,12 @@ describe("kanbanthing helper script routing", () => {
         workspaces: {
           target: { workspaceId: "w_target", dir: "/definitely/missing/path" },
         },
-      })
+      }),
     );
     write(
       cwd,
       ".env",
-      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n"
+      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n",
     );
 
     const result = runHelper(cwd, [
@@ -93,7 +100,9 @@ describe("kanbanthing helper script routing", () => {
     ]);
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("Mapped dir does not exist for selected workspace");
+    expect(result.stderr).toContain(
+      "Mapped dir does not exist for selected workspace",
+    );
     expect(result.stdout.trim()).toBe("");
   });
 
@@ -102,7 +111,7 @@ describe("kanbanthing helper script routing", () => {
     write(
       cwd,
       ".env",
-      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n"
+      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n",
     );
 
     const result = runHelper(cwd, ["doctor"]);
@@ -119,7 +128,7 @@ describe("kanbanthing helper script routing", () => {
     write(
       cwd,
       ".env",
-      "  export  KANBANTHING_API_KEY=sk_local\n  export   KANBANTHING_API_URL=http://localhost:9999\n"
+      "  export  KANBANTHING_API_KEY=sk_local\n  export   KANBANTHING_API_URL=http://localhost:9999\n",
     );
 
     const result = runHelper(cwd, ["doctor"]);
@@ -135,7 +144,7 @@ describe("kanbanthing helper script routing", () => {
     write(
       cwd,
       ".env",
-      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n"
+      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n",
     );
 
     const result = runHelper(cwd, [
@@ -149,5 +158,39 @@ describe("kanbanthing helper script routing", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("ticket-status --order must be an integer");
     expect(result.stderr).not.toContain("jq:");
+  });
+
+  it("requires --auto or --repo for mapping add", () => {
+    const cwd = makeTempDir();
+    write(
+      cwd,
+      ".env",
+      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n",
+    );
+
+    const result = runHelper(cwd, ["mapping", "add"]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("mapping add requires --auto or --repo");
+  });
+
+  it("rejects conflicting --auto and --repo for mapping add", () => {
+    const cwd = makeTempDir();
+    write(
+      cwd,
+      ".env",
+      "KANBANTHING_API_KEY=sk_local\nKANBANTHING_API_URL=http://localhost:9999\n",
+    );
+
+    const result = runHelper(cwd, [
+      "mapping",
+      "add",
+      "--auto",
+      "--repo",
+      "/tmp/repo",
+    ]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Use only one of --auto or --repo");
   });
 });
