@@ -9,7 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Markdown } from "@/components/markdown";
 import { ArrowLeft, Hash } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -20,9 +26,11 @@ import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { WorkspaceApiKeysCard } from "@/components/workspace-settings/api-keys-card";
 import { WorkspaceMembersCard } from "@/components/workspace-settings/members-card";
 import { WorkspaceDocsVersionDialog } from "@/components/workspace-settings/docs-version-dialog";
+import { OpenClawMappingWizardCard } from "@/components/workspace-settings/openclaw-mapping-wizard-card";
 
 function generateApiKey(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let key = "sk_";
   for (let i = 0; i < 32; i++) {
     key += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -66,27 +74,27 @@ export default function WorkspaceSettingsPage() {
   const { workspace } = useWorkspaceData();
   const apiKeys = useQuery(
     api.apiKeys.list,
-    canQueryWorkspace ? { workspaceId } : "skip"
+    canQueryWorkspace ? { workspaceId } : "skip",
   );
   const docsVersions = useQuery(
     api.workspaces.listDocsVersions,
-    canQueryWorkspace ? { workspaceId } : "skip"
+    canQueryWorkspace ? { workspaceId } : "skip",
   );
   const members = useQuery(
     api.workspaceMembers.listByWorkspace,
-    canQueryWorkspace ? { workspaceId } : "skip"
+    canQueryWorkspace ? { workspaceId } : "skip",
   );
   const currentMembership = useQuery(
     api.workspaceMembers.getMembership,
-    userId ? { workspaceId, betterAuthUserId: userId } : "skip"
+    userId ? { workspaceId, betterAuthUserId: userId } : "skip",
   );
   const memberUserIds = useMemo(
     () => members?.map((m) => m.betterAuthUserId) ?? [],
-    [members]
+    [members],
   );
   const userProfiles = useQuery(
     api.userProfiles.getByAuthIds,
-    memberUserIds.length > 0 ? { betterAuthUserIds: memberUserIds } : "skip"
+    memberUserIds.length > 0 ? { betterAuthUserIds: memberUserIds } : "skip",
   );
   const profileMap = useMemo(() => {
     const map = new Map<string, NonNullable<typeof userProfiles>[number]>();
@@ -96,7 +104,7 @@ export default function WorkspaceSettingsPage() {
   const formatActorName = (
     actorType: string,
     actorId: string,
-    actorDisplayName?: string | null
+    actorDisplayName?: string | null,
   ) => {
     if (actorType === "user") {
       const profile = profileMap.get(actorId);
@@ -109,7 +117,9 @@ export default function WorkspaceSettingsPage() {
   const createApiKey = useMutation(api.apiKeys.create);
   const deleteApiKey = useMutation(api.apiKeys.remove);
   const updateApiKeyRole = useMutation(api.apiKeys.updateRole);
-  const resetWorkspaceTickets = useMutation(api.workspaces.resetWorkspaceTickets);
+  const resetWorkspaceTickets = useMutation(
+    api.workspaces.resetWorkspaceTickets,
+  );
   const addMembersByEmails = useMutation(api.workspaceMembers.addByEmails);
   const removeMember = useMutation(api.workspaceMembers.remove);
   const updateMemberRole = useMutation(api.workspaceMembers.updateRole);
@@ -123,7 +133,8 @@ export default function WorkspaceSettingsPage() {
   const [newKeyRole, setNewKeyRole] = useState<"agent" | "admin">("agent");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
-  const [updatingApiKeyId, setUpdatingApiKeyId] = useState<Id<"apiKeys"> | null>(null);
+  const [updatingApiKeyId, setUpdatingApiKeyId] =
+    useState<Id<"apiKeys"> | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [memberEmails, setMemberEmails] = useState("");
   const [isAddingMembers, setIsAddingMembers] = useState(false);
@@ -132,12 +143,12 @@ export default function WorkspaceSettingsPage() {
     alreadyMember: string[];
     notFound: string[];
   } | null>(null);
-  const [selectedDocsVersion, setSelectedDocsVersion] = useState<
-    Doc<"workspaceDocsVersions"> | null
-  >(null);
+  const [selectedDocsVersion, setSelectedDocsVersion] =
+    useState<Doc<"workspaceDocsVersions"> | null>(null);
   const [isDocsDialogOpen, setIsDocsDialogOpen] = useState(false);
 
-  const canManageMembers = currentMembership?.role === "owner" || currentMembership?.role === "admin";
+  const canManageMembers =
+    currentMembership?.role === "owner" || currentMembership?.role === "admin";
   const canManageApiKeys =
     currentMembership?.role === "owner" || currentMembership?.role === "admin";
   const requestedProfileIds = useRef(new Set<string>());
@@ -146,7 +157,9 @@ export default function WorkspaceSettingsPage() {
     if (!members || !members.length) return;
     const missing = members
       .map((member) => member.betterAuthUserId)
-      .filter((id) => !profileMap.has(id) && !requestedProfileIds.current.has(id));
+      .filter(
+        (id) => !profileMap.has(id) && !requestedProfileIds.current.has(id),
+      );
 
     if (missing.length === 0) return;
 
@@ -155,9 +168,14 @@ export default function WorkspaceSettingsPage() {
   }, [members, profileMap, syncProfiles]);
 
   const currentDocs = docs ?? workspace?.docs ?? "";
-  const defaultPrefix = workspace ? generateWorkspacePrefix(workspace.name) : "";
+  const defaultPrefix = workspace
+    ? generateWorkspacePrefix(workspace.name)
+    : "";
   const currentPrefix = prefix ?? workspace?.prefix ?? defaultPrefix;
-  const normalizedPrefix = currentPrefix.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
+  const normalizedPrefix = currentPrefix
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "")
+    .slice(0, 4);
   const prefixIsValid = normalizedPrefix.length >= 2;
 
   const handleSaveDocs = async () => {
@@ -193,7 +211,9 @@ export default function WorkspaceSettingsPage() {
   };
 
   const handleResetTickets = async () => {
-    if (!confirm("Delete all issues in this workspace? This cannot be undone.")) {
+    if (
+      !confirm("Delete all issues in this workspace? This cannot be undone.")
+    ) {
       return;
     }
     setIsResetting(true);
@@ -216,7 +236,7 @@ export default function WorkspaceSettingsPage() {
 
   const handleChangeApiKeyRole = async (
     id: Id<"apiKeys">,
-    role: "agent" | "admin"
+    role: "agent" | "admin",
   ) => {
     if (!canManageApiKeys) {
       alert("Only workspace owners and admins can update API key roles.");
@@ -227,7 +247,11 @@ export default function WorkspaceSettingsPage() {
     try {
       await updateApiKeyRole({ id, role });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to update API key role");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to update API key role",
+      );
     } finally {
       setUpdatingApiKeyId(null);
     }
@@ -263,14 +287,23 @@ export default function WorkspaceSettingsPage() {
       try {
         await removeMember({ workspaceId, betterAuthUserId: memberUserId });
       } catch (error) {
-        alert(error instanceof Error ? error.message : "Failed to remove member");
+        alert(
+          error instanceof Error ? error.message : "Failed to remove member",
+        );
       }
     }
   };
 
-  const handleChangeRole = async (memberUserId: string, newRole: "owner" | "admin" | "member") => {
+  const handleChangeRole = async (
+    memberUserId: string,
+    newRole: "owner" | "admin" | "member",
+  ) => {
     try {
-      await updateMemberRole({ workspaceId, betterAuthUserId: memberUserId, role: newRole });
+      await updateMemberRole({
+        workspaceId,
+        betterAuthUserId: memberUserId,
+        role: newRole,
+      });
     } catch (error) {
       alert(error instanceof Error ? error.message : "Failed to change role");
     }
@@ -325,7 +358,11 @@ export default function WorkspaceSettingsPage() {
     );
   }
 
-  if (workspace === undefined || apiKeys === undefined || docsVersions === undefined) {
+  if (
+    workspace === undefined ||
+    apiKeys === undefined ||
+    docsVersions === undefined
+  ) {
     return (
       <div className="flex h-full flex-1 items-center justify-center">
         <div className="kb-label">Loading workspace settings...</div>
@@ -351,7 +388,10 @@ export default function WorkspaceSettingsPage() {
       <header className="kb-header border-b-2 border-primary/45 sticky top-0 z-10">
         <div className="pl-12 pr-4 py-4 md:px-6">
           <div className="flex items-center gap-4">
-            <Link href={`/workspace/${workspaceId}`} className="hidden md:inline-flex">
+            <Link
+              href={`/workspace/${workspaceId}`}
+              className="hidden md:inline-flex"
+            >
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="w-5 h-5" />
               </Button>
@@ -359,10 +399,13 @@ export default function WorkspaceSettingsPage() {
             <div>
               <div className="kb-label">Workspace Administration</div>
               <h1 className="text-2xl font-semibold tracking-[0.04em]">
-                <Link href={`/workspace/${workspaceId}`} className="hover:text-primary transition-colors">
+                <Link
+                  href={`/workspace/${workspaceId}`}
+                  className="hover:text-primary transition-colors"
+                >
                   {workspace.name}
-                </Link>
-                {" "}Settings
+                </Link>{" "}
+                Settings
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Configure prefix, project docs, and API keys
@@ -380,7 +423,8 @@ export default function WorkspaceSettingsPage() {
               Workspace Prefix
             </CardTitle>
             <CardDescription>
-              Used to generate issue identifiers like {normalizedPrefix || "PRJ"}-12.
+              Used to generate issue identifiers like{" "}
+              {normalizedPrefix || "PRJ"}-12.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -388,20 +432,24 @@ export default function WorkspaceSettingsPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="kb-label mb-1">Workspace ID</div>
-                  <code className="text-xs text-muted-foreground break-all">{workspaceId}</code>
+                  <code className="text-xs text-muted-foreground break-all">
+                    {workspaceId}
+                  </code>
                 </div>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => copyToClipboard(String(workspaceId), "workspace-id")}
+                  onClick={() =>
+                    copyToClipboard(String(workspaceId), "workspace-id")
+                  }
                 >
                   {copiedKeyId === "workspace-id" ? "Copied" : "Copy ID"}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Use this when mapping KanbanThing workspaces to local directories in OpenClaw or
-                other integrations.
+                Use this when mapping KanbanThing workspaces to local
+                directories in OpenClaw or other integrations.
               </p>
             </div>
             <div className="space-y-2">
@@ -410,7 +458,9 @@ export default function WorkspaceSettingsPage() {
                 id="workspace-prefix"
                 value={normalizedPrefix}
                 onChange={(event) => {
-                  const value = event.target.value.toUpperCase().replace(/[^A-Z]/g, "");
+                  const value = event.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z]/g, "");
                   setPrefix(value);
                 }}
                 placeholder={defaultPrefix}
@@ -441,12 +491,15 @@ export default function WorkspaceSettingsPage() {
           </CardContent>
         </Card>
 
+        <OpenClawMappingWizardCard workspaceId={String(workspaceId)} />
+
         <Card>
           <CardHeader>
             <CardTitle>Project Docs</CardTitle>
             <CardDescription>
-              Add project context, conventions, and useful links for agents working in this workspace.
-              This is returned by the GET /api/workspace/docs endpoint.
+              Add project context, conventions, and useful links for agents
+              working in this workspace. This is returned by the GET
+              /api/workspace/docs endpoint.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -507,7 +560,7 @@ export default function WorkspaceSettingsPage() {
                         {formatActorName(
                           version.actorType,
                           version.actorId,
-                          version.actorDisplayName
+                          version.actorDisplayName,
                         )}
                       </p>
                     </div>
@@ -571,7 +624,8 @@ export default function WorkspaceSettingsPage() {
               Tags
             </CardTitle>
             <CardDescription>
-              Create custom tags to categorize tickets. Tags are workspace-wide and can be assigned to any ticket.
+              Create custom tags to categorize tickets. Tags are workspace-wide
+              and can be assigned to any ticket.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -583,17 +637,23 @@ export default function WorkspaceSettingsPage() {
           <CardHeader>
             <CardTitle className="text-destructive">Danger Zone</CardTitle>
             <CardDescription>
-              Resetting clears all issues in this workspace. This cannot be undone.
+              Resetting clears all issues in this workspace. This cannot be
+              undone.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between">
             <div>
               <div className="font-medium">Delete all issues</div>
               <p className="text-sm text-muted-foreground">
-                Use this to start fresh while keeping the workspace and API keys.
+                Use this to start fresh while keeping the workspace and API
+                keys.
               </p>
             </div>
-            <Button variant="destructive" onClick={handleResetTickets} disabled={isResetting}>
+            <Button
+              variant="destructive"
+              onClick={handleResetTickets}
+              disabled={isResetting}
+            >
               {isResetting ? "Resetting..." : "Delete issues"}
             </Button>
           </CardContent>
