@@ -4,22 +4,19 @@ import { getAuthUserOrNull } from "./auth";
 
 type AccessCtx = MutationCtx | QueryCtx;
 
-export const requireWorkspaceAccess = async (
+export const hasWorkspaceAccess = async (
   ctx: AccessCtx,
   workspaceId: Id<"workspaces">,
   agentApiKeyId?: Id<"apiKeys">
 ) => {
   if (agentApiKeyId) {
     const apiKey = await ctx.db.get(agentApiKeyId);
-    if (!apiKey || apiKey.workspaceId !== workspaceId) {
-      throw new Error("Unauthorized");
-    }
-    return;
+    return Boolean(apiKey && apiKey.workspaceId === workspaceId);
   }
 
   const authUser = await getAuthUserOrNull(ctx);
   if (!authUser) {
-    throw new Error("Unauthorized");
+    return false;
   }
 
   const membership = await ctx.db
@@ -29,7 +26,16 @@ export const requireWorkspaceAccess = async (
     )
     .first();
 
-  if (!membership) {
+  return Boolean(membership);
+};
+
+export const requireWorkspaceAccess = async (
+  ctx: AccessCtx,
+  workspaceId: Id<"workspaces">,
+  agentApiKeyId?: Id<"apiKeys">
+) => {
+  const allowed = await hasWorkspaceAccess(ctx, workspaceId, agentApiKeyId);
+  if (!allowed) {
     throw new Error("Unauthorized");
   }
 };
