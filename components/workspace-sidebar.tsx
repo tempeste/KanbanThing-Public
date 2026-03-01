@@ -9,7 +9,7 @@ import { useSearchParams } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { deriveVisibleTickets } from "@/lib/ticket-derivations";
-import { Menu, Settings } from "lucide-react";
+import { BookOpen, Menu, Settings } from "lucide-react";
 import {
   Sheet,
   SheetTrigger,
@@ -129,6 +129,14 @@ export function WorkspaceSidebar({ workspaceId }: WorkspaceSidebarProps) {
       </div>
 
       <div className="border-t border-border">
+        <Link
+          href={`/workspace/${workspaceId}/oracles`}
+          onClick={onNavigate}
+          className="flex w-full items-center gap-2 border-b border-border px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground transition hover:bg-accent"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          Oracles
+        </Link>
         <Link
           href={`/workspace/${workspaceId}/settings`}
           onClick={onNavigate}

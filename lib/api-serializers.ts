@@ -53,6 +53,41 @@ export const serializeTicket = (t: Doc<"tickets">) => ({
   updatedAt: t.updatedAt,
 });
 
+type OracleSummary = Pick<
+  Doc<"oracles">,
+  | "_id"
+  | "slug"
+  | "name"
+  | "description"
+  | "createdBy"
+  | "updatedBy"
+  | "updatedAt"
+  | "createdAt"
+>;
+
+export const serializeOracleSummary = (o: OracleSummary) => ({
+  id: o._id,
+  slug: o.slug,
+  name: o.name,
+  description: o.description,
+  createdBy: o.createdBy ?? null,
+  updatedBy: o.updatedBy ?? null,
+  updatedAt: o.updatedAt,
+  createdAt: o.createdAt,
+});
+
+export const serializeOracle = (o: Doc<"oracles">) => ({
+  id: o._id,
+  slug: o.slug,
+  name: o.name,
+  description: o.description,
+  content: o.content,
+  createdBy: o.createdBy ?? null,
+  updatedBy: o.updatedBy ?? null,
+  updatedAt: o.updatedAt,
+  createdAt: o.createdAt,
+});
+
 export const serializeTicketSummary = (t: TicketSummary) => ({
   id: t._id,
   title: t.title,

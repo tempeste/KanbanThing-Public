@@ -20,6 +20,7 @@ import type * as openclawDispatchActions from "../openclawDispatchActions.js";
 import type * as openclawDispatchProtocol from "../openclawDispatchProtocol.js";
 import type * as openclawInstances from "../openclawInstances.js";
 import type * as openclawInstancesActions from "../openclawInstancesActions.js";
+import type * as oracles from "../oracles.js";
 import type * as prefix from "../prefix.js";
 import type * as statusPolicy from "../statusPolicy.js";
 import type * as tags from "../tags.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   openclawDispatchProtocol: typeof openclawDispatchProtocol;
   openclawInstances: typeof openclawInstances;
   openclawInstancesActions: typeof openclawInstancesActions;
+  oracles: typeof oracles;
   prefix: typeof prefix;
   statusPolicy: typeof statusPolicy;
   tags: typeof tags;

@@ -147,6 +147,21 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_workspace", ["workspaceId"]),
 
+  oracles: defineTable({
+    workspaceId: v.id("workspaces"),
+    slug: v.string(),
+    name: v.string(),
+    description: v.string(),
+    content: v.string(),
+    createdBy: v.optional(v.string()),
+    updatedBy: v.optional(v.string()),
+    updatedAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_workspace_slug", ["workspaceId", "slug"])
+    .index("by_workspace_updatedAt", ["workspaceId", "updatedAt"]),
+
   workspaceDocsVersions: defineTable({
     workspaceId: v.id("workspaces"),
     docs: v.string(),

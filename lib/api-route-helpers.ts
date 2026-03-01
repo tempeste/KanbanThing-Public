@@ -70,6 +70,26 @@ export const getTicketSafe = async (
   }
 };
 
+export const getOracleBySlugSafe = async (
+  convex: ConvexHttpClient,
+  workspaceId: Id<"workspaces">,
+  slug: string,
+  agentApiKeyId: Id<"apiKeys">
+): Promise<Doc<"oracles"> | null> => {
+  try {
+    return await convex.query(api.oracles.getBySlug, {
+      workspaceId,
+      slug,
+      agentApiKeyId,
+    });
+  } catch (error) {
+    if (isInvalidConvexIdError(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
 export const getApiKeySafe = async (
   convex: ConvexHttpClient,
   id: string,

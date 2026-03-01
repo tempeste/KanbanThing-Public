@@ -80,6 +80,14 @@ const deleteWorkspaceData = async (
     await ctx.db.delete(version._id);
   }
 
+  const oracles = await ctx.db
+    .query("oracles")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  for (const oracle of oracles) {
+    await ctx.db.delete(oracle._id);
+  }
+
   await ctx.db.delete(workspaceId);
 };
 
