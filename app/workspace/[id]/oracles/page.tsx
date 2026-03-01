@@ -272,7 +272,7 @@ export default function OraclesPage() {
             )}
           </div>
         ) : (
-          <div className="space-y-px p-3 md:p-5">
+          <div className="mx-auto grid max-w-5xl gap-3 p-3 md:grid-cols-2 md:p-5 xl:grid-cols-3">
             {oracles.map((oracle, i) => (
               <Link
                 key={oracle._id}
@@ -280,34 +280,26 @@ export default function OraclesPage() {
                 onMouseEnter={() => prefetch(`/workspace/${workspaceId}/oracles/${oracle.slug}`, [
                   { query: api.oracles.getBySlug, args: { workspaceId, slug: oracle.slug } },
                 ])}
-                className="kb-anim group flex items-start justify-between border border-border bg-card/55 p-4 transition hover:bg-card/80"
+                className="kb-anim group flex flex-col border border-border bg-card/55 p-4 transition hover:border-foreground/35 hover:bg-card/80"
                 style={{ animationDelay: `${i * 40}ms` }}
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] font-bold text-primary">
-                      {oracle.slug}
-                    </span>
-                  </div>
-                  <div className="mt-1 font-sans text-[14px] font-medium text-foreground">
-                    {oracle.name}
-                  </div>
-                  {oracle.description && (
-                    <div className="mt-1 line-clamp-2 text-[12px] text-muted-foreground">
-                      {oracle.description}
-                    </div>
-                  )}
-                </div>
-                <div className="ml-4 shrink-0 text-right">
-                  <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/60">
-                    {timeAgo(oracle.updatedAt)}
-                  </div>
+                <span className="font-mono text-[11px] font-bold text-primary">
+                  {oracle.slug}
+                </span>
+                <span className="mt-1.5 font-sans text-[14px] font-medium leading-snug text-foreground">
+                  {oracle.name}
+                </span>
+                {oracle.description && (
+                  <span className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
+                    {oracle.description}
+                  </span>
+                )}
+                <span className="mt-auto flex items-center gap-2 pt-3 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/50">
+                  <span>{timeAgo(oracle.updatedAt)}</span>
                   {oracle.updatedBy && (
-                    <div className="mt-0.5 font-mono text-[9px] text-muted-foreground/50">
-                      by {oracle.updatedBy}
-                    </div>
+                    <span>by {oracle.updatedBy}</span>
                   )}
-                </div>
+                </span>
               </Link>
             ))}
           </div>
