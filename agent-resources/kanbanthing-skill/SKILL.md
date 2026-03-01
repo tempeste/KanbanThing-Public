@@ -26,9 +26,19 @@ KANBANTHING_URL=$(grep KANBANTHING_BASE_URL .kanbanthing | cut -d= -f2)
 - **Hosted instance:** `https://<your-kanbanthing-host>` — use as-is.
 - **Local dev (`localhost:3000`):** The server typically runs plain HTTP even if the config says `https`. If you get TLS/SSL errors, switch the scheme to `http://`. Try `http://` first for localhost URLs.
 
-### 3. Fallback: env vars
+### 3. Fallback: `.env` / `.env.local` files
 
-If no `.kanbanthing` file exists, use these env vars (or pass inline with curl):
+If no `.kanbanthing` file exists, check the project root for `.env` and `.env.local` files — the `init-kanbanthing.sh` setup script writes credentials there:
+
+```bash
+# Read from .env or .env.local
+KANBANTHING_API_KEY=$(grep KANBANTHING_API_KEY .env .env.local 2>/dev/null | head -1 | cut -d= -f2)
+KANBANTHING_URL=$(grep KANBANTHING_URL .env .env.local 2>/dev/null | grep -v API_KEY | head -1 | cut -d= -f2)
+```
+
+### 4. Fallback: shell env vars
+
+If neither dotfile nor `.env` files contain the credentials, use shell environment variables:
 - `KANBANTHING_API_KEY` — workspace-scoped API key (`sk_...`)
 - `KANBANTHING_URL` — base URL
 
