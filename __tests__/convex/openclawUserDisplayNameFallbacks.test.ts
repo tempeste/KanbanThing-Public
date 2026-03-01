@@ -15,7 +15,7 @@ describe("OpenClaw user display name fallbacks", () => {
 
     expect(dispatchSource).toContain('user.name ?? user.email ?? "Authenticated user"');
     expect(dispatchSource).not.toContain("authUser.name ?? authUser.email ?? String(authUser._id)");
-    // cancelDispatch now resolves real display name via getUserDisplayName query
+    // requestCancelDispatch resolves real display name via getUserDisplayName query
     expect(actionSource).toContain("getUserDisplayName");
     expect(actionSource).not.toContain('userDisplayName: "Authenticated user"');
   });

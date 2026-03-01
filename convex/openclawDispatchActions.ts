@@ -209,65 +209,6 @@ export const executeDispatch = internalAction({
   },
 });
 
-export const cancelDispatch = internalAction({
-  args: {
-    workspaceId: v.id("workspaces"),
-    instanceId: v.id("openclawInstances"),
-    runId: v.string(),
-    ticketIds: v.array(v.id("tickets")),
-  },
-  handler: async (ctx, args) => {
-    const userId = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
-    const userDisplayName = await ctx.runQuery(internal.openclawInstances.getUserDisplayName, { userId });
-    const hasMembership = await ctx.runQuery(internal.workspaceMembers.hasMembershipForUserId, {
-      workspaceId: args.workspaceId,
-      betterAuthUserId: userId,
-    });
-    if (!hasMembership) {
-      throw new Error("Unauthorized");
-    }
-    const instance = await ctx.runQuery(internal.openclawInstances.getOwnedEncryptedForDispatch, {
-      id: args.instanceId,
-      userId,
-    });
-    if (!instance) {
-      throw new Error("OpenClaw instance not found");
-    }
-
-    const token = await decryptOpenClawToken(instance.encryptedToken, getEncryptionKey());
-    const cancellationMessage =
-      `KanbanThing cancellation request for runId ${args.runId}. ` +
-      "Please stop working on tickets for this dispatch if still running.";
-
-    let errorMessage: string | undefined;
-    try {
-      await postToOpenClaw({
-        url: instance.url,
-        token,
-        message: cancellationMessage,
-      });
-    } catch (error) {
-      errorMessage = error instanceof Error ? error.message : "Cancellation request failed";
-    }
-
-    await ctx.runMutation(internal.openclawDispatch.logCancellationAttempt, {
-      workspaceId: args.workspaceId,
-      ticketIds: args.ticketIds,
-      runId: args.runId,
-      instanceName: instance.name,
-      userId,
-      userDisplayName,
-      ...(errorMessage ? { error: errorMessage } : {}),
-    });
-
-    if (errorMessage) {
-      throw new Error(errorMessage);
-    }
-
-    return { success: true };
-  },
-});
-
 export const requestCancelDispatch = action({
   args: {
     workspaceId: v.id("workspaces"),

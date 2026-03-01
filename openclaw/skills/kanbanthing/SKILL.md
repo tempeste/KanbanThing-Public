@@ -60,8 +60,9 @@ Recommended schema (ID for identity, alias for ergonomics):
 Notes:
 
 - `workspaceId` is the stable identifier.
-- `dir` points to the local repo containing the workspace-scoped API key in `.env` / `.env.local`.
-- `envFiles` is optional (defaults to `[".env.local", ".env"]` in the helper script).
+- `dir` points to the local repo containing the workspace-scoped API key.
+- Credential resolution order: `.kanbanthing` (highest priority), then `envFiles` (defaults to `[".env.local", ".env"]`).
+- `envFiles` is optional; the plugin always checks `.kanbanthing` first regardless of this setting.
 
 ## Dispatch Message Metadata (Important)
 

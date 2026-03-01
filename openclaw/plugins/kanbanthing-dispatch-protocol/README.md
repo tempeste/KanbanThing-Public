@@ -215,13 +215,19 @@ Reliable safety still comes from:
 
 ## Capabilities Endpoint
 
-Use this to validate plugin installation and mode:
+Use this to validate plugin installation and mode.
+
+The plugin registers routes relative to its HTTP handler root. The full URL depends on your OpenClaw instance's plugin HTTP prefix (commonly `/plugins/http/` for default installs, but configurable via `--plugin-http-prefix`):
 
 ```bash
+# Default prefix
 curl http://<openclaw-host>/plugins/http/kanbanthing/capabilities
+
+# If your instance uses a custom prefix (check OpenClaw startup logs)
+curl http://<openclaw-host>/<your-prefix>/kanbanthing/capabilities
 ```
 
-Depending on your OpenClaw routing, the base prefix may differ; use the route path returned by OpenClaw plugin HTTP handler setup.
+All plugin HTTP endpoints (`/kanbanthing/capabilities`, `/kanbanthing/dispatch/cancel`, `/kanbanthing/workspace-mapping/*`) share the same prefix.
 
 Key fields:
 

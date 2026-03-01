@@ -62,26 +62,35 @@ When an agent needs to configure OpenClaw workspace mapping without using Worksp
 
 ### Direct API Path (for custom agent flows)
 
+These endpoints live on the **OpenClaw host** (plugin HTTP routes), not on KanbanThing.
+Auth is via OpenClaw bearer token, not KanbanThing API key.
+
 ```bash
 # Inspect
-curl -sS -X POST -H "X-API-Key: $KANBANTHING_API_KEY" \
+curl -sS -X POST \
+  -H "Authorization: Bearer $OPENCLAW_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"repoPath":"/abs/path/to/repo"}' \
-  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/openclaw/workspace-mapping/inspect" | jq .
+  -d '{"repoPath":"/abs/path/to/repo","workspaceId":"ws_..."}' \
+  "${OPENCLAW_URL}/kanbanthing/workspace-mapping/inspect" | jq .
 
 # Upsert (dry run)
-curl -sS -X POST -H "X-API-Key: $KANBANTHING_API_KEY" \
+curl -sS -X POST \
+  -H "Authorization: Bearer $OPENCLAW_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"repoPath":"/abs/path/to/repo","dryRun":true}' \
-  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/openclaw/workspace-mapping/upsert" | jq .
+  "${OPENCLAW_URL}/kanbanthing/workspace-mapping/upsert" | jq .
 
 # Upsert (write)
-curl -sS -X POST -H "X-API-Key: $KANBANTHING_API_KEY" \
+curl -sS -X POST \
+  -H "Authorization: Bearer $OPENCLAW_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"repoPath":"/abs/path/to/repo"}' \
-  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/openclaw/workspace-mapping/upsert" | jq .
+  "${OPENCLAW_URL}/kanbanthing/workspace-mapping/upsert" | jq .
 
 # Doctor
-curl -sS -H "X-API-Key: $KANBANTHING_API_KEY" \
-  "${KANBANTHING_API_URL:-$KANBANTHING_URL}/api/openclaw/workspace-mapping/doctor" | jq .
+curl -sS \
+  -H "Authorization: Bearer $OPENCLAW_TOKEN" \
+  "${OPENCLAW_URL}/kanbanthing/workspace-mapping/doctor" | jq .
 ```
+
+Note: The KanbanThing UI accesses these indirectly via Convex action proxies (Workspace Settings > OpenClaw Repo Mapping Wizard). Agents should prefer the helper script's `mapping` subcommands.
