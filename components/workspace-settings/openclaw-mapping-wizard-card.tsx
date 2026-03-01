@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -275,7 +276,18 @@ export function OpenClawMappingWizardCard({
 
         {inspectResult ? (
           <div className="space-y-2">
-            <Label>Inspect Result</Label>
+            <div className="flex items-center justify-between">
+              <Label>Inspect Result</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setInspectResult(null)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
             <Textarea
               readOnly
               className="min-h-[130px] font-mono text-xs"
@@ -286,7 +298,18 @@ export function OpenClawMappingWizardCard({
 
         {doctorResult ? (
           <div className="space-y-2">
-            <Label>Verify Result</Label>
+            <div className="flex items-center justify-between">
+              <Label>Verify Result</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setDoctorResult(null)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
             <Textarea
               readOnly
               className="min-h-[160px] font-mono text-xs"
