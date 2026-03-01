@@ -506,6 +506,7 @@ export function TicketTable({
       prefetchedTicketIdsRef.current.add(ticketId);
       router.prefetch(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
       const ttl = 30_000;
+      console.log("[prewarm] list hover →", ticketId);
       convex.prewarmQuery({ query: api.tickets.getHierarchy, args: { id: ticketId }, extendSubscriptionFor: ttl });
       convex.prewarmQuery({ query: api.ticketComments.listByTicket, args: { ticketId }, extendSubscriptionFor: ttl });
       convex.prewarmQuery({ query: api.ticketActivities.listByTicket, args: { ticketId }, extendSubscriptionFor: ttl });
