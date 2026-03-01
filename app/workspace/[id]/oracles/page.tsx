@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { usePrefetch } from "@/lib/use-prefetch";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -47,6 +48,7 @@ export default function OraclesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const prefetch = usePrefetch();
 
   if (isSessionPending) {
     return (
@@ -275,6 +277,7 @@ export default function OraclesPage() {
               <Link
                 key={oracle._id}
                 href={`/workspace/${workspaceId}/oracles/${oracle.slug}`}
+                onMouseEnter={() => prefetch(`/workspace/${workspaceId}/oracles/${oracle.slug}`)}
                 className="kb-anim group flex items-start justify-between border border-border bg-card/55 p-4 transition hover:bg-card/80"
                 style={{ animationDelay: `${i * 40}ms` }}
               >

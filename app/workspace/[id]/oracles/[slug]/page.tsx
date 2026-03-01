@@ -42,6 +42,11 @@ export default function OracleDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const oraclesListHref = `/workspace/${workspaceId}/oracles`;
+  useEffect(() => {
+    router.prefetch(oraclesListHref);
+  }, [oraclesListHref, router]);
+
   useEffect(() => {
     if (oracle && !isEditing) {
       setEditName(oracle.name);
