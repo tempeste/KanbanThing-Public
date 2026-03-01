@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -181,7 +181,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
   });
 
   it("serves mapping inspect for repo credentials", async () => {
-    const tempRoot = mkdtempSync(path.join(tmpdir(), "kt-plugin-inspect-"));
+    const tempRoot = realpathSync(mkdtempSync(path.join(tmpdir(), "kt-plugin-inspect-")));
     const repoDir = path.join(tempRoot, "repo");
     mkdirSync(repoDir, { recursive: true });
     writeFileSync(

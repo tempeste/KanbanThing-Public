@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -12,7 +12,7 @@ const scriptPath = path.resolve(
 const tempDirs: string[] = [];
 
 const makeTempDir = () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "kanbanthing-helper-test-"));
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "kanbanthing-helper-test-")));
   tempDirs.push(dir);
   return dir;
 };
