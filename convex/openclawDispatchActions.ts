@@ -131,6 +131,7 @@ export const executeDispatch = internalAction({
     workspaceId: v.id("workspaces"),
     workspaceName: v.string(),
     workspaceDocs: v.optional(v.string()),
+    callbackBaseUrl: v.optional(v.string()),
     instanceId: v.id("openclawInstances"),
     instanceName: v.string(),
     userId: v.string(),
@@ -168,6 +169,7 @@ export const executeDispatch = internalAction({
       const message = buildOpenClawDispatchMessage({
         workspaceName: args.workspaceName,
         workspaceId: args.workspaceId,
+        ...(args.callbackBaseUrl ? { callbackBaseUrl: args.callbackBaseUrl } : {}),
         tickets: args.snapshots.map((snapshot) => ({
           _id: snapshot.ticketId,
           title: snapshot.title,

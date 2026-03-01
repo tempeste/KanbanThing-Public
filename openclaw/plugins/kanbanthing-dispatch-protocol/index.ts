@@ -163,7 +163,17 @@ type DispatchMetadata = {
   workspaceId: string;
   workspaceName?: string;
   ticketCount?: number;
+  callbackBaseUrl?: string;
   tickets?: Array<{ id?: string; number?: number; title?: string }>;
+};
+
+type TrackedDispatch = {
+  workspaceId: string;
+  ticketIds: string[];
+  dispatchId: string;
+  createdAt: number;
+  runId?: string;
+  callbackBaseUrl?: string;
 };
 
 type PluginConfig = {
@@ -224,32 +234,13 @@ const cancelRegistry = new Map<
 >();
 const dispatchByConversation = new Map<
   string,
-  {
-    workspaceId: string;
-    ticketIds: string[];
-    dispatchId: string;
-    createdAt: number;
-  }
+  TrackedDispatch
 >();
 const dispatchByRunId = new Map<
   string,
-  {
-    workspaceId: string;
-    ticketIds: string[];
-    dispatchId: string;
-    createdAt: number;
-  }
+  TrackedDispatch
 >();
-const dispatchBySessionKey = new Map<
-  string,
-  {
-    workspaceId: string;
-    ticketIds: string[];
-    dispatchId: string;
-    runId?: string;
-    createdAt: number;
-  }
->();
+const dispatchBySessionKey = new Map<string, TrackedDispatch>();
 const cancelResultDedupe = new Map<string, number>();
 const progressThrottle = new Map<string, number>();
 const sessionIdBySessionKey = new Map<string, string>();
@@ -567,6 +558,20 @@ function getRoutingMapCache(api: PluginApi): RoutingMapCache {
   return routingMapCache;
 }
 
+function getPayloadCallbackBaseUrl(payload: Record<string, unknown>) {
+  if (typeof payload.callbackBaseUrl === "string") {
+    return normalizeBaseUrl(payload.callbackBaseUrl);
+  }
+  const metadata =
+    payload.metadata && typeof payload.metadata === "object"
+      ? (payload.metadata as Record<string, unknown>)
+      : null;
+  if (metadata && typeof metadata.callbackBaseUrl === "string") {
+    return normalizeBaseUrl(metadata.callbackBaseUrl);
+  }
+  return null;
+}
+
 function resolveCallbackTarget(
   api: PluginApi,
   payload: Record<string, unknown>,
@@ -574,6 +579,7 @@ function resolveCallbackTarget(
   const cfg = getConfig(api);
   const workspaceId =
     typeof payload.workspaceId === "string" ? payload.workspaceId.trim() : "";
+  const dispatchCallbackBaseUrl = getPayloadCallbackBaseUrl(payload);
   const mappingFile = trimString(cfg.workspaceMappingFile);
 
   if (mappingFile) {
@@ -605,8 +611,9 @@ function resolveCallbackTarget(
       );
       return null;
     }
+    const baseUrl = dispatchCallbackBaseUrl ?? creds.baseUrl;
     return {
-      baseUrl: creds.baseUrl,
+      baseUrl,
       apiKey: creds.apiKey,
       callbackPath: cfg.callbackPath,
       source: "mapping_file",
@@ -627,8 +634,9 @@ function resolveCallbackTarget(
     }
     const selected = targetRouting.byWorkspaceId.get(workspaceId);
     if (selected) {
+      const baseUrl = dispatchCallbackBaseUrl ?? selected.baseUrl;
       return {
-        baseUrl: selected.baseUrl,
+        baseUrl,
         apiKey: selected.apiKey,
         callbackPath: selected.callbackPath,
         source: "multi",
@@ -854,19 +862,11 @@ function dispatchKeyFromCancel(payload: CancelRequest) {
   return `fallback:${workspaceId}:${tickets.join(",")}`;
 }
 
-function trackedDispatchKey(tracked: {
-  dispatchId: string;
-  workspaceId: string;
-  ticketIds: string[];
-}) {
+function trackedDispatchKey(tracked: TrackedDispatch) {
   return `dispatch:${tracked.dispatchId}`;
 }
 
-function trackedFallbackKey(tracked: {
-  dispatchId: string;
-  workspaceId: string;
-  ticketIds: string[];
-}) {
+function trackedFallbackKey(tracked: TrackedDispatch) {
   return `fallback:${tracked.workspaceId}:${tracked.ticketIds.slice().sort().join(",")}`;
 }
 
@@ -921,11 +921,7 @@ function getCancelModeFromAttempt(
 async function attemptHardKillForDispatch(
   api: PluginApi,
   params: {
-    tracked: {
-      dispatchId: string;
-      workspaceId: string;
-      ticketIds: string[];
-    } | null;
+    tracked: TrackedDispatch | null;
     cancelPayload: CancelRequest;
   },
 ): Promise<HardKillAttemptSummary> {
@@ -1015,7 +1011,7 @@ async function attemptHardKillForDispatch(
 }
 
 function findCancelForTrackedDispatch(params: {
-  tracked: { dispatchId: string; workspaceId: string; ticketIds: string[] };
+  tracked: TrackedDispatch;
   runId?: string | null;
 }) {
   if (params.runId) {
@@ -1032,7 +1028,7 @@ function findCancelForTrackedDispatch(params: {
 async function emitCancelResult(
   api: PluginApi,
   params: {
-    tracked: { dispatchId: string; workspaceId: string; ticketIds: string[] };
+    tracked: TrackedDispatch;
     runId?: string | null;
     result: "cancelled" | "too_late_to_cancel";
     reason?: string | null;
@@ -1052,6 +1048,9 @@ async function emitCancelResult(
 
   await postCallback(api, {
     workspaceId: params.tracked.workspaceId,
+    ...(params.tracked.callbackBaseUrl
+      ? { callbackBaseUrl: params.tracked.callbackBaseUrl }
+      : {}),
     event: "dispatch.cancel_result",
     eventId,
     dispatchId: params.tracked.dispatchId,
@@ -1074,7 +1073,7 @@ async function emitCancelResult(
 async function emitTicketProgress(
   api: PluginApi,
   params: {
-    tracked: { dispatchId: string; workspaceId: string; ticketIds: string[] };
+    tracked: TrackedDispatch;
     runId?: string | null;
     sessionKey?: string | null;
     phase: "tool_start" | "tool_end";
@@ -1116,6 +1115,9 @@ async function emitTicketProgress(
 
   await postCallback(api, {
     workspaceId: params.tracked.workspaceId,
+    ...(params.tracked.callbackBaseUrl
+      ? { callbackBaseUrl: params.tracked.callbackBaseUrl }
+      : {}),
     event: "ticket.progress",
     eventId,
     dispatchId: params.tracked.dispatchId,
@@ -1143,7 +1145,7 @@ async function emitTicketProgress(
 async function emitTicketBlocked(
   api: PluginApi,
   params: {
-    tracked: { dispatchId: string; workspaceId: string; ticketIds: string[] };
+    tracked: TrackedDispatch;
     runId?: string | null;
     sessionKey?: string | null;
     toolName: string;
@@ -1180,6 +1182,9 @@ async function emitTicketBlocked(
 
   await postCallback(api, {
     workspaceId: params.tracked.workspaceId,
+    ...(params.tracked.callbackBaseUrl
+      ? { callbackBaseUrl: params.tracked.callbackBaseUrl }
+      : {}),
     event: "ticket.blocked",
     eventId,
     dispatchId: params.tracked.dispatchId,
@@ -1359,6 +1364,9 @@ export default function register(api: PluginApi) {
           .digest("hex");
         postCallback(api, {
           workspaceId: payload.workspaceId,
+          ...(trackedForCancel?.callbackBaseUrl
+            ? { callbackBaseUrl: trackedForCancel.callbackBaseUrl }
+            : {}),
           event: "dispatch.cancel_ack",
           eventId,
           ...(typeof payload.dispatchId === "string"
@@ -1690,12 +1698,14 @@ export default function register(api: PluginApi) {
     trimOldEntries(receiptDedupe, MAX_SEEN_EVENTS);
 
     const derivedDispatchId = `derived:${eventId.slice(0, 16)}`;
+    const callbackBaseUrl = normalizeBaseUrl(metadata.callbackBaseUrl);
     const convKey = conversationKey(ctx?.channelId, ctx?.conversationId);
     if (convKey) {
       dispatchByConversation.set(convKey, {
         workspaceId: metadata.workspaceId,
         ticketIds,
         dispatchId: derivedDispatchId,
+        ...(callbackBaseUrl ? { callbackBaseUrl } : {}),
         createdAt: now(),
       });
       trimOldEntries(dispatchByConversation, MAX_SEEN_EVENTS);
@@ -1704,6 +1714,7 @@ export default function register(api: PluginApi) {
     try {
       await postCallback(api, {
         workspaceId: metadata.workspaceId,
+        ...(callbackBaseUrl ? { callbackBaseUrl } : {}),
         event: "dispatch.received",
         eventId,
         dispatchId: derivedDispatchId,
@@ -1863,6 +1874,9 @@ export default function register(api: PluginApi) {
     try {
       await postCallback(api, {
         workspaceId: tracked.workspaceId,
+        ...(tracked.callbackBaseUrl
+          ? { callbackBaseUrl: tracked.callbackBaseUrl }
+          : {}),
         event: "dispatch.started",
         eventId,
         dispatchId: tracked.dispatchId,
@@ -2024,6 +2038,9 @@ export default function register(api: PluginApi) {
     try {
       await postCallback(api, {
         workspaceId: tracked.workspaceId,
+        ...(tracked.callbackBaseUrl
+          ? { callbackBaseUrl: tracked.callbackBaseUrl }
+          : {}),
         event: eventType,
         eventId,
         dispatchId: tracked.dispatchId,

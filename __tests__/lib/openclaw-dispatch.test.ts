@@ -6,6 +6,7 @@ describe("buildOpenClawDispatchMessage", () => {
     const message = buildOpenClawDispatchMessage({
       workspaceName: "KanbanThing",
       workspaceId: "w_123",
+      callbackBaseUrl: "https://your-deployment-url",
       workspaceDocs:
         "Team rules: write tests first. Use small commits. Keep API responses backward compatible.",
       tickets: [
@@ -29,6 +30,9 @@ describe("buildOpenClawDispatchMessage", () => {
     expect(message).toContain('"ticketCount": 2');
     expect(message).toContain('"metadataTicketCount": 2');
     expect(message).toContain('"metadataTruncated": false');
+    expect(message).toContain(
+      '"callbackBaseUrl": "https://your-deployment-url"',
+    );
     expect(message).toContain('"id": "t_1"');
     expect(message).toContain("Workspace docs (truncated):");
     expect(message).toContain("Team rules: write tests first.");

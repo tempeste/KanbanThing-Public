@@ -17,8 +17,10 @@ export const buildOpenClawDispatchMessage = (args: {
   workspaceName: string;
   workspaceId: string;
   workspaceDocs?: string;
+  callbackBaseUrl?: string;
   tickets: TicketLine[];
 }) => {
+  const callbackBaseUrl = args.callbackBaseUrl?.trim();
   const metadataTickets = args.tickets
     .slice(0, MAX_METADATA_TICKETS)
     .map((ticket) => ({
@@ -34,6 +36,7 @@ export const buildOpenClawDispatchMessage = (args: {
     metadataTicketCount: metadataTickets.length,
     metadataTruncated: args.tickets.length > metadataTickets.length,
     tickets: metadataTickets,
+    ...(callbackBaseUrl ? { callbackBaseUrl } : {}),
   };
   const dispatchMetadataBlock =
     "Dispatch metadata (machine-readable):\n```json\n" +

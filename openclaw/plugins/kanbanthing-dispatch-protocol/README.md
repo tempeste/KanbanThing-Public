@@ -113,6 +113,7 @@ Mapping-file example (workspace -> repo dir -> `.kanbanthing` / `.env.local` / `
   - Defaults to `/api/openclaw/dispatch-events`
   - Applies to all targets unless overridden per `kanbanthingTargets[]` entry
   - Also used for `workspaceMappingFile` mode
+  - `callbackBaseUrl` from dispatch metadata (when present) overrides the configured target base URL for that dispatch lifecycle
 - `pluginSecret` (`string`, optional)
   - If set, plugin HTTP routes require `x-kanbanthing-plugin-secret`
 - `emitReceivedCallbacks` (`boolean`, optional, default `true`)
@@ -168,6 +169,12 @@ Ticket-level activity:
 - `ticket.blocked` (reserved for future richer callbacks)
 - `ticket.failed` (reserved/future)
 - `ticket.finished` (reserved/future)
+
+### Dispatch-Origin Routing
+
+- KanbanThing dispatch messages can include `callbackBaseUrl` in the machine-readable metadata block.
+- When present, the plugin uses that base URL for all callbacks in that dispatch lifecycle (`received/started/finished/failed/cancel_*` and progress events).
+- API key resolution still comes from your configured mode (`workspaceMappingFile` or `kanbanthingTargets[]`).
 
 ## Cancellation Semantics
 

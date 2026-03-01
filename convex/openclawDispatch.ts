@@ -42,6 +42,7 @@ export const dispatchTickets = mutation({
     workspaceId: v.id("workspaces"),
     ticketIds: v.array(v.id("tickets")),
     instanceId: v.id("openclawInstances"),
+    callbackBaseUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const authUser = await getAuthUser(ctx);
@@ -141,6 +142,7 @@ export const dispatchTickets = mutation({
       workspaceName: workspace.name,
       workspaceDocs: truncateForScheduler(workspace.docs, 600),
       instanceId: args.instanceId,
+      ...(args.callbackBaseUrl ? { callbackBaseUrl: args.callbackBaseUrl } : {}),
       instanceName: instance.name,
       userId: authUser._id,
       userDisplayName: getReadableUserDisplayName(authUser),

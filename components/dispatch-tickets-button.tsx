@@ -75,6 +75,8 @@ export function DispatchTicketsButton({
         workspaceId,
         instanceId: selectedInstanceId,
         ticketIds: tickets.map((ticket) => ticket._id),
+        callbackBaseUrl:
+          typeof window !== "undefined" ? window.location.origin : undefined,
       });
       setOpen(false);
       setSelectedInstanceId("");

@@ -276,6 +276,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
       {
         kanbanthing_dispatch_v: 1,
         workspaceId: "ws_123",
+        callbackBaseUrl: "https://your-deployment-url",
         workspaceName: "Demo",
         ticketCount: 1,
         tickets: [{ id: "ticket_1", number: 1, title: "Test" }],
@@ -291,7 +292,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
 
     expect(globalThis.fetch).toHaveBeenCalledOnce();
     const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0]!;
-    expect(url).toBe("http://localhost:3000/api/openclaw/dispatch-events");
+    expect(url).toBe("https://your-deployment-url/api/openclaw/dispatch-events");
     expect(init?.method).toBe("POST");
     expect(init?.headers).toMatchObject({
       "content-type": "application/json",
@@ -461,6 +462,7 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
       {
         kanbanthing_dispatch_v: 1,
         workspaceId: "ws_lifecycle",
+        callbackBaseUrl: "https://your-deployment-url",
         workspaceName: "Lifecycle",
         tickets: [{ id: "ticket_lifecycle" }],
       },
@@ -492,10 +494,18 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
     const callbackEvents = vi
       .mocked(globalThis.fetch)
       .mock.calls.map(([, init]) => JSON.parse(String(init?.body)).event);
+    const callbackUrls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.map(([url]) => String(url));
     expect(callbackEvents).toEqual([
       "dispatch.received",
       "dispatch.started",
       "dispatch.finished",
+    ]);
+    expect(callbackUrls).toEqual([
+      "https://your-deployment-url/api/openclaw/dispatch-events",
+      "https://your-deployment-url/api/openclaw/dispatch-events",
+      "https://your-deployment-url/api/openclaw/dispatch-events",
     ]);
   });
 
