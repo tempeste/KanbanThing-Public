@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useQuery, useMutation } from "convex/react";
+import { useConvex, useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useWorkspaceData } from "@/components/workspace-data-provider";
@@ -42,10 +42,12 @@ export default function OracleDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const convex = useConvex();
   const oraclesListHref = `/workspace/${workspaceId}/oracles`;
   useEffect(() => {
     router.prefetch(oraclesListHref);
-  }, [oraclesListHref, router]);
+    convex.prewarmQuery({ query: api.oracles.list, args: { workspaceId } });
+  }, [oraclesListHref, router, convex, workspaceId]);
 
   useEffect(() => {
     if (oracle && !isEditing) {

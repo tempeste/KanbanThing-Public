@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -68,6 +68,7 @@ export function TicketTable({
   toolbarAction,
 }: TicketTableProps) {
   const router = useRouter();
+  const convex = useConvex();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragOverId, setDragOverId] = useState<Id<"tickets"> | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<DragOverPosition>(null);
@@ -504,8 +505,11 @@ export function TicketTable({
       if (prefetchedTicketIdsRef.current.has(ticketId)) return;
       prefetchedTicketIdsRef.current.add(ticketId);
       router.prefetch(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
+      convex.prewarmQuery({ query: api.tickets.getHierarchy, args: { id: ticketId } });
+      convex.prewarmQuery({ query: api.ticketComments.listByTicket, args: { ticketId } });
+      convex.prewarmQuery({ query: api.ticketActivities.listByTicket, args: { ticketId } });
     },
-    [router, workspaceId]
+    [router, convex, workspaceId]
   );
 
   const handleStatusChange = (ticketId: Id<"tickets">, status: IssueStatus) => {

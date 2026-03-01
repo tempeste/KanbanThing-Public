@@ -5,7 +5,7 @@ import { api } from "@/convex/_generated/api";
 import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Plus,
@@ -20,6 +20,7 @@ import {
 import { Id } from "@/convex/_generated/dataModel";
 import { UserMenu } from "@/components/user-menu";
 import { useRouter } from "next/navigation";
+import { usePrefetch } from "@/lib/use-prefetch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
@@ -41,15 +42,7 @@ export default function Home() {
   >("updated_desc");
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const router = useRouter();
-  const prefetchedRef = useRef(new Set<string>());
-  const prefetchWorkspace = useCallback(
-    (id: Id<"workspaces">) => {
-      if (prefetchedRef.current.has(id)) return;
-      prefetchedRef.current.add(id);
-      router.prefetch(`/workspace/${id}`);
-    },
-    [router]
-  );
+  const prefetch = usePrefetch();
 
   const handleCreate = async () => {
     if (!newWorkspaceName.trim() || !userId) return;
@@ -277,7 +270,11 @@ export default function Home() {
                   tabIndex={0}
                   className="kb-panel kb-anim group cursor-pointer p-4 transition hover:border-primary/65 hover:bg-accent/45"
                   style={{ animationDelay: `${index * 35}ms` }}
-                  onMouseEnter={() => prefetchWorkspace(workspace._id)}
+                  onMouseEnter={() => prefetch(`/workspace/${workspace._id}`, [
+                    { query: api.workspaces.get, args: { id: workspace._id } },
+                    { query: api.tickets.listSummaries, args: { workspaceId: workspace._id } },
+                    { query: api.tags.list, args: { workspaceId: workspace._id } },
+                  ])}
                   onClick={() => router.push(`/workspace/${workspace._id}`)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -349,7 +346,11 @@ export default function Home() {
                       role="button"
                       tabIndex={0}
                       className="cursor-pointer border-b border-border/60 hover:bg-accent/30"
-                      onMouseEnter={() => prefetchWorkspace(workspace._id)}
+                      onMouseEnter={() => prefetch(`/workspace/${workspace._id}`, [
+                    { query: api.workspaces.get, args: { id: workspace._id } },
+                    { query: api.tickets.listSummaries, args: { workspaceId: workspace._id } },
+                    { query: api.tags.list, args: { workspaceId: workspace._id } },
+                  ])}
                       onClick={() => router.push(`/workspace/${workspace._id}`)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {

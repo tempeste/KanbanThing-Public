@@ -277,7 +277,9 @@ export default function OraclesPage() {
               <Link
                 key={oracle._id}
                 href={`/workspace/${workspaceId}/oracles/${oracle.slug}`}
-                onMouseEnter={() => prefetch(`/workspace/${workspaceId}/oracles/${oracle.slug}`)}
+                onMouseEnter={() => prefetch(`/workspace/${workspaceId}/oracles/${oracle.slug}`, [
+                  { query: api.oracles.getBySlug, args: { workspaceId, slug: oracle.slug } },
+                ])}
                 className="kb-anim group flex items-start justify-between border border-border bg-card/55 p-4 transition hover:bg-card/80"
                 style={{ animationDelay: `${i * 40}ms` }}
               >

@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -73,6 +73,7 @@ export function KanbanBoard({
   toolbarAction,
 }: KanbanBoardProps) {
   const router = useRouter();
+  const convex = useConvex();
   const { data: session } = useSession();
   const userId = session?.user?.id;
 
@@ -556,8 +557,11 @@ export function KanbanBoard({
       if (prefetchedTicketIdsRef.current.has(ticketId)) return;
       prefetchedTicketIdsRef.current.add(ticketId);
       router.prefetch(`/workspace/${workspaceId}/tickets/${ticketId}?tab=board`);
+      convex.prewarmQuery({ query: api.tickets.getHierarchy, args: { id: ticketId } });
+      convex.prewarmQuery({ query: api.ticketComments.listByTicket, args: { ticketId } });
+      convex.prewarmQuery({ query: api.ticketActivities.listByTicket, args: { ticketId } });
     },
-    [router, workspaceId]
+    [router, convex, workspaceId]
   );
 
   const displayedStatuses = ALL_STATUSES.filter((s) => visibleStatuses.has(s));

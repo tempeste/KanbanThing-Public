@@ -103,7 +103,11 @@ export function WorkspaceSidebar({ workspaceId }: WorkspaceSidebarProps) {
                   key={ws._id}
                   href={`/workspace/${ws._id}`}
                   onClick={onNavigate}
-                  onMouseEnter={() => prefetch(`/workspace/${ws._id}`)}
+                  onMouseEnter={() => prefetch(`/workspace/${ws._id}`, [
+                    { query: api.workspaces.get, args: { id: ws._id } },
+                    { query: api.tickets.listSummaries, args: { workspaceId: ws._id } },
+                    { query: api.tags.list, args: { workspaceId: ws._id } },
+                  ])}
                   className={`flex w-full items-center justify-between border-b border-border px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.08em] transition ${
                     active
                       ? "bg-foreground font-extrabold text-background"
@@ -135,7 +139,9 @@ export function WorkspaceSidebar({ workspaceId }: WorkspaceSidebarProps) {
         <Link
           href={`/workspace/${workspaceId}/oracles`}
           onClick={onNavigate}
-          onMouseEnter={() => prefetch(`/workspace/${workspaceId}/oracles`)}
+          onMouseEnter={() => prefetch(`/workspace/${workspaceId}/oracles`, [
+            { query: api.oracles.list, args: { workspaceId } },
+          ])}
           className="flex w-full items-center gap-2 border-b border-border px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground transition hover:bg-accent"
         >
           <BookOpen className="h-3.5 w-3.5" />
