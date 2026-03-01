@@ -46,7 +46,7 @@ export default function OracleDetailPage() {
   const oraclesListHref = `/workspace/${workspaceId}/oracles`;
   useEffect(() => {
     router.prefetch(oraclesListHref);
-    convex.prewarmQuery({ query: api.oracles.list, args: { workspaceId } });
+    convex.prewarmQuery({ query: api.oracles.list, args: { workspaceId }, extendSubscriptionFor: 30_000 });
   }, [oraclesListHref, router, convex, workspaceId]);
 
   useEffect(() => {

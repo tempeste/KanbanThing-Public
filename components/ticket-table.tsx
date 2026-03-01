@@ -505,9 +505,10 @@ export function TicketTable({
       if (prefetchedTicketIdsRef.current.has(ticketId)) return;
       prefetchedTicketIdsRef.current.add(ticketId);
       router.prefetch(`/workspace/${workspaceId}/tickets/${ticketId}?tab=list`);
-      convex.prewarmQuery({ query: api.tickets.getHierarchy, args: { id: ticketId } });
-      convex.prewarmQuery({ query: api.ticketComments.listByTicket, args: { ticketId } });
-      convex.prewarmQuery({ query: api.ticketActivities.listByTicket, args: { ticketId } });
+      const ttl = 30_000;
+      convex.prewarmQuery({ query: api.tickets.getHierarchy, args: { id: ticketId }, extendSubscriptionFor: ttl });
+      convex.prewarmQuery({ query: api.ticketComments.listByTicket, args: { ticketId }, extendSubscriptionFor: ttl });
+      convex.prewarmQuery({ query: api.ticketActivities.listByTicket, args: { ticketId }, extendSubscriptionFor: ttl });
     },
     [router, convex, workspaceId]
   );

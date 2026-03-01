@@ -10,6 +10,9 @@ type PrewarmSpec = {
   args: Record<string, unknown>;
 };
 
+/** Keep prewarmed subscriptions alive long enough for the user to click. */
+const PREWARM_TTL_MS = 30_000;
+
 /**
  * Prefetch route bundles AND Convex query data on hover.
  * Deduplicates by href so each target is only warmed once.
@@ -29,6 +32,7 @@ export function usePrefetch() {
           convex.prewarmQuery({
             query: spec.query,
             args: spec.args as FunctionArgs<typeof spec.query>,
+            extendSubscriptionFor: PREWARM_TTL_MS,
           });
         }
       }
