@@ -42,3 +42,13 @@ When you create tickets and implement fixes in the same session:
 - If claim fails, refresh ticket state first (another agent may have claimed it).
 - If claim fails with "backlog" status, promote to unclaimed first.
 - If completion fails due to validation, leave an explicit blocker note and stop.
+
+## Dispatch Cancellation Telemetry
+
+For KanbanThing workspaces integrated with the OpenClaw dispatch plugin:
+
+- `dispatch.cancel_ack` includes `metadata.cancelMode` and may include `metadata.hardKillAttempt`.
+- The plugin tracks subagent `sessionKey` values and records `sessionKey <-> sessionId` mapping from `session_start/session_end` using both `event` and `ctx`.
+- `hardKillMode="internal_api"` can report deterministic hard-kill success when `sessionId` mapping and internal abort APIs are available.
+- Hard-kill is still best treated as an optimization layer; cancellation enforcement hooks are the reliable safety baseline.
+- If cancellation is ambiguous or late, use KanbanThing's `Force Return to Unclaimed` workflow explicitly.

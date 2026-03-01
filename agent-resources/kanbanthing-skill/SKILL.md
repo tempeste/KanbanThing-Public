@@ -68,3 +68,4 @@ Tickets can have workspace-scoped tags (user-defined, with colors). Use `GET /ap
 
 - API details and curl examples: `references/api.md`
 - Execution guidance and guardrails: `references/workflow.md`
+- OpenClaw dispatch cancellation notes (`dispatch.cancel_ack`, hard-kill telemetry): `references/workflow.md` ("Dispatch Cancellation Telemetry")

@@ -11,7 +11,7 @@ This plugin is intended to be installed into a self-hosted OpenClaw instance whi
 - Sends cancellation ACK/result callbacks (`dispatch.cancel_ack`, `dispatch.cancel_result`)
 - Enforces cancellation in OpenClaw hooks (blocks subagent spawn and tool calls when cancellation is active)
 - Emits throttled `ticket.progress` callbacks from tool hooks for mini activity updates
-- Optionally attempts best-effort hard-kill behavior (limitation-aware)
+- Optionally attempts hard-kill behavior (best-effort or deterministic targeting, limitation-aware)
 
 ## Install (local linked plugin)
 
@@ -124,8 +124,8 @@ Mapping-file example (workspace -> repo dir -> `.kanbanthing` / `.env.local` / `
   - Enables throttled `ticket.progress` callbacks from tool hooks
 - `hardKillMode` (`"off" | "best_effort" | "internal_api"`, optional, default `"off"`)
   - `off`: no hard-kill attempt
-  - `best_effort`: try heuristic abort/`/stop` using internal APIs if available
-  - `internal_api`: reserved/scaffolded mode (currently behaves as best-effort attempt path + enforcement)
+  - `best_effort`: try abort/`/stop` with internal APIs using tracked `sessionKey` targets
+  - `internal_api`: use `session_start/session_end` `sessionKey <-> sessionId` mapping for deterministic abort targeting when available (still falls back to enforcement hooks)
 - `internalApiPathHint` (`string`, optional)
   - Optional absolute path hint to OpenClaw internal dist module (`.../dist/agents/pi-embedded.js`) for best-effort hard-kill import attempts
 - `mappingAllowedRepoRoots` (`string[]`, optional)
@@ -192,21 +192,29 @@ Moving `dispatched -> unclaimed` before cancellation confirmation can create dup
 
 ## Hard-Kill Notes (Important)
 
-The plugin now includes a **best-effort** hard-kill attempt path, but it is intentionally transparent about limitations.
+The plugin includes hard-kill attempt paths and reports exactly what happened in `dispatch.cancel_ack`.
 
-Why it is not guaranteed:
+How targeting works:
 
-- Plugin hooks expose `sessionKey` / `runId`
-- Some OpenClaw internal abort APIs expect `sessionId`
-- Those identifiers may not map cleanly in all runtimes
+- The plugin tracks active subagent `sessionKey` values per dispatch.
+- It also listens to `session_start/session_end` and records `sessionKey <-> sessionId` mappings from both `event` and `ctx`.
+- `best_effort` mode uses tracked sessions and tries abort/`/stop` calls with available targets.
+- `internal_api` mode prefers resolved `sessionId` targets when mapping is available and can report deterministic hard-kill success.
+
+Why it is still not guaranteed:
+
+- OpenClaw internal abort APIs may be unavailable in some plugin runtimes/builds.
+- A cancel request can arrive before any subagent session is tracked.
+- Internal abort/stop calls can return no success even when cancellation is acknowledged.
 
 When the plugin attempts hard-kill, KanbanThing receives `hardKillAttempt` metadata in `dispatch.cancel_ack`, including:
 
 - whether a hard-kill attempt was made
 - how many session keys were considered
+- how many sessions resolved to `sessionId`
 - abort calls that succeeded
 - queued `/stop` fallback messages
-- limitations/downgrade reason
+- limitations/downgrade reason (if any)
 
 Reliable safety still comes from:
 
@@ -239,6 +247,7 @@ Key fields:
 - `supportsProgressEvents`
 - `supportsHardKill`
 - `hardKillMode`
+- `supportsSessionKeySessionIdMapping`
 - `supportsWorkspaceMappingEndpoints`
 - `workspaceMappingApiVersion`
 
@@ -248,9 +257,9 @@ Key fields:
   - `enforceCancellation=true`
   - `emitProgressEvents=true`
   - `hardKillMode="off"` or `"best_effort"`
-- If your OpenClaw build exposes `sessionKey` in `session_start/session_end`, `hardKillMode="internal_api"` enables deterministic `sessionKey -> sessionId` abort targeting for tracked sessions (plugin still keeps enforcement hooks as fallback)
+- Prefer `hardKillMode="internal_api"` when OpenClaw internal abort APIs are available; the plugin uses `session_start/session_end` mapping from `event` and `ctx` for deterministic `sessionKey -> sessionId` abort targeting
 - For local+hosted setups with per-repo API keys, prefer `workspaceMappingFile` so the plugin resolves credentials from the correct repo
 - If using `kanbanthingTargets[]`, explicitly assign every `workspaceId`; unmapped workspaces are skipped by design
 - Turn on `pluginSecret` for non-local deployments
-- Treat `best_effort` hard-kill as an optimization, not a guarantee
+- Treat hard-kill attempts as an optimization layer; cancellation enforcement hooks remain the reliability baseline
 - Use KanbanThing execution badges + activity feed as the source of dispatch lifecycle visibility

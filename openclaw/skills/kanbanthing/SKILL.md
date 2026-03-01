@@ -263,3 +263,4 @@ Agents must handle this gracefully:
 
 - This skill is AgentSkills-compatible (`SKILL.md` + optional `scripts/` helpers).
 - It is safe for multi-subagent usage because routing is explicit (`workspaceId`) and keys stay workspace-scoped.
+- For dispatch cancellation semantics (`dispatch.cancel_ack` / `hardKillAttempt`), see `references/workflow.md` ("Dispatch Cancellation Telemetry").
