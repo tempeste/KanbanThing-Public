@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -15,10 +15,37 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+type TicketStatus = "backlog" | "unclaimed" | "dispatched" | "in_progress" | "done";
+
 type DispatchTicket = {
   _id: Id<"tickets">;
   title: string;
   number?: number;
+  status: TicketStatus;
+};
+
+const STATUS_LABEL: Record<TicketStatus, string> = {
+  backlog: "Backlog",
+  unclaimed: "Unclaimed",
+  dispatched: "Dispatched",
+  in_progress: "In Progress",
+  done: "Done",
+};
+
+const STATUS_COLOR: Record<TicketStatus, string> = {
+  backlog: "border-[var(--backlog)]/40 text-[var(--backlog)]",
+  unclaimed: "border-[var(--unclaimed)]/40 text-[var(--unclaimed)]",
+  dispatched: "border-[var(--dispatched)]/40 text-[var(--dispatched)]",
+  in_progress: "border-[var(--in-progress)]/40 text-[var(--in-progress)]",
+  done: "border-[var(--done)]/40 text-[var(--done)]",
+};
+
+const STATUS_CSS_VAR: Record<TicketStatus, string> = {
+  backlog: "var(--backlog)",
+  unclaimed: "var(--unclaimed)",
+  dispatched: "var(--dispatched)",
+  in_progress: "var(--in-progress)",
+  done: "var(--done)",
 };
 
 interface DispatchTicketsButtonProps {
@@ -43,6 +70,8 @@ export function DispatchTicketsButton({
   const [selectedInstanceId, setSelectedInstanceId] = useState<Id<"openclawInstances"> | "">("");
   const [isDispatching, setIsDispatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<Id<"tickets">>>(new Set());
+
   const openClawInstances = (useQuery(
     api.openclawInstances.list,
     isAuthenticated ? {} : "skip"
@@ -60,8 +89,84 @@ export function DispatchTicketsButton({
   const selectedInstanceCanDispatch =
     !!selectedInstance && (!selectedInstanceRequiresPluginVerify || selectedInstanceIsVerified);
 
+  // Group tickets by status for quick-filter buttons
+  const statusGroups = useMemo(() => {
+    const groups: Partial<Record<TicketStatus, DispatchTicket[]>> = {};
+    for (const ticket of tickets) {
+      (groups[ticket.status] ??= []).push(ticket);
+    }
+    return groups;
+  }, [tickets]);
+
+  const availableStatuses = useMemo(
+    () => (Object.keys(statusGroups) as TicketStatus[]).sort(
+      (a, b) => ["backlog", "unclaimed", "dispatched", "in_progress", "done"].indexOf(a) -
+                ["backlog", "unclaimed", "dispatched", "in_progress", "done"].indexOf(b)
+    ),
+    [statusGroups]
+  );
+
+  // Initialize selection when dialog opens — default to unclaimed + backlog
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen) {
+        const defaultSelected = new Set<Id<"tickets">>();
+        for (const ticket of tickets) {
+          if (ticket.status === "unclaimed" || ticket.status === "backlog") {
+            defaultSelected.add(ticket._id);
+          }
+        }
+        setSelectedIds(defaultSelected);
+        setError(null);
+      }
+      setOpen(nextOpen);
+    },
+    [tickets]
+  );
+
+  const toggleTicket = useCallback((id: Id<"tickets">) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(tickets.map((t) => t._id)));
+  }, [tickets]);
+
+  const selectNone = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const selectByStatus = useCallback(
+    (status: TicketStatus) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        const group = statusGroups[status] ?? [];
+        const allSelected = group.every((t) => next.has(t._id));
+        for (const t of group) {
+          if (allSelected) next.delete(t._id);
+          else next.add(t._id);
+        }
+        return next;
+      });
+    },
+    [statusGroups]
+  );
+
+  const isStatusFullySelected = useCallback(
+    (status: TicketStatus) => {
+      const group = statusGroups[status] ?? [];
+      return group.length > 0 && group.every((t) => selectedIds.has(t._id));
+    },
+    [statusGroups, selectedIds]
+  );
+
   const handleDispatch = async () => {
-    if (!selectedInstanceId || tickets.length === 0) return;
+    if (!selectedInstanceId || selectedIds.size === 0) return;
     if (!selectedInstanceCanDispatch) {
       setError(
         "Enhanced OpenClaw integration requires the KanbanThing plugin and a successful plugin verification in Account Settings before dispatching."
@@ -74,12 +179,13 @@ export function DispatchTicketsButton({
       await dispatchTickets({
         workspaceId,
         instanceId: selectedInstanceId,
-        ticketIds: tickets.map((ticket) => ticket._id),
+        ticketIds: Array.from(selectedIds),
         callbackBaseUrl:
           typeof window !== "undefined" ? window.location.origin : undefined,
       });
       setOpen(false);
       setSelectedInstanceId("");
+      setSelectedIds(new Set());
       onDispatched?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Dispatch failed");
@@ -88,18 +194,20 @@ export function DispatchTicketsButton({
     }
   };
 
+  const selectedCount = selectedIds.size;
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm" className={triggerClassName}>
           {triggerLabel}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Dispatch Tickets</DialogTitle>
           <DialogDescription>
-            Send selected tickets to an OpenClaw instance.
+            Select tickets and an OpenClaw instance to dispatch.
           </DialogDescription>
         </DialogHeader>
 
@@ -158,34 +266,148 @@ export function DispatchTicketsButton({
           </div>
         )}
 
-        <div className="max-h-52 space-y-2 overflow-auto rounded border border-border p-2">
-          {tickets.map((ticket) => (
-            <div key={ticket._id} className="rounded border border-border/60 p-2 text-sm">
-              <span className="font-mono text-xs text-muted-foreground">
-                {workspacePrefix}-{ticket.number ?? "---"}
-              </span>{" "}
-              {ticket.title}
+        {/* Ticket selection toolbar */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+              Tickets
+              <span className="ml-2 tabular-nums text-foreground/70">
+                {selectedCount}/{tickets.length}
+              </span>
+            </label>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={selectAll}
+                className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                All
+              </button>
+              <span className="text-[8px] text-border">|</span>
+              <button
+                type="button"
+                onClick={selectNone}
+                className="rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                None
+              </button>
             </div>
-          ))}
+          </div>
+
+          {/* Status quick-filter chips */}
+          {availableStatuses.length > 1 && (
+            <div className="flex flex-wrap gap-1">
+              {availableStatuses.map((status) => {
+                const count = statusGroups[status]?.length ?? 0;
+                const active = isStatusFullySelected(status);
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => selectByStatus(status)}
+                    className={`flex items-center gap-1 rounded border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.06em] transition-colors ${
+                      active
+                        ? STATUS_COLOR[status] + " border-current/30 bg-current/[0.08]"
+                        : "border-border text-muted-foreground hover:border-muted-foreground/40"
+                    }`}
+                  >
+                    {STATUS_LABEL[status]}
+                    <span className="tabular-nums opacity-60">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Ticket list with checkboxes */}
+          <div className="max-h-56 space-y-0.5 overflow-auto rounded border border-border p-1">
+            {tickets.map((ticket) => {
+              const checked = selectedIds.has(ticket._id);
+              return (
+                <button
+                  key={ticket._id}
+                  type="button"
+                  onClick={() => toggleTicket(ticket._id)}
+                  className={`group flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors ${
+                    checked
+                      ? ""
+                      : "hover:bg-muted/50"
+                  }`}
+                  style={checked ? { backgroundColor: `color-mix(in oklch, ${STATUS_CSS_VAR[ticket.status]} 8%, transparent)` } : undefined}
+                >
+                  {/* Custom checkbox */}
+                  <span
+                    className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center border transition-colors ${
+                      checked
+                        ? ""
+                        : "border-muted-foreground/30 group-hover:border-muted-foreground/60"
+                    }`}
+                    style={checked ? { borderColor: STATUS_CSS_VAR[ticket.status], backgroundColor: STATUS_CSS_VAR[ticket.status], color: "white" } : undefined}
+                  >
+                    {checked && (
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                        <path d="M1.5 4L3.2 5.7L6.5 2.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
+                      </svg>
+                    )}
+                  </span>
+
+                  {/* Ticket number */}
+                  <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                    {workspacePrefix}-{ticket.number ?? "---"}
+                  </span>
+
+                  {/* Title */}
+                  <span className="min-w-0 flex-1 truncate text-[13px]">
+                    {ticket.title}
+                  </span>
+
+                  {/* Status pill */}
+                  <span
+                    className={`shrink-0 rounded border px-1.5 py-px font-mono text-[8px] uppercase tracking-[0.08em] ${STATUS_COLOR[ticket.status]}`}
+                  >
+                    {STATUS_LABEL[ticket.status]}
+                  </span>
+                </button>
+              );
+            })}
+            {tickets.length === 0 && (
+              <p className="py-4 text-center text-xs text-muted-foreground">
+                No dispatchable tickets.
+              </p>
+            )}
+          </div>
         </div>
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={handleDispatch}
-            disabled={
-              isDispatching ||
-              !selectedInstanceId ||
-              !selectedInstanceCanDispatch ||
-              tickets.length === 0 ||
-              openClawInstances.length === 0
-            }
-          >
-            {isDispatching ? "Dispatching..." : "Execute"}
-          </Button>
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground/60">
+            {selectedCount === 0
+              ? "No tickets selected"
+              : selectedCount === 1
+                ? "1 ticket selected"
+                : `${selectedCount} tickets selected`}
+          </span>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleDispatch}
+              disabled={
+                isDispatching ||
+                !selectedInstanceId ||
+                !selectedInstanceCanDispatch ||
+                selectedCount === 0 ||
+                openClawInstances.length === 0
+              }
+            >
+              {isDispatching
+                ? "Dispatching..."
+                : selectedCount === 0
+                  ? "Execute"
+                  : `Execute (${selectedCount})`}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

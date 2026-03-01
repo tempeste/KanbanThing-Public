@@ -5,7 +5,7 @@ import { v } from "convex/values";
 import { generateWorkspacePrefix } from "./prefix";
 import { actorValidator, resolveActor } from "./activityHelpers";
 import { authComponent, getAuthUserOrNull } from "./auth";
-import { requireWorkspaceAccess } from "./access";
+import { hasWorkspaceAccess, requireWorkspaceAccess } from "./access";
 
 const requireWorkspaceOwner = async (
   ctx: MutationCtx,
@@ -121,8 +121,8 @@ export const get = query({
   handler: async (ctx, args) => {
     const workspace = await ctx.db.get(args.id);
     if (!workspace) return null;
-    await requireWorkspaceAccess(ctx, workspace._id, args.agentApiKeyId);
-    return workspace;
+    const canAccess = await hasWorkspaceAccess(ctx, workspace._id, args.agentApiKeyId);
+    return canAccess ? workspace : null;
   },
 });
 

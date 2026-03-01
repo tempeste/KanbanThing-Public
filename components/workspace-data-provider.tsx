@@ -9,6 +9,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import { TicketSummary } from "@/lib/ticket-summary";
+import { useSession } from "@/lib/auth-client";
 
 type WorkspaceDataContextValue = {
   workspace: Doc<"workspaces"> | null | undefined;
@@ -24,19 +25,22 @@ export function WorkspaceDataProvider({
   workspaceId,
 }: PropsWithChildren<{ workspaceId: Id<"workspaces"> }>) {
   const { isAuthenticated } = useConvexAuth();
+  const { data: session, isPending: isSessionPending } = useSession();
+  const canQueryWorkspace = isAuthenticated && !isSessionPending && Boolean(session?.user);
 
   const workspace = useQuery(
     api.workspaces.get,
-    isAuthenticated ? { id: workspaceId } : "skip"
+    canQueryWorkspace ? { id: workspaceId } : "skip"
   );
-  const tags = useQuery(api.tags.list, isAuthenticated ? { workspaceId } : "skip");
+  const hasWorkspaceAccess = workspace !== undefined && workspace !== null;
+  const tags = useQuery(api.tags.list, hasWorkspaceAccess ? { workspaceId } : "skip");
   const ticketSummaries = useQuery(
     api.tickets.listSummaries,
-    isAuthenticated ? { workspaceId } : "skip"
+    hasWorkspaceAccess ? { workspaceId } : "skip"
   );
   const dispatchExecutions = useQuery(
     api.dispatchExecutions.listByWorkspace,
-    isAuthenticated ? { workspaceId, limit: 200 } : "skip"
+    hasWorkspaceAccess ? { workspaceId, limit: 200 } : "skip"
   );
 
   return (
