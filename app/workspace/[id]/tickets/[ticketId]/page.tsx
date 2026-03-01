@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { startTransition, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -46,8 +46,18 @@ export default function TicketDetailPage() {
     });
   }, []);
 
+  const convex = useConvex();
+  const renderCount = useRef(0);
+  renderCount.current += 1;
+
+  // Debug: check if prewarm data is in cache before useQuery subscribes
+  const watch = convex.watchQuery(api.tickets.getHierarchy, { id: ticketId });
+  const cachedResult = watch.localQueryResult();
+  console.log(`[detail] render #${renderCount.current} — cached:`, cachedResult !== undefined ? "✓" : "✗");
+
   const { workspace, dispatchExecutions } = useWorkspaceData();
   const hierarchy = useQuery(api.tickets.getHierarchy, { id: ticketId });
+  console.log(`[detail] render #${renderCount.current} — useQuery:`, hierarchy !== undefined ? "✓" : "✗");
   const allTickets = useQuery(
     api.tickets.list,
     shouldLoadTicketIndex ? { workspaceId } : "skip"
