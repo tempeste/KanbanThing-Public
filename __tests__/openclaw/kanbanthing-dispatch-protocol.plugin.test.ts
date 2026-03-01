@@ -122,9 +122,12 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
   it("registers capabilities/cancel routes and lifecycle hooks", () => {
     register(api);
 
-    expect(api.registerHttpRoute).toHaveBeenCalledTimes(2);
+    expect(api.registerHttpRoute).toHaveBeenCalledTimes(5);
     expect(routes.has("/kanbanthing/capabilities")).toBe(true);
     expect(routes.has("/kanbanthing/dispatch/cancel")).toBe(true);
+    expect(routes.has("/kanbanthing/workspace-mapping/inspect")).toBe(true);
+    expect(routes.has("/kanbanthing/workspace-mapping/upsert")).toBe(true);
+    expect(routes.has("/kanbanthing/workspace-mapping/doctor")).toBe(true);
     expect(api.on).toHaveBeenCalledWith(
       "message_received",
       expect.any(Function),
@@ -172,7 +175,98 @@ describe("kanbanthing-dispatch-protocol plugin", () => {
       supportsCancellationEnforcement: true,
       hardKillMode: "off",
       supportsProgressEvents: true,
+      supportsWorkspaceMappingEndpoints: true,
+      workspaceMappingApiVersion: 1,
     });
+  });
+
+  it("serves mapping inspect for repo credentials", async () => {
+    const tempRoot = mkdtempSync(path.join(tmpdir(), "kt-plugin-inspect-"));
+    const repoDir = path.join(tempRoot, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    writeFileSync(
+      path.join(repoDir, ".kanbanthing"),
+      [
+        "KANBANTHING_BASE_URL=http://127.0.0.1:3000",
+        "KANBANTHING_WORKSPACE_ID=ws_repo_1",
+        "KANBANTHING_API_KEY=sk_repo_1",
+      ].join("\n"),
+      "utf8",
+    );
+
+    api.pluginConfig = {
+      mappingAllowedRepoRoots: [tempRoot],
+      emitReceivedCallbacks: true,
+      kanbanthingTargets: [
+        {
+          id: "test-default",
+          kanbanthingBaseUrl: "http://localhost:3000",
+          kanbanthingApiKey: "sk_test",
+          workspaceIds: commonWorkspaceIds,
+        },
+      ],
+    };
+    register(api);
+    const handler = routes.get("/kanbanthing/workspace-mapping/inspect");
+    expect(handler).toBeDefined();
+
+    const res = makeRes();
+    await handler!(
+      makeReq({
+        method: "POST",
+        bodyText: JSON.stringify({ repoPath: repoDir, workspaceId: "ws_repo_1" }),
+      }),
+      res,
+    );
+
+    const body = JSON.parse(res.body);
+    expect(res.statusCode).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      repoPath: repoDir,
+      workspaceIdExpected: "ws_repo_1",
+      declaredWorkspaceId: "ws_repo_1",
+      hasApiKey: true,
+      baseUrl: "http://127.0.0.1:3000",
+    });
+    rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  it("rejects inspect paths outside allowed mapping roots", async () => {
+    const tempRoot = mkdtempSync(path.join(tmpdir(), "kt-plugin-roots-"));
+    const blockedDir = path.join(tempRoot, "blocked");
+    const allowedDir = path.join(tempRoot, "allowed");
+    mkdirSync(blockedDir, { recursive: true });
+    mkdirSync(allowedDir, { recursive: true });
+    api.pluginConfig = {
+      mappingAllowedRepoRoots: [allowedDir],
+      emitReceivedCallbacks: true,
+      kanbanthingTargets: [
+        {
+          id: "test-default",
+          kanbanthingBaseUrl: "http://localhost:3000",
+          kanbanthingApiKey: "sk_test",
+          workspaceIds: commonWorkspaceIds,
+        },
+      ],
+    };
+
+    register(api);
+    const handler = routes.get("/kanbanthing/workspace-mapping/inspect");
+    expect(handler).toBeDefined();
+
+    const res = makeRes();
+    await handler!(
+      makeReq({
+        method: "POST",
+        bodyText: JSON.stringify({ repoPath: blockedDir }),
+      }),
+      res,
+    );
+    const body = JSON.parse(res.body);
+    expect(res.statusCode).toBe(422);
+    expect(body.errorCode).toBe("repo_path_outside_allowed_roots");
+    rmSync(tempRoot, { recursive: true, force: true });
   });
 
   it("emits dispatch.received callback when KanbanThing dispatch metadata is received", async () => {

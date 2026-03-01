@@ -127,6 +127,10 @@ Mapping-file example (workspace -> repo dir -> `.kanbanthing` / `.env.local` / `
   - `internal_api`: reserved/scaffolded mode (currently behaves as best-effort attempt path + enforcement)
 - `internalApiPathHint` (`string`, optional)
   - Optional absolute path hint to OpenClaw internal dist module (`.../dist/agents/pi-embedded.js`) for best-effort hard-kill import attempts
+- `mappingAllowedRepoRoots` (`string[]`, optional)
+  - Optional allowlist for workspace-mapping endpoint repo paths
+  - Defaults to host `$HOME` if unset
+  - Canonical paths (`realpath`) are enforced; paths outside allowlist are rejected
 
 ## HTTP Endpoints (plugin side)
 
@@ -134,6 +138,12 @@ Mapping-file example (workspace -> repo dir -> `.kanbanthing` / `.env.local` / `
   - Returns protocol/capability info
 - `POST /kanbanthing/dispatch/cancel`
   - Accepts cancellation request and emits `dispatch.cancel_ack`
+- `POST /kanbanthing/workspace-mapping/inspect`
+  - Validates repo path, local credentials, and `.gitignore` readiness on the OpenClaw host
+- `POST /kanbanthing/workspace-mapping/upsert`
+  - Dry-run or persist mapping entries on the OpenClaw host (with optional safe fixes)
+- `GET /kanbanthing/workspace-mapping/doctor`
+  - Returns workspace-mapping doctor report on the OpenClaw host
 
 If `pluginSecret` is configured, include:
 
@@ -216,6 +226,8 @@ Key fields:
 - `supportsProgressEvents`
 - `supportsHardKill`
 - `hardKillMode`
+- `supportsWorkspaceMappingEndpoints`
+- `workspaceMappingApiVersion`
 
 ## Operational Recommendations
 

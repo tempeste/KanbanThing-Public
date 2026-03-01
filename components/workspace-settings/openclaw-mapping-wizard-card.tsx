@@ -1,6 +1,9 @@
 "use client";
 
+import { useAction, useQuery } from "convex/react";
 import { useState } from "react";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -39,7 +42,16 @@ export function OpenClawMappingWizardCard({
 }: {
   workspaceId: string;
 }) {
-  const [apiKey, setApiKey] = useState("");
+  const instances = useQuery(api.openclawInstances.list);
+  const inspectRemote = useAction(
+    api.openclawInstancesActions.workspaceMappingInspect,
+  );
+  const upsertRemote = useAction(api.openclawInstancesActions.workspaceMappingUpsert);
+  const doctorRemote = useAction(api.openclawInstancesActions.workspaceMappingDoctor);
+
+  const [instanceId, setInstanceId] = useState<Id<"openclawInstances"> | "">(
+    "",
+  );
   const [repoPath, setRepoPath] = useState("");
   const [alias, setAlias] = useState("");
   const [mappingFile, setMappingFile] = useState("");
@@ -50,14 +62,9 @@ export function OpenClawMappingWizardCard({
   const [doctorResult, setDoctorResult] = useState<DoctorResponse | null>(null);
   const [statusText, setStatusText] = useState<string | null>(null);
 
-  const buildHeaders = () => ({
-    "Content-Type": "application/json",
-    "X-API-Key": apiKey.trim(),
-  });
-
   const requireInputs = () => {
-    if (!apiKey.trim()) {
-      setStatusText("Admin API key is required.");
+    if (!instanceId) {
+      setStatusText("OpenClaw instance is required.");
       return false;
     }
     if (!repoPath.trim()) {
@@ -69,26 +76,22 @@ export function OpenClawMappingWizardCard({
 
   const runInspect = async () => {
     if (!requireInputs()) return;
+    const selectedInstanceId = instanceId as Id<"openclawInstances">;
     setIsBusy(true);
     setStatusText(null);
     try {
-      const response = await fetch("/api/openclaw/workspace-mapping/inspect", {
-        method: "POST",
-        headers: buildHeaders(),
-        body: JSON.stringify({
-          repoPath: repoPath.trim(),
-          workspaceId,
-        }),
+      const response = await inspectRemote({
+        instanceId: selectedInstanceId,
+        repoPath: repoPath.trim(),
+        workspaceId,
+        ...(mappingFile.trim() ? { mappingFile: mappingFile.trim() } : {}),
       });
-      const body = (await response.json()) as
-        | InspectResponse
-        | { error?: string };
       if (!response.ok) {
-        setStatusText((body as { error?: string }).error ?? "Inspect failed.");
+        setStatusText(response.message ?? "Inspect failed.");
         return;
       }
-      setInspectResult(body as InspectResponse);
-      setStatusText("Inspect succeeded.");
+      setInspectResult((response.data as InspectResponse | undefined) ?? null);
+      setStatusText(`Inspect succeeded on ${response.instanceName}.`);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Inspect failed.");
     } finally {
@@ -98,37 +101,34 @@ export function OpenClawMappingWizardCard({
 
   const runUpsert = async (dryRun: boolean) => {
     if (!requireInputs()) return;
+    const selectedInstanceId = instanceId as Id<"openclawInstances">;
     setIsBusy(true);
     setStatusText(null);
     try {
-      const response = await fetch("/api/openclaw/workspace-mapping/upsert", {
-        method: "POST",
-        headers: buildHeaders(),
-        body: JSON.stringify({
-          repoPath: repoPath.trim(),
-          workspaceId,
-          dryRun,
-          ...(alias.trim() ? { alias: alias.trim() } : {}),
-          ...(mappingFile.trim() ? { mappingFile: mappingFile.trim() } : {}),
-        }),
+      const response = await upsertRemote({
+        instanceId: selectedInstanceId,
+        repoPath: repoPath.trim(),
+        workspaceId,
+        dryRun,
+        applySafeFixes: true,
+        ...(alias.trim() ? { alias: alias.trim() } : {}),
+        ...(mappingFile.trim() ? { mappingFile: mappingFile.trim() } : {}),
       });
-      const body = (await response.json()) as
-        | {
-            ok: true;
-            doctor?: DoctorResponse;
-            created?: boolean;
-            alias?: string;
-          }
-        | { error?: string };
-      if (!response.ok || !("ok" in body && body.ok)) {
-        setStatusText((body as { error?: string }).error ?? "Upsert failed.");
+      if (!response.ok) {
+        setStatusText(response.message ?? "Upsert failed.");
         return;
       }
-      if (body.doctor) setDoctorResult(body.doctor);
+      const body = (response.data ?? null) as
+        | {
+            doctor?: DoctorResponse;
+            alias?: string;
+          }
+        | null;
+      if (body?.doctor) setDoctorResult(body.doctor);
       setStatusText(
         dryRun
-          ? "Dry-run passed. Review result then click Save Mapping."
-          : `Mapping saved${body.alias ? ` (alias: ${body.alias})` : ""}.`,
+          ? `Dry-run passed on ${response.instanceName}. Review result then click Save Mapping.`
+          : `Mapping saved on ${response.instanceName}${body?.alias ? ` (alias: ${body.alias})` : ""}.`,
       );
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Upsert failed.");
@@ -138,31 +138,33 @@ export function OpenClawMappingWizardCard({
   };
 
   const runDoctor = async () => {
-    if (!apiKey.trim()) {
-      setStatusText("Admin API key is required.");
+    if (!instanceId) {
+      setStatusText("OpenClaw instance is required.");
       return;
     }
+    const selectedInstanceId = instanceId as Id<"openclawInstances">;
     setIsBusy(true);
     setStatusText(null);
     try {
-      const query = new URLSearchParams({ workspaceId });
-      if (mappingFile.trim()) query.set("mappingFile", mappingFile.trim());
-      const response = await fetch(
-        `/api/openclaw/workspace-mapping/doctor?${query.toString()}`,
-        { headers: { "X-API-Key": apiKey.trim() } },
-      );
-      const body = (await response.json()) as
-        | DoctorResponse
-        | { error?: string };
-      if (!response.ok && !("ok" in body)) {
-        setStatusText((body as { error?: string }).error ?? "Doctor failed.");
+      const response = await doctorRemote({
+        instanceId: selectedInstanceId,
+        workspaceId,
+        ...(mappingFile.trim() ? { mappingFile: mappingFile.trim() } : {}),
+      });
+      if (!response.ok) {
+        setStatusText(response.message ?? "Doctor failed.");
         return;
       }
-      setDoctorResult(body as DoctorResponse);
+      const body = (response.data as DoctorResponse | null) ?? null;
+      if (!body) {
+        setStatusText("Doctor failed.");
+        return;
+      }
+      setDoctorResult(body);
       setStatusText(
-        (body as DoctorResponse).ok
-          ? "Verification passed."
-          : "Verification found issues.",
+        body.ok
+          ? `Verification passed on ${response.instanceName}.`
+          : `Verification found issues on ${response.instanceName}.`,
       );
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Doctor failed.");
@@ -176,24 +178,29 @@ export function OpenClawMappingWizardCard({
       <CardHeader>
         <CardTitle>OpenClaw Repo Mapping Wizard</CardTitle>
         <CardDescription>
-          Connect this workspace to a local repo without manually editing
-          mapping JSON.
+          Select an OpenClaw instance and connect this workspace to a local repo
+          without manually editing mapping JSON.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="oc-mapping-api-key">
-              Admin API Key (session-only)
-            </Label>
-            <Input
-              id="oc-mapping-api-key"
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder="sk_..."
-              autoComplete="off"
-            />
+            <Label htmlFor="oc-mapping-instance">OpenClaw Instance</Label>
+            <select
+              id="oc-mapping-instance"
+              value={instanceId}
+              onChange={(event) =>
+                setInstanceId(event.target.value as Id<"openclawInstances"> | "")
+              }
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Select instance...</option>
+              {(instances ?? []).map((instance) => (
+                <option key={instance._id} value={instance._id}>
+                  {instance.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="oc-mapping-repo-path">Local Repo Path</Label>
@@ -260,31 +267,33 @@ export function OpenClawMappingWizardCard({
           </Button>
         </div>
 
-        {statusText && (
-          <p className="text-sm text-muted-foreground">{statusText}</p>
-        )}
+        {statusText ? (
+          <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+            {statusText}
+          </div>
+        ) : null}
 
-        {inspectResult && (
+        {inspectResult ? (
           <div className="space-y-2">
             <Label>Inspect Result</Label>
             <Textarea
               readOnly
+              className="min-h-[130px] font-mono text-xs"
               value={JSON.stringify(inspectResult, null, 2)}
-              className="min-h-[140px] font-mono text-xs"
             />
           </div>
-        )}
+        ) : null}
 
-        {doctorResult && (
+        {doctorResult ? (
           <div className="space-y-2">
-            <Label>Verification Result</Label>
+            <Label>Verify Result</Label>
             <Textarea
               readOnly
-              value={JSON.stringify(doctorResult, null, 2)}
               className="min-h-[160px] font-mono text-xs"
+              value={JSON.stringify(doctorResult, null, 2)}
             />
           </div>
-        )}
+        ) : null}
       </CardContent>
     </Card>
   );

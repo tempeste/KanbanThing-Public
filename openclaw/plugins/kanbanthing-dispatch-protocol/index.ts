@@ -1,14 +1,23 @@
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { existsSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+  inspectRepoCredentials,
   loadWorkspaceMappingSnapshot,
   resolveRepoCredentials,
+  runWorkspaceMappingDoctor,
   type RepoCredentialResolution,
   type WorkspaceMappingEntry,
   type WorkspaceMappingSnapshot,
+  upsertWorkspaceMappingEntry,
 } from "./kanbanthing-workspace-mapping";
 
 type LoggerLike = {
@@ -173,6 +182,7 @@ type PluginConfig = {
   hardKillMode?: "off" | "best_effort" | "internal_api";
   emitProgressEvents?: boolean;
   internalApiPathHint?: string;
+  mappingAllowedRepoRoots?: string[];
 };
 
 type CancelRequest = {
@@ -181,6 +191,26 @@ type CancelRequest = {
   runId?: string;
   ticketIds?: string[];
   reason?: string;
+};
+
+type MappingInspectRequest = {
+  repoPath?: string;
+  workspaceId?: string;
+  mappingFile?: string;
+  envFiles?: string[];
+  apiUrlFallback?: string;
+};
+
+type MappingUpsertRequest = {
+  repoPath?: string;
+  workspaceId?: string;
+  alias?: string;
+  mappingFile?: string;
+  envFiles?: string[];
+  apiUrl?: string;
+  dryRun?: boolean;
+  force?: boolean;
+  applySafeFixes?: boolean;
 };
 
 const DEFAULT_CALLBACK_PATH = "/api/openclaw/dispatch-events";
@@ -623,6 +653,128 @@ function isAuthorized(req: IncomingMessage, api: PluginApi) {
   const provided = req.headers["x-kanbanthing-plugin-secret"];
   const token = Array.isArray(provided) ? provided[0] : provided;
   return token === pluginSecret;
+}
+
+function resolveDefaultMappingFile() {
+  const home = process.env.HOME?.trim();
+  if (!home) return "~/.openclaw/kanbanthing-workspaces.json";
+  return path.join(home, ".openclaw", "kanbanthing-workspaces.json");
+}
+
+function getAllowedRepoRoots(api: PluginApi) {
+  const cfg = getConfig(api);
+  const configured = Array.isArray(cfg.mappingAllowedRepoRoots)
+    ? cfg.mappingAllowedRepoRoots
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+  const roots = configured.length > 0 ? configured : [process.env.HOME ?? ""];
+  const resolved = roots
+    .map((root) => {
+      const absolute = path.resolve(root);
+      try {
+        return realpathSync(absolute);
+      } catch {
+        api.logger?.warn?.(
+          `[kanbanthing-dispatch] mappingAllowedRepoRoots entry does not exist: ${absolute}`,
+        );
+        return null;
+      }
+    })
+    .filter((value): value is string => Boolean(value));
+  return {
+    roots: resolved,
+    hasExplicitConfig: configured.length > 0,
+  };
+}
+
+function isPathWithinRoot(candidate: string, root: string) {
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+}
+
+function resolveAndValidateRepoPath(api: PluginApi, repoPath: string) {
+  const raw = repoPath.trim();
+  if (!raw) {
+    return { ok: false as const, error: "repo_path_required" };
+  }
+  const absolute = path.resolve(raw);
+  if (!existsSync(absolute)) {
+    return { ok: false as const, error: "repo_path_invalid" };
+  }
+  let st;
+  try {
+    st = statSync(absolute);
+  } catch {
+    return { ok: false as const, error: "repo_permission_denied" };
+  }
+  if (!st.isDirectory()) {
+    return { ok: false as const, error: "repo_path_invalid" };
+  }
+
+  let canonical: string;
+  try {
+    canonical = realpathSync(absolute);
+  } catch {
+    return { ok: false as const, error: "repo_permission_denied" };
+  }
+
+  const allowed = getAllowedRepoRoots(api);
+  const allowedRoots = allowed.roots;
+  if (
+    (allowedRoots.length > 0 || allowed.hasExplicitConfig) &&
+    !allowedRoots.some((root) => isPathWithinRoot(canonical, root))
+  ) {
+    return {
+      ok: false as const,
+      error: "repo_path_outside_allowed_roots",
+      allowedRoots,
+    };
+  }
+
+  return { ok: true as const, absolute, canonical, allowedRoots };
+}
+
+const REQUIRED_GITIGNORE_ENTRIES = [".env", ".env.local", ".kanbanthing"];
+
+function inspectGitignore(repoDir: string) {
+  const gitignorePath = path.join(repoDir, ".gitignore");
+  if (!existsSync(gitignorePath)) {
+    return {
+      hasFile: false,
+      missing: [...REQUIRED_GITIGNORE_ENTRIES],
+      required: [...REQUIRED_GITIGNORE_ENTRIES],
+      fixAvailable: true,
+    };
+  }
+  const contents = readFileSync(gitignorePath, "utf8");
+  const normalized = new Set(
+    contents
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .map((line) => (line.startsWith("/") ? line.slice(1) : line)),
+  );
+  const missing = REQUIRED_GITIGNORE_ENTRIES.filter(
+    (entry) => !normalized.has(entry),
+  );
+  return {
+    hasFile: true,
+    missing,
+    required: [...REQUIRED_GITIGNORE_ENTRIES],
+    fixAvailable: missing.length > 0,
+  };
+}
+
+function applyGitignoreSafeFixes(repoDir: string) {
+  const gitignorePath = path.join(repoDir, ".gitignore");
+  const inspection = inspectGitignore(repoDir);
+  if (inspection.missing.length === 0) {
+    return { applied: [] as string[] };
+  }
+  const prefix = existsSync(gitignorePath) ? "\n" : "";
+  appendFileSync(gitignorePath, `${prefix}${inspection.missing.join("\n")}\n`);
+  return { applied: inspection.missing };
 }
 
 function parseDispatchMetadata(content: string): DispatchMetadata | null {
@@ -1082,6 +1234,9 @@ export default function register(api: PluginApi) {
         supportsHeartbeat: false,
         supportsProgressEvents: cfg.emitProgressEvents,
         supportsSessionKeySessionIdMapping: true,
+        supportsWorkspaceMappingEndpoints: true,
+        workspaceMappingApiVersion: 1,
+        requiresPluginSecret: Boolean(cfg.pluginSecret),
         config: {
           callbackPath: cfg.callbackPath,
           emitReceivedCallbacks: cfg.emitReceivedCallbacks,
@@ -1231,6 +1386,274 @@ export default function register(api: PluginApi) {
           );
         });
       }
+    },
+  });
+
+  api.registerHttpRoute({
+    path: "/kanbanthing/workspace-mapping/inspect",
+    handler: async (req: IncomingMessage, res: ServerResponse) => {
+      if (req.method !== "POST") {
+        writeJson(res, 405, { error: "Method not allowed" });
+        return;
+      }
+      if (!isAuthorized(req, api)) {
+        writeJson(res, 401, { error: "Unauthorized", errorCode: "unauthorized" });
+        return;
+      }
+
+      let payload: MappingInspectRequest;
+      try {
+        payload = await readJsonBody<MappingInspectRequest>(req);
+      } catch (error) {
+        writeJson(res, 400, {
+          error: "Invalid JSON body",
+          errorCode: "invalid_json",
+          detail: String(error),
+        });
+        return;
+      }
+
+      const checkedRepo = resolveAndValidateRepoPath(
+        api,
+        typeof payload.repoPath === "string" ? payload.repoPath : "",
+      );
+      if (!checkedRepo.ok) {
+        writeJson(res, 422, {
+          ok: false,
+          errorCode: checkedRepo.error,
+          message:
+            checkedRepo.error === "repo_path_outside_allowed_roots"
+              ? "repoPath is outside allowed roots"
+              : "repoPath is invalid",
+          ...(checkedRepo.error === "repo_path_outside_allowed_roots"
+            ? {
+                allowedRoots:
+                  "allowedRoots" in checkedRepo ? checkedRepo.allowedRoots : [],
+              }
+            : {}),
+        });
+        return;
+      }
+
+      const inspected = inspectRepoCredentials({
+        repoDir: checkedRepo.canonical,
+        envFiles: Array.isArray(payload.envFiles) ? payload.envFiles : undefined,
+        apiUrlFallback:
+          typeof payload.apiUrlFallback === "string"
+            ? payload.apiUrlFallback
+            : undefined,
+      });
+      const expectedWorkspaceId =
+        typeof payload.workspaceId === "string" ? payload.workspaceId.trim() : "";
+      const mismatch = Boolean(
+        expectedWorkspaceId &&
+          inspected.declaredWorkspaceId &&
+          inspected.declaredWorkspaceId !== expectedWorkspaceId,
+      );
+      const gitignore = inspectGitignore(checkedRepo.canonical);
+
+      writeJson(res, mismatch ? 422 : 200, {
+        ok: !mismatch && inspected.apiKeyPresent && Boolean(inspected.baseUrl),
+        repoPath: checkedRepo.canonical,
+        workspaceIdExpected: expectedWorkspaceId || null,
+        declaredWorkspaceId: inspected.declaredWorkspaceId ?? null,
+        hasApiKey: inspected.apiKeyPresent,
+        baseUrl: inspected.baseUrl,
+        mismatch,
+        gitignore,
+        allowedRoots: checkedRepo.allowedRoots,
+      });
+    },
+  });
+
+  api.registerHttpRoute({
+    path: "/kanbanthing/workspace-mapping/upsert",
+    handler: async (req: IncomingMessage, res: ServerResponse) => {
+      if (req.method !== "POST") {
+        writeJson(res, 405, { error: "Method not allowed" });
+        return;
+      }
+      if (!isAuthorized(req, api)) {
+        writeJson(res, 401, { error: "Unauthorized", errorCode: "unauthorized" });
+        return;
+      }
+
+      let payload: MappingUpsertRequest;
+      try {
+        payload = await readJsonBody<MappingUpsertRequest>(req);
+      } catch (error) {
+        writeJson(res, 400, {
+          error: "Invalid JSON body",
+          errorCode: "invalid_json",
+          detail: String(error),
+        });
+        return;
+      }
+
+      const checkedRepo = resolveAndValidateRepoPath(
+        api,
+        typeof payload.repoPath === "string" ? payload.repoPath : "",
+      );
+      if (!checkedRepo.ok) {
+        writeJson(res, 422, {
+          ok: false,
+          errorCode: checkedRepo.error,
+          message:
+            checkedRepo.error === "repo_path_outside_allowed_roots"
+              ? "repoPath is outside allowed roots"
+              : "repoPath is invalid",
+          ...(checkedRepo.error === "repo_path_outside_allowed_roots"
+            ? {
+                allowedRoots:
+                  "allowedRoots" in checkedRepo ? checkedRepo.allowedRoots : [],
+              }
+            : {}),
+        });
+        return;
+      }
+
+      const inspected = inspectRepoCredentials({
+        repoDir: checkedRepo.canonical,
+        envFiles: Array.isArray(payload.envFiles) ? payload.envFiles : undefined,
+        apiUrlFallback:
+          typeof payload.apiUrl === "string" ? payload.apiUrl : undefined,
+      });
+      const workspaceId =
+        (typeof payload.workspaceId === "string" && payload.workspaceId.trim()) ||
+        inspected.declaredWorkspaceId ||
+        "";
+      if (!workspaceId) {
+        writeJson(res, 400, {
+          ok: false,
+          errorCode: "workspace_id_required",
+          message:
+            "workspaceId is required (or declare KANBANTHING_WORKSPACE_ID in repo config)",
+        });
+        return;
+      }
+      if (
+        inspected.declaredWorkspaceId &&
+        inspected.declaredWorkspaceId !== workspaceId
+      ) {
+        writeJson(res, 422, {
+          ok: false,
+          errorCode: "workspace_id_mismatch",
+          message: "workspaceId does not match repo credentials",
+          declaredWorkspaceId: inspected.declaredWorkspaceId,
+          workspaceId,
+        });
+        return;
+      }
+
+      const mappingFile =
+        typeof payload.mappingFile === "string" && payload.mappingFile.trim()
+          ? payload.mappingFile.trim()
+          : resolveDefaultMappingFile();
+      const dryRun = payload.dryRun === true;
+      const force = payload.force === true;
+      const applySafeFixes = payload.applySafeFixes !== false;
+      const gitignoreBefore = inspectGitignore(checkedRepo.canonical);
+
+      if (dryRun) {
+        const doctor = runWorkspaceMappingDoctor({
+          mappingFilePath: mappingFile,
+          workspaceId,
+        });
+        writeJson(res, 200, {
+          ok: true,
+          dryRun: true,
+          candidate: {
+            alias:
+              typeof payload.alias === "string" && payload.alias.trim()
+                ? payload.alias.trim()
+                : path.basename(checkedRepo.canonical),
+            workspaceId,
+            repoPath: checkedRepo.canonical,
+            apiUrl: inspected.baseUrl,
+            hasApiKey: inspected.apiKeyPresent,
+          },
+          gitignore: gitignoreBefore,
+          doctor,
+        });
+        return;
+      }
+
+      try {
+        const result = upsertWorkspaceMappingEntry({
+          mappingFilePath: mappingFile,
+          workspaceId,
+          repoDir: checkedRepo.canonical,
+          alias: typeof payload.alias === "string" ? payload.alias : undefined,
+          apiUrl:
+            inspected.baseUrl ??
+            (typeof payload.apiUrl === "string" ? payload.apiUrl : undefined),
+          envFiles: Array.isArray(payload.envFiles) ? payload.envFiles : undefined,
+          force,
+        });
+        let fixesApplied: string[] = [];
+        if (applySafeFixes) {
+          try {
+            fixesApplied = applyGitignoreSafeFixes(checkedRepo.canonical).applied;
+          } catch {
+            writeJson(res, 422, {
+              ok: false,
+              errorCode: "repo_permission_denied",
+              message: "Permission denied while updating .gitignore",
+            });
+            return;
+          }
+        }
+        const doctor = runWorkspaceMappingDoctor({
+          mappingFilePath: mappingFile,
+          workspaceId,
+        });
+        writeJson(res, doctor.ok ? 200 : 422, {
+          ok: doctor.ok,
+          ...result,
+          workspaceId,
+          gitignoreBefore,
+          gitignoreAfter: inspectGitignore(checkedRepo.canonical),
+          fixesApplied,
+          doctor,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to upsert mapping";
+        const permissionDenied =
+          message.includes("EACCES") ||
+          message.includes("EPERM") ||
+          message.includes("permission");
+        writeJson(res, 422, {
+          ok: false,
+          errorCode: permissionDenied
+            ? "mapping_file_permission_denied"
+            : "mapping_validation_failed",
+          message,
+        });
+      }
+    },
+  });
+
+  api.registerHttpRoute({
+    path: "/kanbanthing/workspace-mapping/doctor",
+    handler: async (req: IncomingMessage, res: ServerResponse) => {
+      if (req.method !== "GET") {
+        writeJson(res, 405, { error: "Method not allowed" });
+        return;
+      }
+      if (!isAuthorized(req, api)) {
+        writeJson(res, 401, { error: "Unauthorized", errorCode: "unauthorized" });
+        return;
+      }
+      const url = new URL(req.url ?? "/", "http://localhost");
+      const workspaceId = url.searchParams.get("workspaceId")?.trim() || undefined;
+      const mappingFile =
+        url.searchParams.get("mappingFile")?.trim() || resolveDefaultMappingFile();
+      const report = runWorkspaceMappingDoctor({
+        mappingFilePath: mappingFile,
+        workspaceId,
+      });
+      writeJson(res, report.ok ? 200 : 422, report);
     },
   });
 

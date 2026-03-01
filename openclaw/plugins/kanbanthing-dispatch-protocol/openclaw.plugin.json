@@ -59,6 +59,12 @@
       },
       "internalApiPathHint": {
         "type": "string"
+      },
+      "mappingAllowedRepoRoots": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
       }
     },
     "required": []
@@ -128,6 +134,11 @@
     "internalApiPathHint": {
       "label": "Internal API Path Hint",
       "help": "Optional absolute path hint to OpenClaw internal dist for hard-kill imports.",
+      "advanced": true
+    },
+    "mappingAllowedRepoRoots": {
+      "label": "Allowed Repo Roots",
+      "help": "Optional repo root allowlist for workspace mapping endpoints. Defaults to $HOME.",
       "advanced": true
     }
   }

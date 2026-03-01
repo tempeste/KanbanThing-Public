@@ -66,6 +66,98 @@ const verifyOpenClawBearerToken = async (args: { url: string; token: string }) =
   }
 };
 
+const callOpenClawPlugin = async (args: {
+  url: string;
+  token: string;
+  path: string;
+  method: "GET" | "POST";
+  body?: Record<string, unknown>;
+}) => {
+  const urlError = getOpenClawInstanceUrlValidationError(args.url);
+  if (urlError) throw new Error(urlError);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(withPluginPath(args.url, args.path), {
+      method: args.method,
+      headers: {
+        Authorization: `Bearer ${args.token}`,
+        "Content-Type": "application/json",
+      },
+      ...(args.body ? { body: JSON.stringify(args.body) } : {}),
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let json: Record<string, unknown> | null = null;
+    try {
+      json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+    } catch {
+      json = null;
+    }
+    if (!response.ok) {
+      const error = new Error(
+        (json?.message as string | undefined) ??
+          (json?.error as string | undefined) ??
+          `Plugin request failed (${response.status})`
+      ) as Error & {
+        status?: number;
+        errorCode?: string;
+      };
+      error.status = response.status;
+      error.errorCode = typeof json?.errorCode === "string" ? json.errorCode : undefined;
+      throw error;
+    }
+    return json;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const mapWorkspaceMappingProxyError = (error: unknown) => {
+  const status =
+    typeof (error as { status?: unknown })?.status === "number"
+      ? ((error as { status?: number }).status ?? null)
+      : null;
+  const pluginCode =
+    typeof (error as { errorCode?: unknown })?.errorCode === "string"
+      ? ((error as { errorCode?: string }).errorCode ?? null)
+      : null;
+  if (pluginCode) {
+    return {
+      errorCode: pluginCode,
+      message:
+        error instanceof Error ? error.message : "Workspace mapping request failed",
+    };
+  }
+  if (status === 404) {
+    return {
+      errorCode: "plugin_too_old",
+      message:
+        "OpenClaw plugin is missing workspace-mapping endpoints. Update kanbanthing-dispatch-protocol and verify capabilities.",
+    };
+  }
+  if (status === 401 || status === 403) {
+    return {
+      errorCode: "instance_auth_failed",
+      message:
+        "OpenClaw authentication failed. Verify instance token and plugin secret settings.",
+    };
+  }
+  if (error instanceof Error && error.name === "AbortError") {
+    return {
+      errorCode: "network_timeout",
+      message: "Timed out while contacting the OpenClaw instance.",
+    };
+  }
+  return {
+    errorCode: "upstream_unreachable",
+    message:
+      error instanceof Error
+        ? error.message
+        : "Failed to contact the OpenClaw plugin endpoint.",
+  };
+};
+
 const getVerificationFailureMessage = (args: {
   error: unknown;
   isEnhanced: boolean;
@@ -238,6 +330,194 @@ export const verify = action({
         error: message,
         pluginInstalled: false,
         verificationMode: isEnhanced ? "plugin" : "basic",
+      };
+    }
+  },
+});
+
+// Convex action context type is intentionally broad here because this helper
+// is shared across multiple action handlers in this module.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getOwnedInstanceForWizard = async (ctx: any, instanceId: Id<"openclawInstances">) => {
+  const userId: string = await ctx.runQuery(internal.openclawInstances.getCurrentUserId, {});
+  const instance: Doc<"openclawInstances"> | null = await ctx.runQuery(
+    internal.openclawInstances.getOwnedEncryptedForDispatch,
+    {
+      id: instanceId,
+      userId,
+    }
+  );
+  if (!instance) {
+    throw new Error("OpenClaw instance not found");
+  }
+  const { decryptOpenClawToken } = await import("../lib/openclaw-crypto");
+  const token = await decryptOpenClawToken(instance.encryptedToken, getEncryptionKey());
+  return { instance, token };
+};
+
+const ensureMappingCapabilities = async (args: { url: string; token: string }) => {
+  const capabilities = await verifyOpenClawBearerToken(args);
+  if (!capabilities || capabilities.supportsWorkspaceMappingEndpoints !== true) {
+    const error = new Error(
+      "OpenClaw plugin is too old. Workspace mapping endpoints are not supported."
+    ) as Error & { status?: number };
+    error.status = 404;
+    throw error;
+  }
+  return capabilities;
+};
+
+type MappingProxyEnvelope = {
+  ok: boolean;
+  instanceId: Id<"openclawInstances">;
+  instanceName: string;
+  source: "openclaw-plugin";
+  data?: Record<string, unknown> | null;
+  errorCode?: string;
+  message?: string;
+};
+
+export const workspaceMappingInspect = action({
+  args: {
+    instanceId: v.id("openclawInstances"),
+    repoPath: v.string(),
+    workspaceId: v.optional(v.string()),
+    mappingFile: v.optional(v.string()),
+    envFiles: v.optional(v.array(v.string())),
+    apiUrlFallback: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<MappingProxyEnvelope> => {
+    const { instance, token } = await getOwnedInstanceForWizard(ctx, args.instanceId);
+    try {
+      await ensureMappingCapabilities({ url: instance.url, token });
+      const data = await callOpenClawPlugin({
+        url: instance.url,
+        token,
+        path: "/kanbanthing/workspace-mapping/inspect",
+        method: "POST",
+        body: {
+          repoPath: args.repoPath,
+          ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+          ...(args.mappingFile ? { mappingFile: args.mappingFile } : {}),
+          ...(args.envFiles ? { envFiles: args.envFiles } : {}),
+          ...(args.apiUrlFallback ? { apiUrlFallback: args.apiUrlFallback } : {}),
+        },
+      });
+      return {
+        ok: true,
+        instanceId: args.instanceId,
+        instanceName: instance.name,
+        source: "openclaw-plugin",
+        data,
+      };
+    } catch (error) {
+      const mapped = mapWorkspaceMappingProxyError(error);
+      return {
+        ok: false,
+        instanceId: args.instanceId,
+        instanceName: instance.name,
+        source: "openclaw-plugin",
+        errorCode: mapped.errorCode,
+        message: mapped.message,
+      };
+    }
+  },
+});
+
+export const workspaceMappingUpsert = action({
+  args: {
+    instanceId: v.id("openclawInstances"),
+    repoPath: v.string(),
+    workspaceId: v.optional(v.string()),
+    alias: v.optional(v.string()),
+    mappingFile: v.optional(v.string()),
+    envFiles: v.optional(v.array(v.string())),
+    apiUrl: v.optional(v.string()),
+    dryRun: v.optional(v.boolean()),
+    force: v.optional(v.boolean()),
+    applySafeFixes: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<MappingProxyEnvelope> => {
+    const { instance, token } = await getOwnedInstanceForWizard(ctx, args.instanceId);
+    try {
+      await ensureMappingCapabilities({ url: instance.url, token });
+      const data = await callOpenClawPlugin({
+        url: instance.url,
+        token,
+        path: "/kanbanthing/workspace-mapping/upsert",
+        method: "POST",
+        body: {
+          repoPath: args.repoPath,
+          ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+          ...(args.alias ? { alias: args.alias } : {}),
+          ...(args.mappingFile ? { mappingFile: args.mappingFile } : {}),
+          ...(args.envFiles ? { envFiles: args.envFiles } : {}),
+          ...(args.apiUrl ? { apiUrl: args.apiUrl } : {}),
+          ...(typeof args.dryRun === "boolean" ? { dryRun: args.dryRun } : {}),
+          ...(typeof args.force === "boolean" ? { force: args.force } : {}),
+          ...(typeof args.applySafeFixes === "boolean"
+            ? { applySafeFixes: args.applySafeFixes }
+            : {}),
+        },
+      });
+      return {
+        ok: true,
+        instanceId: args.instanceId,
+        instanceName: instance.name,
+        source: "openclaw-plugin",
+        data,
+      };
+    } catch (error) {
+      const mapped = mapWorkspaceMappingProxyError(error);
+      return {
+        ok: false,
+        instanceId: args.instanceId,
+        instanceName: instance.name,
+        source: "openclaw-plugin",
+        errorCode: mapped.errorCode,
+        message: mapped.message,
+      };
+    }
+  },
+});
+
+export const workspaceMappingDoctor = action({
+  args: {
+    instanceId: v.id("openclawInstances"),
+    workspaceId: v.optional(v.string()),
+    mappingFile: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<MappingProxyEnvelope> => {
+    const { instance, token } = await getOwnedInstanceForWizard(ctx, args.instanceId);
+    try {
+      await ensureMappingCapabilities({ url: instance.url, token });
+      const query = new URLSearchParams();
+      if (args.workspaceId) query.set("workspaceId", args.workspaceId);
+      if (args.mappingFile) query.set("mappingFile", args.mappingFile);
+      const data = await callOpenClawPlugin({
+        url: instance.url,
+        token,
+        path: `/kanbanthing/workspace-mapping/doctor${
+          query.toString() ? `?${query.toString()}` : ""
+        }`,
+        method: "GET",
+      });
+      return {
+        ok: true,
+        instanceId: args.instanceId,
+        instanceName: instance.name,
+        source: "openclaw-plugin",
+        data,
+      };
+    } catch (error) {
+      const mapped = mapWorkspaceMappingProxyError(error);
+      return {
+        ok: false,
+        instanceId: args.instanceId,
+        instanceName: instance.name,
+        source: "openclaw-plugin",
+        errorCode: mapped.errorCode,
+        message: mapped.message,
       };
     }
   },
