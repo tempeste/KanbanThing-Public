@@ -272,7 +272,7 @@ export default function OraclesPage() {
             )}
           </div>
         ) : (
-          <div className="mx-auto grid max-w-5xl gap-3 p-3 md:grid-cols-2 md:p-5 xl:grid-cols-3">
+          <div className="grid gap-3 p-3 md:grid-cols-2 md:p-5 xl:grid-cols-3">
             {oracles.map((oracle, i) => (
               <Link
                 key={oracle._id}
