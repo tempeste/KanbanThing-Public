@@ -549,6 +549,7 @@ export default function WorkspacePage() {
                   _id: ticket._id,
                   number: ticket.number ?? undefined,
                   title: ticket.title,
+                  status: ticket.status,
                 }))}
                 triggerClassName="h-7 border border-primary/70 bg-primary px-3 text-[9px] font-bold uppercase tracking-[0.14em] text-primary-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.15)] hover:bg-primary/90 hover:border-primary"
               />
@@ -572,6 +573,7 @@ export default function WorkspacePage() {
                   _id: ticket._id,
                   number: ticket.number ?? undefined,
                   title: ticket.title,
+                  status: ticket.status,
                 }))}
                 triggerClassName="h-7 border border-primary/70 bg-primary px-3 text-[9px] font-bold uppercase tracking-[0.14em] text-primary-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.15)] hover:bg-primary/90 hover:border-primary"
               />

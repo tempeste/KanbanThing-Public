@@ -124,6 +124,7 @@ export function IssueSidebar({
                     _id: ticket._id,
                     number: ticket.number ?? undefined,
                     title: ticket.title,
+                    status: ticket.status,
                   },
                 ]}
                 triggerLabel="Dispatch This Ticket"
