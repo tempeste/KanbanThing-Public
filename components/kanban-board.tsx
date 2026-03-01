@@ -562,6 +562,12 @@ export function KanbanBoard({
       convex.prewarmQuery({ query: api.tickets.getHierarchy, args: { id: ticketId }, extendSubscriptionFor: ttl });
       convex.prewarmQuery({ query: api.ticketComments.listByTicket, args: { ticketId }, extendSubscriptionFor: ttl });
       convex.prewarmQuery({ query: api.ticketActivities.listByTicket, args: { ticketId }, extendSubscriptionFor: ttl });
+      // Debug: check if data arrives
+      const watch = convex.watchQuery(api.tickets.getHierarchy, { id: ticketId });
+      watch.onUpdate(() => {
+        const result = watch.localQueryResult();
+        console.log("[prewarm] data arrived for", ticketId, result ? "✓ has data" : "✗ no data");
+      });
     },
     [router, convex, workspaceId]
   );
