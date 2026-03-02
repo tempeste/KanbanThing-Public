@@ -25,21 +25,30 @@ export default function WorkspaceError({
   useEffect(() => {
     console.error("Workspace error:", error);
 
-    // Auth/workspace errors after sleep are often transient (stale socket/token until refresh).
-    // Retry a couple of times before showing the fallback UI.
-    if (retryCount.current < 2) {
+    if (isAuthError) {
+      // Give TokenRefresher ~2s to silently fix the token, then try ONE
+      // reset(). If that also fails we land back here with retryCount=1
+      // and show the error UI — no further retries, no query storm.
+      if (retryCount.current < 1) {
+        retryCount.current += 1;
+        const timer = setTimeout(() => reset(), 2000);
+        return () => clearTimeout(timer);
+      }
+      setShowError(true);
+      return;
+    }
+
+    // Non-auth transient errors: retry once quickly.
+    if (retryCount.current < 1) {
       retryCount.current += 1;
-      const timer = setTimeout(
-        () => {
-          setShowError(true);
-          reset();
-        },
-        isAuthError ? 900 : 500
-      );
+      const timer = setTimeout(() => {
+        setShowError(true);
+        reset();
+      }, 500);
       return () => clearTimeout(timer);
     }
     setShowError(true);
-  }, [error, reset]);
+  }, [error, reset, isAuthError]);
 
   // Only shown if auto-retry didn't work
   if (!showError) return null;

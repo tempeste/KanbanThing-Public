@@ -15,8 +15,12 @@ const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
  */
 function TokenRefresher() {
   const lastHidden = useRef<number>(0);
+  const refreshing = useRef(false);
 
   const refreshToken = useCallback(async () => {
+    // Debounce: visibilitychange + focus can fire back-to-back on wake
+    if (refreshing.current) return;
+    refreshing.current = true;
     try {
       const { data } = await authClient.convex.token();
       if (data?.token) {
@@ -24,6 +28,8 @@ function TokenRefresher() {
       }
     } catch {
       // Session may be fully expired — auth provider will handle redirect
+    } finally {
+      refreshing.current = false;
     }
   }, []);
 
@@ -33,9 +39,8 @@ function TokenRefresher() {
     };
 
     const onVisible = () => {
-      // Refresh if tab was hidden for >10s (token may be stale)
-      const elapsed = Date.now() - lastHidden.current;
-      if (lastHidden.current > 0 && elapsed > 10_000) {
+      // Any sleep duration can leave the token stale — refresh eagerly.
+      if (lastHidden.current > 0) {
         refreshToken();
       }
     };
