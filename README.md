@@ -12,25 +12,25 @@ Manage multiple projects from one board-first index. Each workspace gets its own
 
 ### Kanban Board
 
-Visual board with **Unclaimed**, **In Progress**, and **Done** columns. Issues show their ID, title, priority, and assignee at a glance. A completion bar tracks overall progress in real time.
+Visual board with **Unclaimed**, **Dispatched**, **In Progress**, and **Done** columns. Issues show their ID, title, priority badge, color-coded tags, and assignee at a glance. A completion bar tracks overall progress in real time.
 
 ![Kanban Board](public/screenshots/board-view.png)
 
 ### Issue List
 
-Hierarchical issue list with sortable columns, inline status badges, and drag-to-reparent. Useful for bulk triage and seeing the full backlog at once.
+Hierarchical issue list with sortable columns, inline status badges, priority indicators, tag pills, and drag-to-reparent. Useful for bulk triage and seeing the full backlog at once.
 
 ![Issue List](public/screenshots/list-view.png)
 
 ### Issue Detail
 
-Full issue view with markdown description, activity timeline, comments, and child issue tracking. Both humans and agents can comment and update status.
+Full issue view with markdown description, priority and tag controls, activity timeline, comments, and child issue tracking. Both humans and agents can comment and update status via UI or API.
 
 ![Issue Detail](public/screenshots/ticket-detail.png)
 
 ### Workspace Settings
 
-Configure workspace prefix, project docs (returned by the REST API for agent context), and manage API keys. Generate scoped keys for each agent with admin or agent roles.
+Configure workspace prefix, project docs (returned by the REST API for agent context), manage API keys, and create custom tags. Docs include a live markdown preview and version history.
 
 ![Workspace Settings](public/screenshots/settings-view.png)
 
@@ -38,8 +38,10 @@ Configure workspace prefix, project docs (returned by the REST API for agent con
 
 - **Real-time Sync**: Changes via API instantly reflect in the UI (powered by Convex)
 - **Agent REST API**: Simple endpoints for LLM agents to interact with issues
+- **Tags & Priorities**: Color-coded workspace tags and P0–P3 priority levels
 - **Nested Issues**: Parent/child issues with progress tracking
-- **Workspace Docs**: Markdown documentation served to agents for project context
+- **Workspace Docs**: Markdown documentation served to agents for project context with version history
+- **Export**: JSON and CSV export for issues
 
 ## Tech Stack
 
@@ -297,11 +299,15 @@ curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID
 # List child issues
 curl -H "X-API-Key: sk_..." http://localhost:3000/api/tickets?parentId=PARENT_ISSUE_ID
 
-# Create issue
-curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"title":"New issue","description":"..."}' http://localhost:3000/api/tickets
+# Create issue (with optional priority)
+curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"title":"New issue","description":"...","priority":"high"}' http://localhost:3000/api/tickets
 
-# Update issue
-curl -X PATCH -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"title":"Updated"}' http://localhost:3000/api/tickets/ISSUE_ID
+# Update issue (title, description, priority, tags)
+curl -X PATCH -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"title":"Updated","tags":["TAG_ID"]}' http://localhost:3000/api/tickets/ISSUE_ID
+
+# Manage tags
+curl -H "X-API-Key: sk_..." http://localhost:3000/api/tags
+curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"name":"bug","color":"#ef4444"}' http://localhost:3000/api/tags
 
 # Claim an issue (marks as in_progress)
 curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/claim
@@ -312,8 +318,8 @@ curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/c
 # Change status
 curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"status":"done"}' http://localhost:3000/api/tickets/ISSUE_ID/status
 
-# Assign / unassign
-curl -X POST -H "X-API-Key: sk_..." -H "Content-Type: application/json" -d '{"ownerId":"...","ownerType":"agent"}' http://localhost:3000/api/tickets/ISSUE_ID/assign
+# Assign / unassign (use X-Agent-Session-Id header to identify agent)
+curl -X POST -H "X-API-Key: sk_..." -H "X-Agent-Session-Id: my-agent" -H "Content-Type: application/json" -d '{}' http://localhost:3000/api/tickets/ISSUE_ID/assign
 curl -X POST -H "X-API-Key: sk_..." http://localhost:3000/api/tickets/ISSUE_ID/unassign
 
 # Session-scoped agent identity (OpenClaw-compatible)
@@ -339,14 +345,15 @@ curl -H "X-API-Key: sk_..." http://localhost:3000/api/workspace/docs/history
 
 ## Data Model
 
-- **Workspaces**: Container for issues and API keys
-- **Issues**: Tasks with title, markdown description, nested children, and status
-- **API Keys**: Workspace-scoped keys for agent authentication
+- **Workspaces**: Container for issues, API keys, and tags
+- **Issues**: Tasks with title, markdown description, priority, tags, nested children, and status
+- **Tags**: Workspace-scoped color-coded labels for categorizing issues
+- **API Keys**: Workspace-scoped keys for agent authentication (admin or agent roles)
 
 ## Status Flow
 
 ```
-unclaimed → in_progress → done
+backlog → unclaimed → dispatched → in_progress → done
 ```
 
 Any agent or user can claim any unclaimed issue. Once claimed, only completion or release moves the issue forward.
