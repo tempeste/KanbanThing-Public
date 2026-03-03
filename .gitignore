@@ -44,3 +44,10 @@ next-env.d.ts
 .env
 .env.local
 .kanbanthing
+
+# agent docs (private)
+AGENTS.MD
+CLAUDE.md
+claude.md
+SYNC_TO_PUBLIC.md
+plan.md
